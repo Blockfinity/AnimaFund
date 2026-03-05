@@ -356,7 +356,9 @@ async def get_agent_hierarchy():
     nodes = []
     edges = []
 
-    for i, agent in enumerate(agents):
+    node_ids = set()
+    for agent in agents:
+        node_ids.add(agent["wallet_address"])
         nodes.append({
             "id": agent["wallet_address"],
             "data": {
@@ -372,11 +374,14 @@ async def get_agent_hierarchy():
             "position": {"x": 0, "y": 0},
             "type": "agentNode",
         })
-        if agent.get("parent_address"):
+
+    for agent in agents:
+        if agent.get("parent_address") and agent["parent_address"] in node_ids:
             edges.append({
-                "id": f"e-{agent['wallet_address'][:8]}",
+                "id": f"e-{agent['wallet_address'][:10]}-{agent['parent_address'][:10]}",
                 "source": agent["parent_address"],
                 "target": agent["wallet_address"],
+                "type": "smoothstep",
                 "animated": agent["status"] == "alive",
             })
 

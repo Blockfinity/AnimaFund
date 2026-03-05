@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactFlow, { 
   Background, Controls, MiniMap, 
-  useNodesState, useEdgesState 
+  useNodesState, useEdgesState,
+  MarkerType
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { CircleDot, Shield, Cpu, Zap } from 'lucide-react';
@@ -107,8 +108,12 @@ export default function AgentNetwork() {
         }
       }
 
+      // Filter edges to only include valid connections
+      const validNodeIds = new Set(hier.nodes.map(n => n.id));
+      const validEdges = (hier.edges || []).filter(e => validNodeIds.has(e.source) && validNodeIds.has(e.target));
+
       setNodes(layoutNodes);
-      setEdges(hier.edges || []);
+      setEdges(validEdges);
     } catch (e) {
       console.error('Failed to fetch hierarchy:', e);
     } finally {
@@ -148,7 +153,10 @@ export default function AgentNetwork() {
           fitView
           minZoom={0.2}
           maxZoom={2}
-          defaultEdgeOptions={{ type: 'smoothstep' }}
+          defaultEdgeOptions={{ 
+          type: 'smoothstep',
+          markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: '#d4d4d8' },
+        }}
         >
           <Background color="#e4e4e7" gap={20} size={1} />
           <Controls className="!bg-white !border-border !rounded-sm !shadow-none" />
