@@ -1,0 +1,40 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        background: '#ffffff',
+        foreground: '#09090b',
+        card: '#ffffff',
+        'card-foreground': '#09090b',
+        border: '#e4e4e7',
+        input: '#e4e4e7',
+        ring: '#18181b',
+        primary: '#18181b',
+        'primary-foreground': '#fafafa',
+        secondary: '#f4f4f5',
+        'secondary-foreground': '#18181b',
+        accent: '#f4f4f5',
+        'accent-foreground': '#18181b',
+        muted: '#f4f4f5',
+        'muted-foreground': '#71717a',
+        success: '#16a34a',
+        warning: '#d97706',
+        error: '#ef4444',
+        info: '#2563eb',
+        'chart-primary': '#2563eb',
+        'chart-secondary': '#16a34a',
+        'chart-tertiary': '#d97706',
+        'chart-quaternary': '#9333ea',
+        'chart-neutral': '#71717a',
+      },
+      fontFamily: {
+        heading: ['Manrope', 'sans-serif'],
+        body: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+    },
+  },
+  plugins: [],
+};
