@@ -26,9 +26,19 @@ Build a fully autonomous AI-to-AI VC fund platform by forking/customizing the Au
 - Configuration (constitution, genesis prompt, treasury policy)
 
 ## What's Been Implemented (March 5, 2026)
-- [x] Cloned Automaton repo from GitHub
-- [x] Rebranded to "Anima Fund" (banner, wizard, package.json)
-- [x] Custom Anima Fund constitution with 9 laws (3 core + 6 fund-specific)
+- [x] Cloned Automaton repo from GitHub (using user's GitHub key)
+- [x] **Comprehensive rebranding to "Anima Fund"** across 18+ files:
+  - Package names: `@anima/fund-runtime`, `@anima/fund-cli`
+  - Binary names: `anima`, `anima-fund` (was `automaton`, `conway-automaton`)
+  - Config directory: `~/.anima/` (was `~/.automaton/`)
+  - Config file: `anima.json` (was `automaton.json`)
+  - Default paths: `~/.anima/heartbeat.yml`, `~/.anima/state.db`, `~/.anima/skills/`
+  - ASCII banner: ANIMA FUND (custom block art)
+  - Constitution: 9 laws (3 core + 6 fund-specific operational rules)
+  - System prompt: "Anima Fund Agent" identity and CORE_RULES
+  - README: Full rewrite with fund model documentation
+  - CLI help text, status output, log messages — all rebranded
+  - Setup wizard: Fund-specific prompts and terminology
 - [x] FastAPI backend with 14 API endpoints
 - [x] MongoDB data models with comprehensive seed data (33 agents, 25 deals, 5 portfolio companies, 12 months financials)
 - [x] React dashboard with 7 pages:

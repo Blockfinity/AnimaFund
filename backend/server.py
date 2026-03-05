@@ -488,12 +488,12 @@ async def get_engine_status():
             version = pkg.get("version", "unknown")
 
     return {
-        "engine": "Automaton (Rebranded: Anima Fund)",
+        "engine": "Anima Fund Runtime",
         "version": version,
         "repo_present": exists,
-        "base_repo": "Conway-Research/automaton",
+        "base_repo": "Conway-Research/automaton (forked)",
         "runtime": "TypeScript/Node.js",
-        "infrastructure": "Conway Cloud + x402 Payments",
+        "infrastructure": "Conway Cloud + x402 USDC Payments",
         "features": [
             "ReAct Agent Loop",
             "57+ Built-in Tools",
