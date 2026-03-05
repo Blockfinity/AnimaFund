@@ -1,0 +1,2 @@
+# AnimaFund
+AI driven fund
