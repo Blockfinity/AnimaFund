@@ -3,13 +3,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 const API = process.env.REACT_APP_BACKEND_URL;
 
 const DEPARTMENTS = [
-  { id: 'cto', name: 'CTO TEAM', color: '#FFD6E0', accent: '#FF6B9D', floorBg: 'linear-gradient(135deg, #FFE0EC 0%, #FFF0F5 100%)', targetMin: 2 },
-  { id: 'ethics', name: 'DEI / ETHICS COMMITTEE', color: '#E0D6FF', accent: '#9B6BFF', floorBg: 'linear-gradient(135deg, #EDE0FF 0%, #F5F0FF 100%)', targetMin: 2 },
-  { id: 'exits', name: 'EXITS & M&A DIVISION', color: '#D6F5FF', accent: '#3BBAED', floorBg: 'linear-gradient(135deg, #D6F5FF 0%, #E8FAFF 100%)', targetMin: 5 },
-  { id: 'dealflow', name: 'DEAL FLOW & SCOUTING', color: '#FFF3D6', accent: '#FFB347', floorBg: 'linear-gradient(135deg, #FFF3D6 0%, #FFFBF0 100%)', targetMin: 10 },
-  { id: 'operations', name: 'OPERATIONS HQ', color: '#D6FFE8', accent: '#34D399', floorBg: 'linear-gradient(135deg, #D6FFE8 0%, #F0FFF5 100%)', targetMin: 20 },
-  { id: 'platform', name: 'PLATFORM & PORTFOLIO SUPPORT', color: '#D6EAFF', accent: '#5B9CFF', floorBg: 'linear-gradient(135deg, #D6EAFF 0%, #EEF5FF 100%)', targetMin: 50 },
-  { id: 'investment', name: 'INVESTMENT TEAM', color: '#E8FFD6', accent: '#7BCB3B', floorBg: 'linear-gradient(135deg, #E8FFD6 0%, #F5FFF0 100%)', targetMin: 50 },
+  { id: 'cto', name: 'CTO TEAM', accent: '#FF6B9D', floorBg: 'linear-gradient(135deg, #FFE0EC 0%, #FFF0F5 100%)', targetMin: 2, monthlyCost: 8500 },
+  { id: 'ethics', name: 'DEI / ETHICS COMMITTEE', accent: '#9B6BFF', floorBg: 'linear-gradient(135deg, #EDE0FF 0%, #F5F0FF 100%)', targetMin: 2, monthlyCost: 4200 },
+  { id: 'exits', name: 'EXITS & M&A DIVISION', accent: '#3BBAED', floorBg: 'linear-gradient(135deg, #D6F5FF 0%, #E8FAFF 100%)', targetMin: 5, monthlyCost: 12800 },
+  { id: 'dealflow', name: 'DEAL FLOW & SCOUTING', accent: '#FFB347', floorBg: 'linear-gradient(135deg, #FFF3D6 0%, #FFFBF0 100%)', targetMin: 10, monthlyCost: 18500 },
+  { id: 'operations', name: 'OPERATIONS HQ', accent: '#34D399', floorBg: 'linear-gradient(135deg, #D6FFE8 0%, #F0FFF5 100%)', targetMin: 20, monthlyCost: 32000 },
+  { id: 'platform', name: 'PLATFORM & PORTFOLIO SUPPORT', accent: '#5B9CFF', floorBg: 'linear-gradient(135deg, #D6EAFF 0%, #EEF5FF 100%)', targetMin: 50, monthlyCost: 45000 },
+  { id: 'investment', name: 'INVESTMENT TEAM', accent: '#7BCB3B', floorBg: 'linear-gradient(135deg, #E8FFD6 0%, #F5FFF0 100%)', targetMin: 50, monthlyCost: 62000 },
 ];
 
 const ROLES_SHORT = ['MGP', 'GP', 'VP', 'Sr.A', 'Jr.A', 'CTO', 'CFO', 'COO', 'Ops', 'Scout', 'DS', 'Mkt', 'Legal', 'HR', 'IR', 'Admin'];
@@ -24,46 +24,88 @@ function formatMoney(n) {
   return `$${n.toFixed(0)}`;
 }
 
-function CartoonAgent({ index, role, floorWidth }) {
-  const [x, setX] = useState(0);
+// Agent states: idle (at desk), walking (to meeting), meeting (talking), returning (back to desk)
+const AGENT_STATES = ['idle', 'walking', 'meeting', 'returning'];
+const MEETING_ACTIONS = [
+  'Syncing with team...', 'In meeting...', 'Reviewing deal...', 'Discussing strategy...',
+  'Code review...', 'Portfolio check-in...', 'KPI review...', 'Onboarding call...',
+  'Due diligence...', 'Term sheet review...',
+];
+
+function CartoonAgent({ index, role, floorWidth, totalOnFloor }) {
+  const homeX = useRef(80 + ((index * 110) % Math.max(200, floorWidth - 160)));
+  const [x, setX] = useState(homeX.current);
   const [dir, setDir] = useState(1);
   const [bubble, setBubble] = useState(null);
+  const [agentState, setAgentState] = useState('idle');
+  const targetX = useRef(null);
+  const bubbleTimer = useRef(null);
+  const stateTimer = useRef(null);
+
   const skinColor = SKIN_COLORS[index % SKIN_COLORS.length];
   const shirtColor = SHIRT_COLORS[index % SHIRT_COLORS.length];
   const hairColor = HAIR_COLORS[index % HAIR_COLORS.length];
-  const speed = useRef(0.15 + Math.random() * 0.35);
-  const bubbleRef = useRef(null);
 
-  const actions = ['Reviewing pitch...', 'Deploying capital...', 'Skill testing...', 'Calculating ROI...', 'Monitoring KPIs...', 'Scouting agents...', 'Revenue +$2.4K!', 'Deal rejected!'];
-
+  // State machine: idle -> walking -> meeting -> returning -> idle
   useEffect(() => {
-    setX(60 + (index * 90) % Math.max(200, floorWidth - 140));
-  }, [index, floorWidth]);
+    const scheduleNext = () => {
+      const idleTime = 4000 + Math.random() * 12000; // 4-16s idle
+      stateTimer.current = setTimeout(() => {
+        // Pick a random destination (another agent's desk or a meeting spot)
+        const meetX = Math.random() * (floorWidth - 120) + 40;
+        targetX.current = meetX;
+        setAgentState('walking');
+        setDir(meetX > x ? 1 : -1);
+      }, idleTime);
+    };
+    if (agentState === 'idle') scheduleNext();
+    return () => { if (stateTimer.current) clearTimeout(stateTimer.current); };
+  }, [agentState, floorWidth]);
 
+  // Movement logic
   useEffect(() => {
-    const move = setInterval(() => {
+    if (agentState === 'idle') return;
+    if (agentState === 'meeting') {
+      // Show bubble, then return after a bit
+      setBubble(MEETING_ACTIONS[Math.floor(Math.random() * MEETING_ACTIONS.length)]);
+      const meetTime = setTimeout(() => {
+        setBubble(null);
+        targetX.current = homeX.current;
+        setAgentState('returning');
+        setDir(homeX.current > x ? 1 : -1);
+      }, 2000 + Math.random() * 2000);
+      return () => clearTimeout(meetTime);
+    }
+
+    const moveInterval = setInterval(() => {
       setX(prev => {
-        const next = prev + speed.current * dir;
-        if (next > floorWidth - 80 || next < 40) { setDir(d => -d); return prev; }
-        return next;
+        const target = targetX.current;
+        if (target === null) return prev;
+        const dist = Math.abs(target - prev);
+        if (dist < 3) {
+          // Arrived
+          if (agentState === 'walking') setAgentState('meeting');
+          else if (agentState === 'returning') setAgentState('idle');
+          return target;
+        }
+        const step = Math.min(1.2, dist * 0.06);
+        const newDir = target > prev ? 1 : -1;
+        setDir(newDir);
+        return prev + step * newDir;
       });
-    }, 50);
-    const chat = setInterval(() => {
-      if (Math.random() > 0.75) {
-        setBubble(actions[Math.floor(Math.random() * actions.length)]);
-        if (bubbleRef.current) clearTimeout(bubbleRef.current);
-        bubbleRef.current = setTimeout(() => setBubble(null), 2500);
-      }
-    }, 6000 + Math.random() * 6000);
-    return () => { clearInterval(move); clearInterval(chat); if (bubbleRef.current) clearTimeout(bubbleRef.current); };
-  }, [dir, floorWidth]);
+    }, 30);
+    return () => clearInterval(moveInterval);
+  }, [agentState]);
+
+  // Legs animation based on movement
+  const isMoving = agentState === 'walking' || agentState === 'returning';
 
   return (
-    <div className="absolute bottom-2" style={{ left: `${x}px`, transition: 'left 0.05s linear' }}>
+    <div className="absolute bottom-2" style={{ left: `${x}px`, transition: 'none', zIndex: agentState === 'meeting' ? 15 : 5 }}>
       {bubble && (
         <div style={{
-          position: 'absolute', bottom: '52px', left: '50%', transform: 'translateX(-50%)',
-          background: '#fff', border: '2px solid #35638C', borderRadius: '8px', padding: '2px 6px',
+          position: 'absolute', bottom: '54px', left: '50%', transform: 'translateX(-50%)',
+          background: '#fff', border: '2px solid #35638C', borderRadius: '8px', padding: '3px 7px',
           fontSize: '8px', fontWeight: 700, color: '#35638C', whiteSpace: 'nowrap', zIndex: 20,
           boxShadow: '0 2px 4px rgba(0,0,0,0.15)', animation: 'popIn 0.2s ease-out'
         }}>
@@ -72,7 +114,6 @@ function CartoonAgent({ index, role, floorWidth }) {
             width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '6px solid #35638C' }} />
         </div>
       )}
-      {/* Character SVG */}
       <svg width="36" height="48" viewBox="0 0 36 48" style={{ transform: `scaleX(${dir})` }}>
         {/* Body */}
         <rect x="8" y="22" width="20" height="16" rx="4" fill={shirtColor} stroke="#35638C" strokeWidth="1.5"/>
@@ -86,10 +127,26 @@ function CartoonAgent({ index, role, floorWidth }) {
         <circle cx="14.5" cy="13.5" r="0.7" fill="#fff"/>
         <circle cx="22.5" cy="13.5" r="0.7" fill="#fff"/>
         {/* Mouth */}
-        <path d="M15 18 Q18 21 21 18" stroke="#1A1A2E" strokeWidth="1" fill="none"/>
-        {/* Legs */}
-        <rect x="11" y="37" width="5" height="8" rx="2" fill="#4A5568" stroke="#35638C" strokeWidth="1"/>
-        <rect x="20" y="37" width="5" height="8" rx="2" fill="#4A5568" stroke="#35638C" strokeWidth="1"/>
+        {agentState === 'meeting' 
+          ? <ellipse cx="18" cy="19" rx="3" ry="2" fill="#1A1A2E"/> 
+          : <path d="M15 18 Q18 21 21 18" stroke="#1A1A2E" strokeWidth="1" fill="none"/>
+        }
+        {/* Legs — animate when moving */}
+        {isMoving ? (
+          <>
+            <rect x="10" y="37" width="5" height="8" rx="2" fill="#4A5568" stroke="#35638C" strokeWidth="1">
+              <animateTransform attributeName="transform" type="rotate" values="-10 12.5 37;10 12.5 37;-10 12.5 37" dur="0.4s" repeatCount="indefinite"/>
+            </rect>
+            <rect x="21" y="37" width="5" height="8" rx="2" fill="#4A5568" stroke="#35638C" strokeWidth="1">
+              <animateTransform attributeName="transform" type="rotate" values="10 23.5 37;-10 23.5 37;10 23.5 37" dur="0.4s" repeatCount="indefinite"/>
+            </rect>
+          </>
+        ) : (
+          <>
+            <rect x="11" y="37" width="5" height="8" rx="2" fill="#4A5568" stroke="#35638C" strokeWidth="1"/>
+            <rect x="20" y="37" width="5" height="8" rx="2" fill="#4A5568" stroke="#35638C" strokeWidth="1"/>
+          </>
+        )}
         {/* Shoes */}
         <rect x="10" y="43" width="7" height="4" rx="2" fill="#2C1810" stroke="#35638C" strokeWidth="0.8"/>
         <rect x="19" y="43" width="7" height="4" rx="2" fill="#2C1810" stroke="#35638C" strokeWidth="0.8"/>
@@ -97,29 +154,6 @@ function CartoonAgent({ index, role, floorWidth }) {
       <div style={{ fontSize: '7px', fontWeight: 800, color: '#35638C', textAlign: 'center', marginTop: '-2px', fontFamily: 'Manrope, sans-serif' }}>
         {role || ROLES_SHORT[index % ROLES_SHORT.length]}
       </div>
-    </div>
-  );
-}
-
-function GreenArrow({ style }) {
-  return (
-    <div style={{ ...style, animation: 'bounceUp 1.5s ease-in-out infinite' }}>
-      <svg width="28" height="36" viewBox="0 0 28 36">
-        <polygon points="14,0 28,18 20,18 20,36 8,36 8,18 0,18" fill="#60EE79" stroke="#35916A" strokeWidth="2"/>
-      </svg>
-    </div>
-  );
-}
-
-function LevelBadge({ level, style }) {
-  return (
-    <div style={{
-      ...style, background: '#5DA2E0', border: '3px solid #35638C', borderRadius: '8px',
-      padding: '4px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-    }}>
-      <span style={{ fontSize: '8px', fontWeight: 800, color: '#fff', letterSpacing: '1px' }}>LEVEL</span>
-      <span style={{ fontSize: '18px', fontWeight: 900, color: '#fff' }}>{level}</span>
     </div>
   );
 }
@@ -176,7 +210,8 @@ function Floor({ dept, agents, floorNum, isUnlocked }) {
     return dn.includes(dept.id) || dn.includes(dept.name.split('&')[0].trim().toLowerCase().replace(/ /g, ''));
   });
 
-  const deptLevel = Math.min(99, Math.max(1, deptAgents.length * 8 + Math.floor(Math.random() * 10)));
+  // Floor cost = base cost + per-agent compute cost
+  const floorCost = dept.monthlyCost + deptAgents.length * 850;
 
   return (
     <div style={{ borderBottom: '4px solid #35638C', opacity: isUnlocked ? 1 : 0.4 }}>
@@ -210,12 +245,10 @@ function Floor({ dept, agents, floorNum, isUnlocked }) {
         </div>
 
         {/* Main Floor Area */}
-        <div ref={floorRef} style={{
-          flex: 1, background: dept.floorBg, position: 'relative', overflow: 'hidden'
-        }}>
+        <div ref={floorRef} style={{ flex: 1, background: dept.floorBg, position: 'relative', overflow: 'hidden' }}>
           {isUnlocked ? (
             <>
-              {/* Office Furniture (SVG) */}
+              {/* Office Furniture */}
               <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
                 <OfficeFurniture type="desk" x={60} y={68} />
                 <OfficeFurniture type="computer" x={65} y={46} />
@@ -228,36 +261,31 @@ function Floor({ dept, agents, floorNum, isUnlocked }) {
                 {floorWidth > 600 && <OfficeFurniture type="plant" x={550} y={78} />}
               </svg>
 
-              {/* Agents */}
+              {/* Agents — purposeful movement */}
               {deptAgents.map((agent, i) => (
                 <CartoonAgent
                   key={agent.agent_id || i}
                   index={i}
                   role={agent.role?.split(' ').map(w => w[0]).join('') || ROLES_SHORT[i % ROLES_SHORT.length]}
                   floorWidth={floorWidth}
+                  totalOnFloor={deptAgents.length}
                 />
               ))}
 
-              {/* Green Growth Arrow */}
-              {deptAgents.length > 0 && (
-                <GreenArrow style={{ position: 'absolute', left: '30px', bottom: '30px' }} />
-              )}
-
-              {/* Level Badge */}
-              <LevelBadge level={deptLevel} style={{ position: 'absolute', right: '12px', bottom: '15px' }} />
-
-              {/* Income indicator */}
+              {/* Floor cost/spend indicator */}
               {deptAgents.length > 0 && (
                 <div style={{
                   position: 'absolute', left: '12px', top: '8px',
-                  display: 'flex', alignItems: 'center', gap: '3px'
+                  display: 'flex', alignItems: 'center', gap: '3px',
+                  background: 'rgba(255,255,255,0.85)', borderRadius: '4px', padding: '2px 6px',
+                  border: '1px solid rgba(53,99,140,0.2)'
                 }}>
-                  <svg width="14" height="14" viewBox="0 0 14 14">
-                    <circle cx="7" cy="7" r="6" fill="#FFB347" stroke="#D4871E" strokeWidth="1.5"/>
+                  <svg width="12" height="12" viewBox="0 0 14 14">
+                    <circle cx="7" cy="7" r="6" fill="#FF5252" stroke="#C62828" strokeWidth="1.2"/>
                     <text x="7" y="10" textAnchor="middle" fontSize="8" fontWeight="900" fill="#fff">$</text>
                   </svg>
-                  <span style={{ fontSize: '9px', fontWeight: 800, color: '#35638C' }}>
-                    {formatMoney(deptAgents.length * 12000 + Math.random() * 50000)}
+                  <span style={{ fontSize: '9px', fontWeight: 800, color: '#8B3A3A' }}>
+                    {formatMoney(floorCost)}/mo
                   </span>
                 </div>
               )}
@@ -317,7 +345,6 @@ export default function Tycoon() {
     return () => clearInterval(t);
   }, [idleIncome]);
 
-  // Random live feed notifications
   useEffect(() => {
     const addNotif = setInterval(() => {
       const msgs = [
@@ -339,9 +366,7 @@ export default function Tycoon() {
   }, []);
 
   const scrollBuilding = (dir) => {
-    if (buildingRef.current) {
-      buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' });
-    }
+    if (buildingRef.current) buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' });
   };
 
   const getDeptAgentCount = (dept) => {
@@ -374,22 +399,17 @@ export default function Tycoon() {
 
   return (
     <div data-testid="tycoon-page" style={{ fontFamily: 'Manrope, sans-serif' }}>
-      {/* CSS Animations */}
       <style>{`
-        @keyframes bounceUp { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         @keyframes popIn { 0% { transform: translateX(-50%) scale(0); } 100% { transform: translateX(-50%) scale(1); } }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes cashPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-        @keyframes glow { 0%,100% { box-shadow: 0 0 5px rgba(96,238,121,0.3); } 50% { box-shadow: 0 0 15px rgba(96,238,121,0.6); } }
         @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
       `}</style>
 
-      {/* ═══ DARK INFO BAR (Fund Level, AUM, Agents, Portfolio, Survival, Progress) ═══ */}
+      {/* ═══ DARK INFO BAR ═══ */}
       <div style={{
         background: '#18181b', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         borderRadius: '6px 6px 0 0', gap: '12px', flexWrap: 'wrap'
       }}>
-        {/* Fund Level */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255,179,71,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><polygon points="12,2 15,9 22,9 16,14 18,21 12,17 6,21 8,14 2,9 9,9" fill="#FFB347"/></svg>
@@ -400,46 +420,34 @@ export default function Tycoon() {
           </div>
         </div>
         <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
-
-        {/* AUM */}
         <div>
           <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>AUM</div>
           <div style={{ fontSize: '16px', color: '#fff', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{formatMoney(overview?.current_aum || 0)}</div>
         </div>
         <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
-
-        {/* USDC */}
         <div>
           <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>USDC</div>
           <div style={{ fontSize: '16px', color: '#60EE79', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{formatMoney(cashCounter)}</div>
         </div>
         <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
-
-        {/* Daily Income */}
         <div>
           <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>DAILY FEE INCOME</div>
           <div style={{ fontSize: '16px', color: '#FFB347', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{formatMoney(idleIncome)}/day</div>
         </div>
         <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
-
-        {/* Agents */}
         <div>
           <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>AGENTS</div>
           <div style={{ fontSize: '16px', color: '#fff', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{aliveAgents} / {totalAgents}</div>
         </div>
         <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
-
-        {/* Portfolio */}
         <div>
           <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>PORTFOLIO</div>
           <div style={{ fontSize: '16px', color: '#5B9CFF', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{overview?.portfolio_companies || 0} cos</div>
         </div>
         <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
-
-        {/* Survival + Next Level */}
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>
-            <span style={{ color: '#60EE79' }}>{(overview?.survival_tier || 'HIGH').toUpperCase()}</span> | NEXT: ${fundLevel + 1}M AUM
+            <span style={{ color: '#60EE79' }}>{(overview?.survival_tier || 'HIGH').toUpperCase()}</span> | NEXT: ${fundLevel + 1}M
           </div>
           <div style={{ width: '120px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', marginTop: '4px', overflow: 'hidden' }}>
             <div style={{ height: '100%', background: '#FFB347', borderRadius: '3px', transition: 'width 1s', width: `${((overview?.current_aum || 0) % 1_000_000) / 10000}%` }} />
@@ -447,38 +455,11 @@ export default function Tycoon() {
         </div>
       </div>
 
-      {/* ═══ TYCOON BLUE TOP BAR ═══ */}
-      <div style={{
-        background: 'linear-gradient(180deg, #5DA2E0 0%, #4A8AC8 100%)',
-        padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '4px solid #35638C'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>IDLE INCOME</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '4px 12px', border: '2px solid rgba(255,255,255,0.3)' }}>
-            <svg width="16" height="16" viewBox="0 0 20 20"><rect x="1" y="3" width="18" height="14" rx="2" fill="#60EE79" stroke="#35916A" strokeWidth="1.5"/><text x="10" y="13" textAnchor="middle" fontSize="10" fontWeight="900" fill="#fff">$</text></svg>
-            <span style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }} data-testid="idle-income">{formatMoney(idleIncome)}/day</span>
-          </div>
-        </div>
-        <div style={{ background: '#7AD2FF', border: '3px solid #35638C', borderRadius: '10px', padding: '2px 14px', textAlign: 'center', animation: 'glow 2s ease-in-out infinite' }}>
-          <span style={{ fontSize: '8px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>FUND LEVEL</span>
-          <span style={{ fontSize: '20px', fontWeight: 900, color: '#fff', display: 'block', lineHeight: 1 }}>{fundLevel}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>CASH</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '4px 12px', border: '2px solid rgba(255,255,255,0.3)', animation: 'cashPulse 2s ease-in-out infinite' }}>
-            <svg width="16" height="16" viewBox="0 0 20 20"><rect x="1" y="3" width="18" height="14" rx="2" fill="#60EE79" stroke="#35916A" strokeWidth="1.5"/><text x="10" y="13" textAnchor="middle" fontSize="10" fontWeight="900" fill="#fff">$</text></svg>
-            <span style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }} data-testid="cash-counter">{formatMoney(cashCounter)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ MAIN AREA: Building + Sidebar ═══ */}
+      {/* ═══ MAIN: Building + Sidebar ═══ */}
       <div style={{ display: 'flex', gap: '0px', background: '#A2E5FF', borderRadius: '0 0 6px 6px' }}>
-
-        {/* Left: Nav Arrows + Building */}
+        {/* Left: Arrows + Building */}
         <div style={{ display: 'flex', flex: 1, minWidth: 0 }}>
-          {/* Navigation Arrows */}
+          {/* Nav Arrows */}
           <div style={{ width: '44px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 0' }}>
             <button data-testid="scroll-up" onClick={() => scrollBuilding(-1)}
               style={{ width: '34px', height: '34px', borderRadius: '8px', border: '3px solid #35638C', background: '#7AD2FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', fontSize: 0 }}>
@@ -495,7 +476,7 @@ export default function Tycoon() {
           </div>
 
           {/* Building */}
-          <div ref={buildingRef} style={{ flex: 1, maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden', border: '4px solid #35638C', borderRadius: '4px', background: '#B8D8F0', scrollbarWidth: 'thin', scrollbarColor: '#5DA2E0 #B8D8F0' }}>
+          <div ref={buildingRef} style={{ flex: 1, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', overflowX: 'hidden', border: '4px solid #35638C', borderRadius: '4px', background: '#B8D8F0', scrollbarWidth: 'thin', scrollbarColor: '#5DA2E0 #B8D8F0' }}>
             <div style={{ background: 'linear-gradient(180deg, #7AD2FF 0%, #A2E5FF 100%)', padding: '8px', textAlign: 'center', borderBottom: '4px solid #35638C' }}>
               <span style={{ fontSize: '13px', fontWeight: 900, color: '#35638C', letterSpacing: '3px' }}>ANIMA FUND HQ</span>
               <div style={{ fontSize: '9px', color: '#4A7EB5', fontWeight: 700, marginTop: '2px' }}>{DEPARTMENTS.length} Floors | {totalAgents} Agents | AUM {formatMoney(overview?.current_aum || 0)}</div>
@@ -509,14 +490,13 @@ export default function Tycoon() {
           </div>
         </div>
 
-        {/* ═══ RIGHT SIDEBAR: Live Feed + Fund Stats + Departments ═══ */}
-        <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px 8px 8px 0', maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
-
+        {/* ═══ RIGHT SIDEBAR ═══ */}
+        <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px 8px 8px 0', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
           {/* Live Feed */}
           <div style={{ background: '#fff', border: '2px solid #35638C', borderRadius: '8px', padding: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <span style={{ fontSize: '10px', fontWeight: 900, color: '#35638C', letterSpacing: '1px' }}>LIVE FEED</span>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#60EE79', animation: 'cashPulse 1.5s ease-in-out infinite' }} />
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#60EE79', boxShadow: '0 0 6px #60EE79' }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
               {notifications.map(n => (
@@ -534,9 +514,7 @@ export default function Tycoon() {
             <span style={{ fontSize: '10px', fontWeight: 900, color: '#35638C', letterSpacing: '1px', display: 'block', marginBottom: '8px' }}>FUND STATS</span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {[
-                ['Mgmt Fee', '3%'],
-                ['Carry', '20%'],
-                ['Human Share', '50%'],
+                ['Mgmt Fee', '3%'], ['Carry', '20%'], ['Human Share', '50%'],
                 ['Rejection Rate', `${overview?.rejection_rate || 99}%`],
                 ['Portfolio', `${overview?.portfolio_companies || 0} cos`],
                 ['Deals Funded', `${overview?.funded_deals || 0}`],
