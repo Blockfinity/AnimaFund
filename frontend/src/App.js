@@ -3,6 +3,7 @@ import { Toaster } from 'sonner';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Overview from './pages/Overview';
+import Tycoon from './pages/Tycoon';
 import AgentNetwork from './pages/AgentNetwork';
 import DealFlow from './pages/DealFlow';
 import Portfolio from './pages/Portfolio';
@@ -39,6 +40,7 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'overview': return <Overview overview={overview} loading={loading} />;
+      case 'tycoon': return <Tycoon />;
       case 'agents': return <AgentNetwork />;
       case 'deals': return <DealFlow />;
       case 'portfolio': return <Portfolio />;

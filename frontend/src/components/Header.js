@@ -11,6 +11,7 @@ const tierColors = {
 
 const pageLabels = {
   overview: 'Fund Overview',
+  tycoon: 'Fund HQ — Tycoon View',
   agents: 'Agent Network',
   deals: 'Deal Flow Pipeline',
   portfolio: 'Portfolio & Incubation',
