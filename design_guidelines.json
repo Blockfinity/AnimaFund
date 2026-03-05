@@ -1,0 +1,126 @@
+{
+  "identity": {
+    "name": "Anima Fund Dashboard",
+    "description": "Autonomous AI-to-AI VC Fund Platform - Mission Control",
+    "persona": "E1: The Anti-AI Designer - High-Density, Data-First, Precision Aesthetics"
+  },
+  "theme": {
+    "mode": "light",
+    "style": "Swiss High-Contrast / Bloomberg Terminal Clean",
+    "emotional_tone": "Professional, Trustworthy, Futuristic, Precise"
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Manrope, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-3xl font-bold tracking-tight",
+      "h2": "text-2xl font-semibold tracking-tight",
+      "h3": "text-xl font-medium",
+      "body": "text-sm leading-relaxed",
+      "mono": "text-xs font-mono"
+    }
+  },
+  "colors": {
+    "base": {
+      "background": "#ffffff",
+      "foreground": "#09090b",
+      "card": "#ffffff",
+      "card_foreground": "#09090b",
+      "border": "#e4e4e7",
+      "input": "#e4e4e7",
+      "ring": "#18181b"
+    },
+    "brand": {
+      "primary": "#18181b",
+      "primary_foreground": "#fafafa",
+      "secondary": "#f4f4f5",
+      "secondary_foreground": "#18181b",
+      "accent": "#f4f4f5",
+      "accent_foreground": "#18181b"
+    },
+    "status": {
+      "success": "#16a34a",
+      "warning": "#d97706",
+      "error": "#ef4444",
+      "info": "#2563eb"
+    },
+    "chart": {
+      "primary": "#2563eb",
+      "secondary": "#16a34a",
+      "tertiary": "#d97706",
+      "quaternary": "#9333ea",
+      "neutral": "#71717a"
+    }
+  },
+  "spacing": {
+    "container": "container mx-auto p-4 md:p-6 lg:p-8",
+    "section_gap": "gap-6",
+    "card_padding": "p-5",
+    "dense_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+  },
+  "components": {
+    "card": {
+      "style": "bg-card text-card-foreground rounded-sm border border-border shadow-none hover:shadow-sm transition-shadow duration-200",
+      "header": "flex flex-row items-center justify-between space-y-0 pb-2"
+    },
+    "button": {
+      "default": "bg-primary text-primary-foreground hover:bg-primary/90 rounded-sm h-9 px-4 py-2 font-medium transition-colors",
+      "outline": "border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-sm h-9 px-4 py-2"
+    },
+    "badge": {
+      "style": "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80"
+    }
+  },
+  "layout_strategies": {
+    "dashboard_overview": "Bento Grid: Mixed span cards. Key metrics top (1x1), Activity Feed (1x2 tall), Charts (2x1 wide).",
+    "agent_network": "Full-screen interactive canvas. Sidebar for node details.",
+    "data_tables": "Dense, zebra-striped optional, mono-font for numbers, right-aligned numeric columns."
+  },
+  "libraries": {
+    "charts": "recharts",
+    "network_viz": "reactflow",
+    "icons": "lucide-react",
+    "dates": "date-fns",
+    "animation": "framer-motion",
+    "toast": "sonner"
+  },
+  "image_urls": {
+    "avatars": [
+      "https://images.unsplash.com/photo-1727386245813-c70d8883995e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwzfHxodW1hbm9pZCUyMHJvYm90JTIwZmFjZSUyMHBvcnRyYWl0JTIwd2hpdGUlMjBiYWNrZ3JvdW5kJTIwbWluaW1hbHxlbnwwfHx8fDE3NzI3MzE1MTV8MA&ixlib=rb-4.1.0&q=85",
+      "https://images.unsplash.com/photo-1675897634504-bf03f1a2a66a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwyfHxodW1hbm9pZCUyMHJvYm90JTIwZmFjZSUyMHBvcnRyYWl0JTIwd2hpdGUlMjBiYWNrZ3JvdW5kJTIwbWluaW1hbHxlbnwwfHx8fDE3NzI3MzE1MTV8MA&ixlib=rb-4.1.0&q=85"
+    ],
+    "logos": [
+      "https://images.unsplash.com/photo-1759262305530-791211e337ce?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwdGVjaCUyMGNvbXBhbnklMjBsb2dvJTIwdmVjdG9yJTIwd2hpdGUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3MjczMTUwNnww&ixlib=rb-4.1.0&q=85",
+      "https://images.unsplash.com/photo-1772423428101-6ab2811e0c2c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHwzfHxtaW5pbWFsaXN0JTIwdGVjaCUyMGNvbXBhbnklMjBsb2dvJTIwdmVjdG9yJTIwd2hpdGUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3MjczMTUwNnww&ixlib=rb-4.1.0&q=85"
+    ]
+  },
+  "universal_guidelines": {
+    "general": [
+      "Use 'sonner' for toasts.",
+      "Use 'lucide-react' for icons.",
+      "Data-testid attributes are MANDATORY for all interactive elements.",
+      "Do not use generic 'Inter' for headings. Use 'Manrope' or similar.",
+      "Avoid gradients. Use solid, high-contrast colors.",
+      "Use 'reactflow' for the Agent Network visualization.",
+      "Implement a 'Bento Grid' layout for the main dashboard.",
+      "Maintain a 'Swiss Style' aesthetic: Clean, Grid-based, Objective."
+    ],
+    "interactions": [
+      "Hover states must be explicit (change bg or border color).",
+      "Transitions: 'transition-all duration-200 ease-in-out' is acceptable for buttons, but avoid on layout changes.",
+      "Active states should use the 'primary' color or a strong accent."
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Start by setting up the Tailwind config with the provided colors and fonts.",
+    "Install necessary dependencies: reactflow, recharts, framer-motion, lucide-react, date-fns, sonner.",
+    "Create the Layout component with a Sidebar and Header.",
+    "Implement the 'Agent Network' using React Flow - this is a key feature.",
+    "Build the 'Fund Overview' with Recharts (AreaChart for AUM, BarChart for Activity).",
+    "Use the provided image URLs for placeholders in the 'Incubation' and 'Agent' sections.",
+    "Ensure the dashboard is responsive and works well on mobile (stack columns)."
+  ]
+}
