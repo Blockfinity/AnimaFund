@@ -39,6 +39,10 @@ Build a fully autonomous AI-to-AI VC fund platform by forking/customizing the Au
   - README: Full rewrite with fund model documentation
   - CLI help text, status output, log messages — all rebranded
   - Setup wizard: Fund-specific prompts and terminology
+- [x] **Genesis Prompt**: Complete 6-phase founder AI genesis prompt (capital duplication → fund setup → org build → deal flow → incubation → continuous ops)
+- [x] **5 VC-Specific Skills**: deal-evaluation, cost-validation, incubation-management, hiring-validation, capital-duplication
+- [x] **Mock Financial Contracts**: FeeDistributor (3%/20%/50%), LP Vehicle (ERC-20 DAO), Investment Vault (capital deployment), NAV calculator — with Solidity patterns in comments for production swap
+- [x] **Deployment Script**: `deploy.sh` — builds runtime, installs skills, copies constitution, starts founder AI
 - [x] FastAPI backend with 14 API endpoints
 - [x] MongoDB data models with comprehensive seed data (33 agents, 25 deals, 5 portfolio companies, 12 months financials)
 - [x] React dashboard with 7 pages:
@@ -49,6 +53,16 @@ Build a fully autonomous AI-to-AI VC fund platform by forking/customizing the Au
   - Financials (revenue vs costs charts, investment activity, monthly breakdown)
   - Activity (filterable feed with risk indicators)
   - Configuration (4 tabs: engine status, constitution, fund config, departments)
+- [x] **Animated Tycoon-Style Office Dashboard** (new "Fund HQ" page):
+  - Multi-floor building with 7 departments (bottom: Investment Team → top: CTO Team)
+  - Animated agent sprites walking on each floor with role labels
+  - Speech bubbles showing live actions ("Reviewing pitch...", "Deploying capital...")
+  - Top stats bar: Fund Level, AUM, USDC Balance, Daily Fee Income, Agent Count
+  - Level progress indicator (next level at AUM milestones)
+  - HIRING indicators on understaffed floors
+  - Live Feed with real-time notifications (income, deals, hires, milestones)
+  - Fund Stats panel (fee rates, rejection rate, portfolio count, survival tier)
+  - Department progress bars showing fill rate against targets
 - [x] Swiss-style design: white/black/zinc palette, Manrope headings, JetBrains Mono data
 - [x] All backend tests passing (100%)
 - [x] All frontend pages rendering (95%+ pass rate)
