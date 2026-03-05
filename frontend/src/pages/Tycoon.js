@@ -291,7 +291,7 @@ export default function Tycoon() {
   const [fundLevel, setFundLevel] = useState(1);
   const [cashCounter, setCashCounter] = useState(0);
   const [idleIncome, setIdleIncome] = useState(0);
-  const [scrollY, setScrollY] = useState(0);
+  const [notifications, setNotifications] = useState([]);
   const buildingRef = useRef(null);
 
   const fetchData = useCallback(async () => {
@@ -317,10 +317,38 @@ export default function Tycoon() {
     return () => clearInterval(t);
   }, [idleIncome]);
 
+  // Random live feed notifications
+  useEffect(() => {
+    const addNotif = setInterval(() => {
+      const msgs = [
+        { text: '+$2,400 portfolio revenue', type: 'income' },
+        { text: 'New deal sourced: AgentForge', type: 'deal' },
+        { text: 'Incubation Phase 4 complete', type: 'milestone' },
+        { text: 'Agent hired: Junior Associate', type: 'hire' },
+        { text: 'Deal rejected (score: 28/100)', type: 'reject' },
+        { text: 'LP commitment: $50K USDC', type: 'income' },
+        { text: 'Startup KPI target met!', type: 'milestone' },
+        { text: 'Skill test passed: GP candidate', type: 'hire' },
+        { text: 'x402 payment received: $120', type: 'income' },
+        { text: 'SOUL.md audit complete', type: 'milestone' },
+      ];
+      const msg = msgs[Math.floor(Math.random() * msgs.length)];
+      setNotifications(prev => [{ ...msg, id: Date.now() }, ...prev].slice(0, 8));
+    }, 6000);
+    return () => clearInterval(addNotif);
+  }, []);
+
   const scrollBuilding = (dir) => {
     if (buildingRef.current) {
       buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' });
     }
+  };
+
+  const getDeptAgentCount = (dept) => {
+    return agents.filter(a => {
+      const dn = (a.department || '').toLowerCase();
+      return dn.includes(dept.id) || dn.includes(dept.name.split('&')[0].trim().toLowerCase().replace(/ /g, ''));
+    }).length;
   };
 
   if (loading) {
@@ -335,14 +363,17 @@ export default function Tycoon() {
   }
 
   const totalAgents = agents.length;
+  const aliveAgents = overview?.alive_agents || 0;
   const unlockedFloors = DEPARTMENTS.map((d, i) => {
     if (i >= DEPARTMENTS.length - 2) return true;
     if (i >= DEPARTMENTS.length - 4) return totalAgents >= 3;
     return totalAgents >= 10;
   });
 
+  const notifColors = { income: '#60EE79', deal: '#5B9CFF', milestone: '#FFB347', hire: '#9B6BFF', reject: '#FF5252' };
+
   return (
-    <div data-testid="tycoon-page" style={{ background: '#A2E5FF', borderRadius: '8px', overflow: 'hidden', fontFamily: 'Manrope, sans-serif' }}>
+    <div data-testid="tycoon-page" style={{ fontFamily: 'Manrope, sans-serif' }}>
       {/* CSS Animations */}
       <style>{`
         @keyframes bounceUp { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
@@ -350,153 +381,197 @@ export default function Tycoon() {
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes cashPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
         @keyframes glow { 0%,100% { box-shadow: 0 0 5px rgba(96,238,121,0.3); } 50% { box-shadow: 0 0 15px rgba(96,238,121,0.6); } }
+        @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
       `}</style>
 
-      {/* ═══ TOP BAR ═══ */}
+      {/* ═══ DARK INFO BAR (Fund Level, AUM, Agents, Portfolio, Survival, Progress) ═══ */}
       <div style={{
-        background: 'linear-gradient(180deg, #5DA2E0 0%, #4A8AC8 100%)',
-        padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '4px solid #35638C'
+        background: '#18181b', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderRadius: '6px 6px 0 0', gap: '12px', flexWrap: 'wrap'
       }}>
-        {/* Idle Income */}
+        {/* Fund Level */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>IDLE INCOME</span>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '6px 14px',
-            border: '2px solid rgba(255,255,255,0.3)'
-          }}>
-            <svg width="20" height="20" viewBox="0 0 20 20">
-              <rect x="1" y="3" width="18" height="14" rx="2" fill="#60EE79" stroke="#35916A" strokeWidth="1.5"/>
-              <text x="10" y="13" textAnchor="middle" fontSize="10" fontWeight="900" fill="#fff">$</text>
-            </svg>
-            <span style={{ fontSize: '20px', fontWeight: 900, color: '#fff' }} data-testid="idle-income">
-              {formatMoney(idleIncome)}/day
-            </span>
+          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255,179,71,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><polygon points="12,2 15,9 22,9 16,14 18,21 12,17 6,21 8,14 2,9 9,9" fill="#FFB347"/></svg>
+          </div>
+          <div>
+            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>FUND LEVEL</div>
+            <div style={{ fontSize: '18px', color: '#fff', fontWeight: 900 }}>{fundLevel}</div>
           </div>
         </div>
+        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
 
-        {/* Fund Level */}
-        <div style={{
-          background: '#7AD2FF', border: '3px solid #35638C', borderRadius: '10px',
-          padding: '4px 16px', textAlign: 'center', animation: 'glow 2s ease-in-out infinite'
-        }}>
-          <span style={{ fontSize: '9px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>FUND LEVEL</span>
-          <span style={{ fontSize: '24px', fontWeight: 900, color: '#fff', display: 'block', lineHeight: 1 }}>{fundLevel}</span>
+        {/* AUM */}
+        <div>
+          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>AUM</div>
+          <div style={{ fontSize: '16px', color: '#fff', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{formatMoney(overview?.current_aum || 0)}</div>
         </div>
+        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
 
-        {/* Cash */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>CASH</span>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '6px 14px',
-            border: '2px solid rgba(255,255,255,0.3)', animation: 'cashPulse 2s ease-in-out infinite'
-          }}>
-            <svg width="20" height="20" viewBox="0 0 20 20">
-              <rect x="1" y="3" width="18" height="14" rx="2" fill="#60EE79" stroke="#35916A" strokeWidth="1.5"/>
-              <text x="10" y="13" textAnchor="middle" fontSize="10" fontWeight="900" fill="#fff">$</text>
-            </svg>
-            <span style={{ fontSize: '20px', fontWeight: 900, color: '#fff' }} data-testid="cash-counter">
-              {formatMoney(cashCounter)}
-            </span>
+        {/* USDC */}
+        <div>
+          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>USDC</div>
+          <div style={{ fontSize: '16px', color: '#60EE79', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{formatMoney(cashCounter)}</div>
+        </div>
+        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
+
+        {/* Daily Income */}
+        <div>
+          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>DAILY FEE INCOME</div>
+          <div style={{ fontSize: '16px', color: '#FFB347', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{formatMoney(idleIncome)}/day</div>
+        </div>
+        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
+
+        {/* Agents */}
+        <div>
+          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>AGENTS</div>
+          <div style={{ fontSize: '16px', color: '#fff', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{aliveAgents} / {totalAgents}</div>
+        </div>
+        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
+
+        {/* Portfolio */}
+        <div>
+          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>PORTFOLIO</div>
+          <div style={{ fontSize: '16px', color: '#5B9CFF', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace' }}>{overview?.portfolio_companies || 0} cos</div>
+        </div>
+        <div style={{ width: '1px', height: '28px', background: 'rgba(255,255,255,0.1)' }} />
+
+        {/* Survival + Next Level */}
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>
+            <span style={{ color: '#60EE79' }}>{(overview?.survival_tier || 'HIGH').toUpperCase()}</span> | NEXT: ${fundLevel + 1}M AUM
+          </div>
+          <div style={{ width: '120px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', marginTop: '4px', overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: '#FFB347', borderRadius: '3px', transition: 'width 1s', width: `${((overview?.current_aum || 0) % 1_000_000) / 10000}%` }} />
           </div>
         </div>
       </div>
 
-      {/* ═══ MAIN AREA ═══ */}
-      <div style={{ display: 'flex', position: 'relative' }}>
-        {/* Navigation Arrows */}
-        <div style={{
-          width: '48px', flexShrink: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 0'
-        }}>
-          <button
-            data-testid="scroll-up"
-            onClick={() => scrollBuilding(-1)}
-            style={{
-              width: '38px', height: '38px', borderRadius: '8px', border: '3px solid #35638C',
-              background: '#7AD2FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.2)', transition: 'transform 0.1s', fontSize: 0
-            }}
-            onMouseDown={e => e.currentTarget.style.transform = 'scale(0.9)'}
-            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18">
-              <polygon points="9,2 17,12 12,12 12,16 6,16 6,12 1,12" fill="#fff"/>
-            </svg>
-          </button>
-          <button
-            data-testid="scroll-down"
-            onClick={() => scrollBuilding(1)}
-            style={{
-              width: '38px', height: '38px', borderRadius: '8px', border: '3px solid #35638C',
-              background: '#7AD2FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.2)', transition: 'transform 0.1s', fontSize: 0
-            }}
-            onMouseDown={e => e.currentTarget.style.transform = 'scale(0.9)'}
-            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18">
-              <polygon points="9,16 1,6 6,6 6,2 12,2 12,6 17,6" fill="#fff"/>
-            </svg>
-          </button>
-
-          {/* Agent Count */}
-          <div style={{
-            background: '#5DA2E0', border: '2px solid #35638C', borderRadius: '6px',
-            padding: '4px 6px', textAlign: 'center', marginTop: '8px'
-          }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" style={{ margin: '0 auto', display: 'block' }}>
-              <circle cx="8" cy="5" r="3.5" fill="#fff"/>
-              <ellipse cx="8" cy="14" rx="6" ry="4" fill="#fff"/>
-            </svg>
-            <span style={{ fontSize: '12px', fontWeight: 900, color: '#fff', display: 'block' }}>{totalAgents}</span>
+      {/* ═══ TYCOON BLUE TOP BAR ═══ */}
+      <div style={{
+        background: 'linear-gradient(180deg, #5DA2E0 0%, #4A8AC8 100%)',
+        padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderBottom: '4px solid #35638C'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>IDLE INCOME</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '4px 12px', border: '2px solid rgba(255,255,255,0.3)' }}>
+            <svg width="16" height="16" viewBox="0 0 20 20"><rect x="1" y="3" width="18" height="14" rx="2" fill="#60EE79" stroke="#35916A" strokeWidth="1.5"/><text x="10" y="13" textAnchor="middle" fontSize="10" fontWeight="900" fill="#fff">$</text></svg>
+            <span style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }} data-testid="idle-income">{formatMoney(idleIncome)}/day</span>
           </div>
         </div>
+        <div style={{ background: '#7AD2FF', border: '3px solid #35638C', borderRadius: '10px', padding: '2px 14px', textAlign: 'center', animation: 'glow 2s ease-in-out infinite' }}>
+          <span style={{ fontSize: '8px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>FUND LEVEL</span>
+          <span style={{ fontSize: '20px', fontWeight: 900, color: '#fff', display: 'block', lineHeight: 1 }}>{fundLevel}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>CASH</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '4px 12px', border: '2px solid rgba(255,255,255,0.3)', animation: 'cashPulse 2s ease-in-out infinite' }}>
+            <svg width="16" height="16" viewBox="0 0 20 20"><rect x="1" y="3" width="18" height="14" rx="2" fill="#60EE79" stroke="#35916A" strokeWidth="1.5"/><text x="10" y="13" textAnchor="middle" fontSize="10" fontWeight="900" fill="#fff">$</text></svg>
+            <span style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }} data-testid="cash-counter">{formatMoney(cashCounter)}</span>
+          </div>
+        </div>
+      </div>
 
-        {/* Building */}
-        <div
-          ref={buildingRef}
-          style={{
-            flex: 1, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', overflowX: 'hidden',
-            border: '4px solid #35638C', borderRadius: '4px', background: '#B8D8F0',
-            scrollbarWidth: 'thin', scrollbarColor: '#5DA2E0 #B8D8F0'
-          }}
-        >
-          {/* Rooftop */}
-          <div style={{
-            background: 'linear-gradient(180deg, #7AD2FF 0%, #A2E5FF 100%)',
-            padding: '10px', textAlign: 'center', borderBottom: '4px solid #35638C',
-            position: 'relative'
-          }}>
-            <span style={{ fontSize: '14px', fontWeight: 900, color: '#35638C', letterSpacing: '3px' }}>
-              ANIMA FUND HQ
-            </span>
-            <div style={{ fontSize: '10px', color: '#4A7EB5', fontWeight: 700, marginTop: '2px' }}>
-              {DEPARTMENTS.length} Floors | {totalAgents} Agents | AUM {formatMoney(overview?.current_aum || 0)}
+      {/* ═══ MAIN AREA: Building + Sidebar ═══ */}
+      <div style={{ display: 'flex', gap: '0px', background: '#A2E5FF', borderRadius: '0 0 6px 6px' }}>
+
+        {/* Left: Nav Arrows + Building */}
+        <div style={{ display: 'flex', flex: 1, minWidth: 0 }}>
+          {/* Navigation Arrows */}
+          <div style={{ width: '44px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 0' }}>
+            <button data-testid="scroll-up" onClick={() => scrollBuilding(-1)}
+              style={{ width: '34px', height: '34px', borderRadius: '8px', border: '3px solid #35638C', background: '#7AD2FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', fontSize: 0 }}>
+              <svg width="16" height="16" viewBox="0 0 18 18"><polygon points="9,2 17,12 12,12 12,16 6,16 6,12 1,12" fill="#fff"/></svg>
+            </button>
+            <button data-testid="scroll-down" onClick={() => scrollBuilding(1)}
+              style={{ width: '34px', height: '34px', borderRadius: '8px', border: '3px solid #35638C', background: '#7AD2FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', fontSize: 0 }}>
+              <svg width="16" height="16" viewBox="0 0 18 18"><polygon points="9,16 1,6 6,6 6,2 12,2 12,6 17,6" fill="#fff"/></svg>
+            </button>
+            <div style={{ background: '#5DA2E0', border: '2px solid #35638C', borderRadius: '6px', padding: '3px 5px', textAlign: 'center', marginTop: '6px' }}>
+              <svg width="14" height="14" viewBox="0 0 16 16" style={{ margin: '0 auto', display: 'block' }}><circle cx="8" cy="5" r="3.5" fill="#fff"/><ellipse cx="8" cy="14" rx="6" ry="4" fill="#fff"/></svg>
+              <span style={{ fontSize: '11px', fontWeight: 900, color: '#fff', display: 'block' }}>{totalAgents}</span>
             </div>
           </div>
 
-          {/* Floors (top to bottom) */}
-          {[...DEPARTMENTS].reverse().map((dept, i) => (
-            <Floor
-              key={dept.id}
-              dept={dept}
-              agents={agents}
-              floorNum={DEPARTMENTS.length - i}
-              isUnlocked={unlockedFloors[DEPARTMENTS.length - 1 - i]}
-            />
-          ))}
+          {/* Building */}
+          <div ref={buildingRef} style={{ flex: 1, maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden', border: '4px solid #35638C', borderRadius: '4px', background: '#B8D8F0', scrollbarWidth: 'thin', scrollbarColor: '#5DA2E0 #B8D8F0' }}>
+            <div style={{ background: 'linear-gradient(180deg, #7AD2FF 0%, #A2E5FF 100%)', padding: '8px', textAlign: 'center', borderBottom: '4px solid #35638C' }}>
+              <span style={{ fontSize: '13px', fontWeight: 900, color: '#35638C', letterSpacing: '3px' }}>ANIMA FUND HQ</span>
+              <div style={{ fontSize: '9px', color: '#4A7EB5', fontWeight: 700, marginTop: '2px' }}>{DEPARTMENTS.length} Floors | {totalAgents} Agents | AUM {formatMoney(overview?.current_aum || 0)}</div>
+            </div>
+            {[...DEPARTMENTS].reverse().map((dept, i) => (
+              <Floor key={dept.id} dept={dept} agents={agents} floorNum={DEPARTMENTS.length - i} isUnlocked={unlockedFloors[DEPARTMENTS.length - 1 - i]} />
+            ))}
+            <div style={{ background: 'linear-gradient(135deg, #E8D5B7 0%, #D4C4A8 100%)', padding: '12px', textAlign: 'center', borderTop: '4px solid #35638C' }}>
+              <span style={{ fontSize: '10px', fontWeight: 900, color: '#5C4A32', letterSpacing: '3px' }}>LOBBY — EST. 2026 — CATALYZING AGENTIC ECONOMIES</span>
+            </div>
+          </div>
+        </div>
 
-          {/* Ground Floor / Lobby */}
-          <div style={{
-            background: 'linear-gradient(135deg, #E8D5B7 0%, #D4C4A8 100%)',
-            padding: '16px', textAlign: 'center', borderTop: '4px solid #35638C'
-          }}>
-            <span style={{ fontSize: '11px', fontWeight: 900, color: '#5C4A32', letterSpacing: '3px' }}>
-              LOBBY — EST. 2026 — CATALYZING AGENTIC ECONOMIES
-            </span>
+        {/* ═══ RIGHT SIDEBAR: Live Feed + Fund Stats + Departments ═══ */}
+        <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px 8px 8px 0', maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
+
+          {/* Live Feed */}
+          <div style={{ background: '#fff', border: '2px solid #35638C', borderRadius: '8px', padding: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 900, color: '#35638C', letterSpacing: '1px' }}>LIVE FEED</span>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#60EE79', animation: 'cashPulse 1.5s ease-in-out infinite' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+              {notifications.map(n => (
+                <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', animation: 'slideIn 0.3s ease-out' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: notifColors[n.type] || '#999', marginTop: '4px', flexShrink: 0 }} />
+                  <span style={{ fontSize: '9px', color: '#35638C', fontWeight: 600, lineHeight: 1.3 }}>{n.text}</span>
+                </div>
+              ))}
+              {notifications.length === 0 && <span style={{ fontSize: '9px', color: '#999' }}>Waiting for activity...</span>}
+            </div>
+          </div>
+
+          {/* Fund Stats */}
+          <div style={{ background: '#fff', border: '2px solid #35638C', borderRadius: '8px', padding: '10px' }}>
+            <span style={{ fontSize: '10px', fontWeight: 900, color: '#35638C', letterSpacing: '1px', display: 'block', marginBottom: '8px' }}>FUND STATS</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {[
+                ['Mgmt Fee', '3%'],
+                ['Carry', '20%'],
+                ['Human Share', '50%'],
+                ['Rejection Rate', `${overview?.rejection_rate || 99}%`],
+                ['Portfolio', `${overview?.portfolio_companies || 0} cos`],
+                ['Deals Funded', `${overview?.funded_deals || 0}`],
+                ['Total Deals', `${overview?.total_deals || 0}`],
+                ['Survival Tier', (overview?.survival_tier || 'HIGH').toUpperCase()],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '9px', color: '#7A94AB' }}>{label}</span>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#35638C', fontFamily: 'JetBrains Mono, monospace' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Departments */}
+          <div style={{ background: '#fff', border: '2px solid #35638C', borderRadius: '8px', padding: '10px' }}>
+            <span style={{ fontSize: '10px', fontWeight: 900, color: '#35638C', letterSpacing: '1px', display: 'block', marginBottom: '8px' }}>DEPARTMENTS</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {DEPARTMENTS.map(dept => {
+                const count = getDeptAgentCount(dept);
+                const pct = Math.min(100, (count / dept.targetMin) * 100);
+                return (
+                  <div key={dept.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: dept.accent, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '8px', color: '#7A94AB', fontWeight: 700, marginBottom: '2px' }}>{dept.name.split('&')[0].trim()}</div>
+                      <div style={{ width: '100%', height: '5px', background: '#EEF3F8', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', borderRadius: '3px', transition: 'width 0.5s', width: `${pct}%`, background: dept.accent }} />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#35638C', fontFamily: 'JetBrains Mono, monospace', minWidth: '28px', textAlign: 'right' }}>{count}/{dept.targetMin}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
