@@ -91,25 +91,30 @@ async def health():
 # GENESIS AGENT CREATION
 # ═══════════════════════════════════════════════════════════
 
-def get_engine_supervisor_status():
-    """Check automaton-engine process status via supervisor."""
+ENGINE_PID_FILE = os.path.join(ANIMA_DIR, "engine.pid")
+
+
+def is_engine_process_running():
+    """Check if the automaton engine process is alive."""
+    # Check PID file
+    if os.path.exists(ENGINE_PID_FILE):
+        try:
+            with open(ENGINE_PID_FILE, "r") as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 0)  # signal 0 = just check if alive
+            return True
+        except (ProcessLookupError, ValueError, PermissionError):
+            # Stale PID file
+            try:
+                os.remove(ENGINE_PID_FILE)
+            except OSError:
+                pass
+    # Fallback: check for the process directly
     try:
-        r = subprocess.run(
-            ["supervisorctl", "status", "automaton-engine"],
-            capture_output=True, text=True, timeout=5,
-        )
-        output = r.stdout.strip()
-        if "RUNNING" in output:
-            return "running"
-        if "STARTING" in output:
-            return "starting"
-        if "STOPPED" in output or "EXITED" in output:
-            return "stopped"
-        if "FATAL" in output:
-            return "fatal"
-        return "unknown"
+        r = subprocess.run(["pgrep", "-f", "dist/index.js.*--run"], capture_output=True, text=True, timeout=3)
+        return r.returncode == 0
     except Exception:
-        return "unknown"
+        return False
 
 
 @app.get("/api/genesis/status")
@@ -129,9 +134,8 @@ async def genesis_status():
         except Exception:
             pass
 
-    # Check engine process via supervisor
-    supervisor_state = get_engine_supervisor_status()
-    engine_running = supervisor_state in ("running", "starting")
+    # Check engine process
+    engine_running = is_engine_process_running()
 
     # Generate QR if we have a real address from the engine
     qr_b64 = None
@@ -166,13 +170,13 @@ async def genesis_status():
 @app.post("/api/genesis/create")
 async def create_genesis_agent():
     """
-    Stage config files and start the Automaton engine via supervisor.
+    Stage config files and start the Automaton engine as a background process.
     The engine handles everything: wallet, API key, constitution, SOUL, skills, heartbeat.
     We only provide the genesis prompt and auto-config for non-interactive setup.
     """
     try:
         # Check if already running
-        if get_engine_supervisor_status() in ("running", "starting"):
+        if is_engine_process_running():
             return {"success": True, "message": "Engine already running"}
 
         # Verify the built engine exists
@@ -203,7 +207,6 @@ async def create_genesis_agent():
         if os.path.isdir(skills_src):
             skills_dst = os.path.join(ANIMA_DIR, "skills")
             os.makedirs(skills_dst, exist_ok=True)
-            skills_installed = []
             for skill_name in os.listdir(skills_src):
                 skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
                 if os.path.exists(skill_file):
@@ -213,19 +216,25 @@ async def create_genesis_agent():
                         content = f.read()
                     with open(os.path.join(target, "SKILL.md"), "w") as f:
                         f.write(content)
-                    skills_installed.append(skill_name)
 
-        # 4. Start the engine via supervisor
-        result = subprocess.run(
-            ["supervisorctl", "start", "automaton-engine"],
-            capture_output=True, text=True, timeout=10,
+        # 4. Start the engine via /bin/bash (absolute path — no PATH dependency)
+        log_out = open("/var/log/automaton.out.log", "a")
+        log_err = open("/var/log/automaton.err.log", "a")
+        proc = subprocess.Popen(
+            ["/bin/bash", "/app/scripts/start_engine.sh"],
+            stdout=log_out,
+            stderr=log_err,
+            start_new_session=True,
         )
-        if result.returncode != 0 and "already started" not in result.stderr.lower():
-            return {"success": False, "error": f"Failed to start engine: {result.stderr.strip() or result.stdout.strip()}"}
+
+        # Save PID for tracking
+        os.makedirs(ANIMA_DIR, exist_ok=True)
+        with open(ENGINE_PID_FILE, "w") as f:
+            f.write(str(proc.pid))
 
         return {
             "success": True,
-            "message": "Engine starting via supervisor. The agent will generate its own wallet and begin operating.",
+            "message": "Engine starting. The agent will generate its own wallet and begin operating.",
             "creator_wallet": CREATOR_WALLET,
         }
 
