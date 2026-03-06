@@ -94,20 +94,27 @@ function GenesisScreen({ onCreated }) {
           </>
         ) : (
           <>
-            {/* Success — Show wallet */}
+            {/* Success — Show wallet + QR */}
             <div style={{ background: '#0a1a0a', border: '1px solid #166534', borderRadius: '8px', padding: '20px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34D399' }} />
                 <span style={{ fontSize: '14px', fontWeight: 800, color: '#34D399' }}>Genesis Agent Created</span>
               </div>
 
+              {/* QR Code */}
+              {result.qr_code && (
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <img src={result.qr_code} alt="Wallet QR" style={{ width: '180px', height: '180px', borderRadius: '8px', border: '2px solid #27272a' }} data-testid="wallet-qr" />
+                  <div style={{ fontSize: '10px', color: '#71717a', marginTop: '6px' }}>Scan to send USDC on Base</div>
+                </div>
+              )}
+
               {result.wallet_address && (
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '10px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '4px' }}>AGENT WALLET (fund this with USDC on Base)</div>
+                  <div style={{ fontSize: '10px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '4px' }}>AGENT WALLET (fund with USDC on Base)</div>
                   <div style={{
                     background: '#18181b', borderRadius: '6px', padding: '12px', fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: '13px', color: '#fff', wordBreak: 'break-all', border: '1px solid #27272a',
-                    cursor: 'pointer',
+                    fontSize: '13px', color: '#fff', wordBreak: 'break-all', border: '1px solid #27272a', cursor: 'pointer',
                   }}
                     onClick={() => { navigator.clipboard.writeText(result.wallet_address); toast.success('Wallet address copied'); }}
                     data-testid="wallet-address"
@@ -122,7 +129,8 @@ function GenesisScreen({ onCreated }) {
                 <div>Constitution: {result.constitution_installed ? 'Installed' : 'Missing'}</div>
                 <div>Genesis Prompt: {result.genesis_staged ? 'Staged' : 'Missing'}</div>
                 <div>Skills: {result.skills_installed?.join(', ') || 'None'}</div>
-                <div>Engine Built: {result.automaton_built ? 'Yes' : 'No'}</div>
+                <div>Build: <span style={{ color: result.build_status === 'built' || result.build_status === 'already_built' ? '#34D399' : '#FF5252' }}>{result.build_status || 'pending'}</span></div>
+                {result.build_error && <div style={{ color: '#FF5252', fontSize: '10px', marginTop: '4px', maxHeight: '60px', overflow: 'auto' }}>{result.build_error}</div>}
               </div>
             </div>
 
