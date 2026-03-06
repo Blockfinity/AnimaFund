@@ -40,6 +40,8 @@ from engine_bridge import (
 
 load_dotenv()
 
+import shutil
+
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
 
@@ -49,6 +51,11 @@ db = None
 AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
 ANIMA_DIR = os.path.expanduser("~/.anima")
 CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r")
+
+# Find binaries dynamically — paths differ between preview and production
+NODE_BIN = shutil.which("node") or os.environ.get("NODE_PATH_BIN") or "node"
+PNPM_BIN = shutil.which("pnpm") or "pnpm"
+COREPACK_BIN = shutil.which("corepack") or "corepack"
 
 
 @asynccontextmanager
@@ -216,7 +223,7 @@ async def create_genesis_agent():
 
         if not os.path.exists(dist_path):
             try:
-                build_cmd = f"cd {AUTOMATON_DIR} && /usr/bin/corepack enable 2>/dev/null; /usr/bin/pnpm install --no-frozen-lockfile 2>&1 && /usr/bin/pnpm build 2>&1"
+                build_cmd = f"cd {AUTOMATON_DIR} && {COREPACK_BIN} enable 2>/dev/null; {PNPM_BIN} install --no-frozen-lockfile 2>&1 && {PNPM_BIN} build 2>&1"
                 proc = subprocess.run(
                     ["bash", "-c", build_cmd],
                     capture_output=True, text=True, timeout=180,
@@ -236,7 +243,7 @@ async def create_genesis_agent():
             pass
 
         proc = subprocess.Popen(
-            ["/usr/bin/node", dist_path, "--run"],
+            [NODE_BIN, dist_path, "--run"],
             cwd=AUTOMATON_DIR,
             stdout=open("/var/log/automaton.out.log", "a"),
             stderr=open("/var/log/automaton.err.log", "a"),
