@@ -9,7 +9,12 @@ const navItems = [
   { id: 'config', label: 'Configuration', icon: Settings },
 ];
 
-export default function Sidebar({ currentPage, setCurrentPage, isOpen, onToggle }) {
+export default function Sidebar({ currentPage, setCurrentPage, isOpen, onToggle, fundName }) {
+  const displayName = fundName || 'ANIMA FUND';
+  const parts = displayName.toUpperCase().split(' ');
+  const first = parts[0] || '';
+  const rest = parts.slice(1).join(' ');
+
   return (
     <aside 
       data-testid="sidebar"
@@ -22,8 +27,8 @@ export default function Sidebar({ currentPage, setCurrentPage, isOpen, onToggle 
           </div>
           {isOpen && (
             <div className="animate-slide-in">
-              <span className="font-heading font-bold text-sm tracking-tight text-foreground">ANIMA</span>
-              <span className="font-heading font-light text-sm tracking-tight text-muted-foreground ml-1">FUND</span>
+              <span className="font-heading font-bold text-sm tracking-tight text-foreground">{first}</span>
+              {rest && <span className="font-heading font-light text-sm tracking-tight text-muted-foreground ml-1">{rest}</span>}
             </div>
           )}
         </div>

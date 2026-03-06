@@ -27,7 +27,7 @@ from engine_bridge import (
     get_live_turns, get_live_modifications,
     get_live_inbox_messages, get_live_relationships,
     get_live_reputation, get_live_discovered_agents,
-    get_child_lifecycle_events,
+    get_child_lifecycle_events, get_live_identity,
 )
 
 load_dotenv()
@@ -238,6 +238,11 @@ async def create_genesis_agent():
 @app.get("/api/engine/live")
 async def check_engine_live():
     return is_engine_live()
+
+@app.get("/api/live/identity")
+async def live_identity():
+    """Get the fund's identity — name, wallet, sandbox, deployed services, domains, installed tools."""
+    return get_live_identity()
 
 @app.get("/api/live/agents")
 async def live_agents():

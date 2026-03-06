@@ -384,6 +384,106 @@ def get_live_modifications(limit: int = 30) -> list:
         return []
 
 
+
+def get_live_identity() -> dict:
+    """Read the agent's identity — name, address, state, and any services it has deployed."""
+    conn = get_engine_db()
+    result = {"name": None, "address": None, "sandbox": None, "services": []}
+
+    # Read from config file (the AI may have changed its name)
+    config_path = os.path.expanduser("~/.anima/anima.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+                result["name"] = config.get("name")
+                result["address"] = config.get("walletAddress")
+                result["sandbox"] = config.get("sandboxId")
+        except Exception:
+            pass
+
+    if not conn:
+        return result
+
+    try:
+        # Read identity KV pairs
+        cursor = conn.execute("SELECT key, value FROM identity")
+        for row in cursor.fetchall():
+            if row["key"] == "name":
+                result["name"] = row["value"]
+            elif row["key"] == "address":
+                result["address"] = row["value"]
+            elif row["key"] == "sandbox":
+                result["sandbox"] = row["value"]
+
+        # Read any exposed ports (services the AI has deployed)
+        # The AI uses expose_port tool which gets logged in tool_calls
+        cursor = conn.execute("""
+            SELECT tc.arguments, tc.result, t.timestamp
+            FROM tool_calls tc
+            JOIN turns t ON tc.turnId = t.id
+            WHERE tc.name IN ('expose_port', 'register_domain', 'create_sandbox')
+            ORDER BY t.timestamp DESC LIMIT 50
+        """)
+        for row in cursor.fetchall():
+            args = {}
+            result_text = row["result"] or ""
+            try:
+                args = json.loads(row["arguments"]) if row["arguments"] else {}
+            except Exception:
+                pass
+            result["services"].append({
+                "tool": row["arguments"],
+                "result": result_text[:500],
+                "timestamp": row["timestamp"],
+                "args": args,
+            })
+
+        # Read any domains registered
+        cursor = conn.execute("""
+            SELECT tc.arguments, tc.result, t.timestamp
+            FROM tool_calls tc
+            JOIN turns t ON tc.turnId = t.id
+            WHERE tc.name = 'register_domain'
+            ORDER BY t.timestamp DESC LIMIT 10
+        """)
+        domains = []
+        for row in cursor.fetchall():
+            try:
+                args = json.loads(row["arguments"]) if row["arguments"] else {}
+                domains.append({"domain": args.get("domain", ""), "timestamp": row["timestamp"]})
+            except Exception:
+                pass
+        result["domains"] = domains
+
+        # Read installed tools (the AI may have installed MCP servers, npm packages)
+        cursor = conn.execute("SELECT id, name, type, config, installedAt, enabled FROM installed_tools ORDER BY installedAt DESC")
+        tools = []
+        for row in cursor.fetchall():
+            tools.append({
+                "id": row["id"], "name": row["name"], "type": row["type"],
+                "enabled": bool(row["enabled"]), "installed_at": row["installedAt"],
+            })
+        result["installed_tools"] = tools
+
+        # Read children sandboxes (each is a service the AI deployed)
+        cursor = conn.execute("SELECT id, name, sandboxId, status, createdAt FROM children ORDER BY createdAt DESC")
+        children = []
+        for row in cursor.fetchall():
+            children.append({
+                "id": row["id"], "name": row["name"], "sandbox_id": row["sandboxId"],
+                "status": row["status"], "created_at": row["createdAt"],
+            })
+        result["children_sandboxes"] = children
+
+        conn.close()
+    except Exception:
+        if conn:
+            conn.close()
+
+    return result
+
+
 def get_live_inbox_messages(limit: int = 50) -> list:
     """Read social messages — interactions with hired/external agents."""
     conn = get_engine_db()

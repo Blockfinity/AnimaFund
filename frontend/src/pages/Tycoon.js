@@ -212,7 +212,7 @@ function DepartmentFloor({ deptName, agents, floorNum, spendCents }) {
 }
 
 // ─── Main Tycoon Component ──────────────────────────────
-export default function Tycoon() {
+export default function Tycoon({ fundName }) {
   const [agents, setAgents] = useState([]);
   const [activities, setActivities] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -323,7 +323,7 @@ export default function Tycoon() {
         <div ref={buildingRef} style={{ flex: 1, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', overflowX: 'hidden', border: '4px solid #35638C', borderRadius: '4px', background: '#B8D8F0', scrollbarWidth: 'thin' }}>
           <div style={{ background: 'linear-gradient(180deg, #7AD2FF, #A2E5FF)', padding: '8px', textAlign: 'center', borderBottom: '4px solid #35638C' }}>
             <span style={{ fontSize: '13px', fontWeight: 900, color: '#35638C', letterSpacing: '3px' }}>
-              ANIMA FUND HQ
+              {(fundName || 'FUND').toUpperCase()} HQ
             </span>
             <div style={{ fontSize: '9px', color: '#4A7EB5', fontWeight: 700, marginTop: '2px' }}>
               {departments.length} Floors | {totalAgents} Agents

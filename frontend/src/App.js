@@ -160,12 +160,17 @@ function Dashboard() {
   const [currentPage, setCurrentPage] = useState('mind');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [engineState, setEngineState] = useState(null);
+  const [identity, setIdentity] = useState(null);
 
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch(`${API}/api/engine/live`);
-        setEngineState(await res.json());
+        const [engRes, idRes] = await Promise.all([
+          fetch(`${API}/api/engine/live`),
+          fetch(`${API}/api/live/identity`),
+        ]);
+        setEngineState(await engRes.json());
+        setIdentity(await idRes.json());
       } catch (e) { console.error(e); }
     };
     check();
@@ -173,18 +178,20 @@ function Dashboard() {
     return () => clearInterval(i);
   }, []);
 
+  const fundName = identity?.name || null;
+
   const renderPage = () => {
     switch (currentPage) {
-      case 'tycoon': return <Tycoon />;
+      case 'tycoon': return <Tycoon fundName={fundName} />;
       case 'mind': return <AgentMind />;
-      case 'config': return <Configuration />;
+      case 'config': return <Configuration identity={identity} />;
       default: return <AgentMind />;
     }
   };
 
   return (
     <div className="flex h-screen bg-[#fafafa]" data-testid="dashboard">
-      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} fundName={fundName} />
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-200 ${sidebarOpen ? 'ml-60' : 'ml-16'}`}>
         <Header overview={engineState} currentPage={currentPage} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
         <main className="flex-1 overflow-y-auto p-6">{renderPage()}</main>
