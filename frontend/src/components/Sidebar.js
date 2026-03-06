@@ -2,12 +2,13 @@ import React from 'react';
 import { 
   LayoutDashboard, Network, GitPullRequest, Briefcase, 
   DollarSign, Activity, Settings, ChevronLeft, ChevronRight,
-  Zap, Building2
+  Zap, Building2, Brain
 } from 'lucide-react';
 
 const navItems = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'tycoon', label: 'Fund HQ', icon: Building2 },
+  { id: 'mind', label: 'Agent Mind', icon: Brain },
   { id: 'agents', label: 'Agent Network', icon: Network },
   { id: 'deals', label: 'Deal Flow', icon: GitPullRequest },
   { id: 'portfolio', label: 'Portfolio', icon: Briefcase },

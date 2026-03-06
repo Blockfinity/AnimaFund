@@ -23,6 +23,7 @@ from engine_bridge import (
     is_engine_live, get_live_agents, get_live_activity,
     get_live_transactions, get_live_financials,
     get_live_heartbeat_history, get_live_memory_facts, get_live_soul,
+    get_live_turns, get_live_modifications,
 )
 
 load_dotenv()
@@ -594,6 +595,20 @@ async def get_live_soul_endpoint():
     if content is None:
         return {"content": None, "exists": False}
     return {"content": content, "exists": True}
+
+
+@app.get("/api/live/turns")
+async def get_live_turns_endpoint(limit: int = Query(default=50, le=200)):
+    """Get full agent turns with thinking + tool calls — the agent's mind."""
+    turns = get_live_turns(limit)
+    return {"turns": turns, "total": len(turns), "source": "engine"}
+
+
+@app.get("/api/live/modifications")
+async def get_live_modifications_endpoint(limit: int = Query(default=30, le=100)):
+    """Get self-modification audit trail."""
+    mods = get_live_modifications(limit)
+    return {"modifications": mods, "total": len(mods), "source": "engine"}
 
 
 # ─── Unified endpoint: auto-selects live vs demo ─────────

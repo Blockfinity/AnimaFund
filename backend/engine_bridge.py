@@ -295,3 +295,90 @@ def get_live_soul() -> Optional[str]:
         with open(soul_path, "r") as f:
             return f.read()
     return None
+
+
+
+def get_live_turns(limit: int = 50) -> list:
+    """Read full agent turns — thinking, tool calls, tokens, cost, state."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        cursor = conn.execute("""
+            SELECT id, timestamp, state, input, thinking, tokenUsage, costCents
+            FROM turns ORDER BY timestamp DESC LIMIT ?
+        """, (limit,))
+        turns = []
+        for row in cursor.fetchall():
+            turn_id = row["id"]
+            thinking = row["thinking"] or ""
+            token_usage = {}
+            try:
+                token_usage = json.loads(row["tokenUsage"]) if row["tokenUsage"] else {}
+            except Exception:
+                pass
+
+            # Get tool calls for this turn
+            tc_cursor = conn.execute("""
+                SELECT id, name, arguments, result, durationMs, error
+                FROM tool_calls WHERE turnId = ? ORDER BY rowid ASC
+            """, (turn_id,))
+            tool_calls = []
+            for tc in tc_cursor.fetchall():
+                args = {}
+                try:
+                    args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                except Exception:
+                    pass
+                tool_calls.append({
+                    "id": tc["id"],
+                    "tool": tc["name"],
+                    "arguments": args,
+                    "result": tc["result"] or "",
+                    "duration_ms": tc["durationMs"],
+                    "error": tc["error"],
+                })
+
+            turns.append({
+                "turn_id": turn_id,
+                "timestamp": row["timestamp"],
+                "state": row["state"],
+                "input": row["input"],
+                "thinking": thinking,
+                "tool_calls": tool_calls,
+                "token_usage": token_usage,
+                "cost_cents": row["costCents"] or 0,
+            })
+        conn.close()
+        return turns
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_modifications(limit: int = 30) -> list:
+    """Read self-modification audit trail."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        cursor = conn.execute("""
+            SELECT id, timestamp, type, description, filePath, diff, reversible
+            FROM modifications ORDER BY timestamp DESC LIMIT ?
+        """, (limit,))
+        mods = []
+        for row in cursor.fetchall():
+            mods.append({
+                "id": row["id"],
+                "timestamp": row["timestamp"],
+                "type": row["type"],
+                "description": row["description"],
+                "file_path": row["filePath"],
+                "diff": (row["diff"] or "")[:500],
+                "reversible": bool(row["reversible"]),
+            })
+        conn.close()
+        return mods
+    except Exception:
+        conn.close()
+        return []
