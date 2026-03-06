@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 
 class AnimaFundAPITester:
-    def __init__(self, base_url="https://115fbed8-6e46-49d1-b4f7-8c45a000c04a.preview.emergentagent.com"):
+    def __init__(self, base_url="https://ai-bootstrap-1.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0
