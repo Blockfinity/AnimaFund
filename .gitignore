@@ -1,14 +1,6 @@
-# Anima Fund — .gitignore
+# Anima Fund
 node_modules/
 dist/
 __pycache__/
 *.pyc
 .DS_Store
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
