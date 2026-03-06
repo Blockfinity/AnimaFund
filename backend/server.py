@@ -273,6 +273,50 @@ async def genesis_qr(address: str):
     return Response(content=buf.getvalue(), media_type="image/png")
 
 
+@app.post("/api/genesis/start")
+async def start_genesis_engine():
+    """Start the Automaton engine as a background process."""
+    import subprocess
+
+    dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
+    if not os.path.exists(dist_path):
+        return {"started": False, "error": "Automaton not built. Click Create Genesis Agent first."}
+
+    wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
+    if not os.path.exists(wallet_path):
+        return {"started": False, "error": "No wallet found. Click Create Genesis Agent first."}
+
+    # Check if already running
+    try:
+        check = subprocess.run(["pgrep", "-f", "dist/index.js.*--run"], capture_output=True, text=True)
+        if check.returncode == 0:
+            return {"started": True, "message": "Engine already running", "pid": check.stdout.strip()}
+    except Exception:
+        pass
+
+    # Start the engine in the background
+    try:
+        proc = subprocess.Popen(
+            ["/usr/bin/node", dist_path, "--run"],
+            cwd=AUTOMATON_DIR,
+            stdout=open("/var/log/automaton.out.log", "a"),
+            stderr=open("/var/log/automaton.err.log", "a"),
+            env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin"},
+            start_new_session=True,
+        )
+
+        await db.genesis.update_one(
+            {"type": "founder"},
+            {"$set": {"status": "engine_starting", "pid": proc.pid, "started_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+
+        return {"started": True, "pid": proc.pid, "message": "Engine starting. It will run the setup wizard, then begin the agent loop."}
+
+    except Exception as e:
+        return {"started": False, "error": str(e)}
+
+
 @app.get("/api/genesis/qr-base64/{address}")
 async def genesis_qr_base64(address: str):
     """Generate a QR code as base64 string for embedding in frontend."""
