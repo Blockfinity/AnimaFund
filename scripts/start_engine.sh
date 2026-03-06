@@ -1,37 +1,46 @@
 #!/bin/bash
 # Anima Fund Engine Starter
-# Runs the single-file bundle (all deps inlined, no module resolution needed)
+# Runs the single-file bundle (all JS deps inlined, native addon loaded from /app/automaton/native/)
+
+set -e
 
 cd /app/automaton
 
-# Swap better-sqlite3 native addon for current arch
 ARCH=$(uname -m)
+echo "Architecture: $ARCH"
+
+# Ensure the correct native addon is in the platform-neutral path as a fallback
 case "$ARCH" in
-    x86_64|amd64) PREBUILD="node_modules/better-sqlite3/prebuilds/linux-x64/build/Release/better_sqlite3.node" ;;
-    aarch64|arm64) PREBUILD="node_modules/better-sqlite3/prebuilds/linux-arm64/build/Release/better_sqlite3.node" ;;
+    x86_64|amd64)
+        cp -f native/linux-x64/better_sqlite3.node native/better_sqlite3.node 2>/dev/null || true
+        ;;
+    aarch64|arm64)
+        cp -f native/linux-arm64/better_sqlite3.node native/better_sqlite3.node 2>/dev/null || true
+        ;;
 esac
-if [ -f "$PREBUILD" ]; then
-    cp "$PREBUILD" node_modules/better-sqlite3/build/Release/better_sqlite3.node 2>/dev/null
-fi
+
+echo "Native addon ready: $(ls -la native/better_sqlite3.node 2>/dev/null || echo 'NOT FOUND')"
 
 # Find node and run the bundle
-for p in /usr/bin/node /usr/local/bin/node; do
+NODE=""
+for p in /usr/bin/node /usr/local/bin/node /app/automaton/bin/node; do
     if [ -x "$p" ]; then
-        echo "Using $p ($($p --version))"
-        yes "" 2>/dev/null | exec "$p" dist/bundle.mjs --run
+        NODE="$p"
+        break
     fi
 done
 
-NODE=$(which node 2>/dev/null || command -v node 2>/dev/null)
-if [ -n "$NODE" ] && [ -x "$NODE" ]; then
-    echo "Using $NODE ($($NODE --version))"
-    yes "" 2>/dev/null | exec "$NODE" dist/bundle.mjs --run
+if [ -z "$NODE" ]; then
+    NODE=$(which node 2>/dev/null || command -v node 2>/dev/null || true)
 fi
 
-if [ -x "/app/automaton/bin/node" ]; then
-    echo "Using bundled node ($(/app/automaton/bin/node --version))"
-    yes "" 2>/dev/null | exec /app/automaton/bin/node dist/bundle.mjs --run
+if [ -z "$NODE" ] || [ ! -x "$NODE" ]; then
+    echo "FATAL: node not found" >&2
+    exit 1
 fi
 
-echo "FATAL: node not found" >&2
-exit 1
+echo "Using $NODE ($($NODE --version))"
+echo "Starting bundle..."
+
+# Pipe "yes" to handle any interactive prompts in the setup wizard
+yes "" 2>/dev/null | exec "$NODE" dist/bundle.mjs --run

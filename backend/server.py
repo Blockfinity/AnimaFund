@@ -117,7 +117,7 @@ def is_engine_process_running():
                 pass
     # Fallback: check for the process directly
     try:
-        r = subprocess.run(["pgrep", "-f", "dist/index.js.*--run"], capture_output=True, text=True, timeout=3)
+        r = subprocess.run(["pgrep", "-f", "dist/bundle.mjs.*--run"], capture_output=True, text=True, timeout=3)
         return r.returncode == 0
     except Exception:
         return False
