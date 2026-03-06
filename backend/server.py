@@ -190,7 +190,15 @@ async def create_genesis_agent():
                         f.write(content)
                     skills_installed.append(skill_name)
 
-        # Step 6: Build the Automaton runtime
+        # Step 6: Write auto-config for non-interactive wizard
+        auto_config = {
+            "name": "Anima Fund",
+            "creatorAddress": "0x0000000000000000000000000000000000000000",
+        }
+        with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
+            json.dump(auto_config, f, indent=2)
+
+        # Step 7: Build the Automaton runtime
         import subprocess
         dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
         build_status = "already_built" if os.path.exists(dist_path) else "building"
@@ -279,12 +287,50 @@ async def start_genesis_engine():
     import subprocess
 
     dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
+
+    # If Automaton isn't built, build it now
     if not os.path.exists(dist_path):
-        return {"started": False, "error": "Automaton not built. Click Create Genesis Agent first."}
+        try:
+            build_cmd = f"cd {AUTOMATON_DIR} && /usr/bin/corepack enable 2>/dev/null; /usr/bin/pnpm install --no-frozen-lockfile 2>&1 && /usr/bin/pnpm build 2>&1"
+            proc = subprocess.run(
+                ["bash", "-c", build_cmd],
+                capture_output=True, text=True, timeout=180,
+                env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
+            )
+            if proc.returncode != 0:
+                return {"started": False, "error": f"Build failed: {(proc.stdout + proc.stderr)[-500:]}"}
+        except subprocess.TimeoutExpired:
+            return {"started": False, "error": "Build timed out"}
 
     wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
+
+    # If wallet file missing but we have it in MongoDB, recreate
     if not os.path.exists(wallet_path):
-        return {"started": False, "error": "No wallet found. Click Create Genesis Agent first."}
+        mongo_genesis = await db.genesis.find_one({"type": "founder"})
+        if not mongo_genesis or not mongo_genesis.get("wallet_address"):
+            return {"started": False, "error": "No agent created yet. Click 'Create Genesis Agent' first."}
+        # Need to create a new wallet since we can't recover the private key from just the address
+        # Force user to re-create
+        return {"started": False, "error": "Wallet files missing (new deployment). Click 'Create Genesis Agent' to generate a new wallet."}
+
+    # Ensure genesis prompt and constitution are staged
+    genesis_path = os.path.join(ANIMA_DIR, "genesis-prompt.md")
+    if not os.path.exists(genesis_path):
+        genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+        if os.path.exists(genesis_src):
+            with open(genesis_src, "r") as f:
+                content = f.read()
+            with open(genesis_path, "w") as f:
+                f.write(content)
+
+    const_path = os.path.join(ANIMA_DIR, "constitution.md")
+    if not os.path.exists(const_path):
+        const_src = os.path.join(AUTOMATON_DIR, "constitution.md")
+        if os.path.exists(const_src):
+            with open(const_src, "r") as f:
+                content = f.read()
+            with open(const_path, "w") as f:
+                f.write(content)
 
     # Check if already running
     try:
@@ -294,7 +340,7 @@ async def start_genesis_engine():
     except Exception:
         pass
 
-    # Start the engine in the background
+    # Start the engine
     try:
         proc = subprocess.Popen(
             ["/usr/bin/node", dist_path, "--run"],
@@ -311,7 +357,7 @@ async def start_genesis_engine():
             upsert=True,
         )
 
-        return {"started": True, "pid": proc.pid, "message": "Engine starting. It will run the setup wizard, then begin the agent loop."}
+        return {"started": True, "pid": proc.pid, "message": "Engine starting."}
 
     except Exception as e:
         return {"started": False, "error": str(e)}
