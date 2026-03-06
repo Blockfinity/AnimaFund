@@ -4,6 +4,12 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import AgentMind from './pages/AgentMind';
 import FundHQ from './pages/FundHQ';
+import Agents from './pages/Agents';
+import DealFlow from './pages/DealFlow';
+import Portfolio from './pages/Portfolio';
+import Financials from './pages/Financials';
+import Activity from './pages/Activity';
+import Memory from './pages/Memory';
 import Configuration from './pages/Configuration';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -170,6 +176,12 @@ function App() {
     switch (currentPage) {
       case 'fundhq': return <FundHQ fundName={fundName} />;
       case 'mind': return <AgentMind />;
+      case 'agents': return <Agents />;
+      case 'deals': return <DealFlow />;
+      case 'portfolio': return <Portfolio />;
+      case 'financials': return <Financials />;
+      case 'activity': return <Activity />;
+      case 'memory': return <Memory />;
       case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} />;
       default: return <AgentMind />;
     }
