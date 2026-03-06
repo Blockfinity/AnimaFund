@@ -52,31 +52,77 @@ CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEj
 
 # Find node/pnpm/corepack dynamically — production paths vary
 def find_binary(name):
-    """Find a binary, checking PATH, common locations, and yarn/npx paths."""
+    """Find a binary by checking PATH and common locations."""
     import shutil
+    # Check PATH first
     found = shutil.which(name)
     if found:
         return found
     # Check common locations
-    for path in [
+    common_paths = [
         f"/usr/bin/{name}",
         f"/usr/local/bin/{name}",
         f"/opt/bin/{name}",
         f"/root/.nvm/versions/node/v20.20.0/bin/{name}",
         f"/usr/lib/code-server/lib/{name}",
-    ]:
+        # Emergent might put node here
+        f"/app/frontend/node_modules/.bin/{name}",
+    ]
+    for path in common_paths:
         if os.path.isfile(path) and os.access(path, os.X_OK):
             return path
-    # Last resort: check if yarn knows where node is (Emergent uses yarn for frontend)
-    if name == "node":
-        try:
-            import subprocess as _sp
-            result = _sp.run(["bash", "-c", "which node 2>/dev/null || command -v node 2>/dev/null"], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except Exception:
-            pass
-    return name  # Bare name, hope the shell finds it
+    # Try bash login shell which loads .bashrc/.profile
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", f"which {name}"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return name
+
+
+def ensure_node_available():
+    """Ensure node is available. Install if not found."""
+    node = find_binary("node")
+    # Test if it actually works
+    try:
+        result = subprocess.run(
+            [node, "--version"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return node
+    except (FileNotFoundError, OSError):
+        pass
+    
+    # Node not found — install it
+    try:
+        install_result = subprocess.run(
+            ["bash", "-c", "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs 2>&1 | tail -5"],
+            capture_output=True, text=True, timeout=120
+        )
+        if install_result.returncode == 0:
+            node = find_binary("node")
+            return node
+    except Exception:
+        pass
+    
+    # Try nvm as fallback
+    try:
+        subprocess.run(
+            ["bash", "-c", "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash && source ~/.nvm/nvm.sh && nvm install 20"],
+            capture_output=True, text=True, timeout=120
+        )
+        for p in ["/root/.nvm/versions/node/v20.20.0/bin/node", "/root/.nvm/versions/node/v20/bin/node"]:
+            if os.path.isfile(p):
+                return p
+    except Exception:
+        pass
+    
+    return "node"  # Last resort
 
 
 @asynccontextmanager
@@ -238,9 +284,18 @@ async def create_genesis_agent():
         with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
             json.dump(auto_config, f, indent=2)
 
-        # Step 2: Build the Automaton runtime
+        # Step 2: Ensure node is available, then build/run
         dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
+        node_bin = ensure_node_available()
         build_error = None
+
+        # Verify node works
+        try:
+            node_test = subprocess.run([node_bin, "--version"], capture_output=True, text=True, timeout=5)
+            if node_test.returncode != 0:
+                return {"success": False, "error": f"Node.js found at {node_bin} but not working: {node_test.stderr}"}
+        except FileNotFoundError:
+            return {"success": False, "error": f"Node.js not found. Searched PATH, /usr/bin, /usr/local/bin, /opt/bin, and attempted install. The Automaton engine requires Node.js 20+."}
 
         if not os.path.exists(dist_path):
             try:
@@ -264,16 +319,12 @@ async def create_genesis_agent():
         except Exception:
             pass
 
-        # Use bash to run node — bash resolves PATH better than Python's subprocess
-        FULL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:/root/.nvm/versions/node/v20.20.0/bin"
-        node_bin = find_binary("node")
-
         proc = subprocess.Popen(
-            ["bash", "-c", f'export PATH="{FULL_PATH}:$PATH" && exec {node_bin} {dist_path} --run'],
+            [node_bin, dist_path, "--run"],
             cwd=AUTOMATON_DIR,
             stdout=open("/var/log/automaton.out.log", "a"),
             stderr=open("/var/log/automaton.err.log", "a"),
-            env={**os.environ, "PATH": FULL_PATH},
+            env={**os.environ, "PATH": f"{os.path.dirname(node_bin)}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"},
             start_new_session=True,
         )
 
