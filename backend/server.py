@@ -43,7 +43,7 @@ db = None
 
 AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
 ANIMA_DIR = os.path.expanduser("~/.anima")
-CREATOR_WALLET = "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r"
+CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r")
 
 
 @asynccontextmanager
