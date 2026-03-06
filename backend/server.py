@@ -40,8 +40,6 @@ from engine_bridge import (
 
 load_dotenv()
 
-import shutil
-
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
 
@@ -52,10 +50,33 @@ AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
 ANIMA_DIR = os.path.expanduser("~/.anima")
 CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r")
 
-# Find binaries dynamically — paths differ between preview and production
-NODE_BIN = shutil.which("node") or os.environ.get("NODE_PATH_BIN") or "node"
-PNPM_BIN = shutil.which("pnpm") or "pnpm"
-COREPACK_BIN = shutil.which("corepack") or "corepack"
+# Find node/pnpm/corepack dynamically — production paths vary
+def find_binary(name):
+    """Find a binary, checking PATH and common locations."""
+    import shutil
+    found = shutil.which(name)
+    if found:
+        return found
+    # Check common locations
+    for path in [
+        f"/usr/bin/{name}",
+        f"/usr/local/bin/{name}",
+        f"/opt/bin/{name}",
+        f"/root/.nvm/versions/node/v20.20.0/bin/{name}",
+        f"/usr/lib/code-server/lib/{name}",
+    ]:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    # Last resort: check if yarn knows where node is (Emergent uses yarn for frontend)
+    if name == "node":
+        try:
+            import subprocess as _sp
+            result = _sp.run(["bash", "-c", "which node 2>/dev/null || command -v node 2>/dev/null"], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except Exception:
+            pass
+    return name  # Bare name, hope the shell finds it
 
 
 @asynccontextmanager
@@ -223,11 +244,14 @@ async def create_genesis_agent():
 
         if not os.path.exists(dist_path):
             try:
-                build_cmd = f"cd {AUTOMATON_DIR} && {COREPACK_BIN} enable 2>/dev/null; {PNPM_BIN} install --no-frozen-lockfile 2>&1 && {PNPM_BIN} build 2>&1"
+                node_bin = find_binary("node")
+                pnpm_bin = find_binary("pnpm")
+                corepack_bin = find_binary("corepack")
+                build_cmd = f"cd {AUTOMATON_DIR} && {corepack_bin} enable 2>/dev/null; {pnpm_bin} install --no-frozen-lockfile 2>&1 && {pnpm_bin} build 2>&1"
                 proc = subprocess.run(
                     ["bash", "-c", build_cmd],
                     capture_output=True, text=True, timeout=180,
-                    env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
+                    env={**os.environ, "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"}
                 )
                 if proc.returncode != 0:
                     return {"success": False, "error": f"Build failed: {(proc.stdout + proc.stderr)[-500:]}"}
@@ -243,11 +267,11 @@ async def create_genesis_agent():
             pass
 
         proc = subprocess.Popen(
-            [NODE_BIN, dist_path, "--run"],
+            [find_binary("node"), dist_path, "--run"],
             cwd=AUTOMATON_DIR,
             stdout=open("/var/log/automaton.out.log", "a"),
             stderr=open("/var/log/automaton.err.log", "a"),
-            env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin"},
+            env={**os.environ, "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"},
             start_new_session=True,
         )
 
