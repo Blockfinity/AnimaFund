@@ -5,7 +5,9 @@ FastAPI Backend Server
 This server is a VIEWER — it reads from the Automaton engine's state.db and displays
 whatever the AI has created. It does NOT prescribe structure, seed data, or make decisions.
 
-The only write action is "Create Genesis Agent" which builds the Automaton and runs --init.
+The only write action is "Create Genesis Agent" which stages config files for the
+Automaton engine and starts it via supervisor. The engine handles everything else:
+wallet generation, API key provisioning, constitution, SOUL, skills, heartbeat.
 """
 import os
 import io
@@ -13,12 +15,10 @@ import json
 import base64
 import subprocess
 from datetime import datetime, timezone
-from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -49,25 +49,6 @@ db = None
 AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
 ANIMA_DIR = os.path.expanduser("~/.anima")
 CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r")
-
-# Node.js is in the container (frontend uses it via yarn start)
-def get_node_bin():
-    """Find node binary."""
-    import shutil
-    node = shutil.which("node")
-    if node:
-        return node
-    for p in ["/usr/bin/node", "/usr/local/bin/node", "/opt/node/bin/node"]:
-        if os.path.isfile(p) and os.access(p, os.X_OK):
-            return p
-    # Ask bash
-    try:
-        r = subprocess.run(["bash", "-lc", "which node"], capture_output=True, text=True, timeout=5)
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    except Exception:
-        pass
-    return "node"
 
 
 @asynccontextmanager
@@ -110,11 +91,31 @@ async def health():
 # GENESIS AGENT CREATION
 # ═══════════════════════════════════════════════════════════
 
+def get_engine_supervisor_status():
+    """Check automaton-engine process status via supervisor."""
+    try:
+        r = subprocess.run(
+            ["sudo", "supervisorctl", "status", "automaton-engine"],
+            capture_output=True, text=True, timeout=5,
+        )
+        output = r.stdout.strip()
+        if "RUNNING" in output:
+            return "running"
+        if "STARTING" in output:
+            return "starting"
+        if "STOPPED" in output or "EXITED" in output:
+            return "stopped"
+        if "FATAL" in output:
+            return "fatal"
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
 @app.get("/api/genesis/status")
 async def genesis_status():
     """Check if the genesis agent has been created."""
     engine = is_engine_live()
-    wallet_exists = os.path.exists(os.path.join(ANIMA_DIR, "wallet.json"))
     config_exists = os.path.exists(os.path.join(ANIMA_DIR, "anima.json"))
     genesis_staged = os.path.exists(os.path.join(ANIMA_DIR, "genesis-prompt.md"))
 
@@ -128,21 +129,11 @@ async def genesis_status():
         except Exception:
             pass
 
-    # Check if engine process is running
-    engine_running = False
-    try:
-        check = subprocess.run(["pgrep", "-f", "dist/index.js"], capture_output=True, text=True)
-        engine_running = check.returncode == 0
-    except Exception:
-        pass
+    # Check engine process via supervisor
+    supervisor_state = get_engine_supervisor_status()
+    engine_running = supervisor_state in ("running", "starting")
 
-    # Clean stale MongoDB if no wallet file and no running process
-    mongo_genesis = await db.genesis.find_one({"type": "founder"}, {"_id": 0})
-    if not wallet_exists and not engine_running and mongo_genesis:
-        await db.genesis.delete_many({"type": "founder"})
-        mongo_genesis = None
-
-    # Generate QR if we have a real address
+    # Generate QR if we have a real address from the engine
     qr_b64 = None
     if wallet_address and wallet_address.startswith("0x"):
         try:
@@ -158,7 +149,6 @@ async def genesis_status():
             pass
 
     return {
-        "wallet_exists": wallet_exists,
         "wallet_address": wallet_address,
         "qr_code": qr_b64,
         "config_exists": config_exists,
@@ -169,62 +159,55 @@ async def genesis_status():
         "fund_name": engine.get("fund_name"),
         "turn_count": engine.get("turn_count", 0),
         "creator_wallet": CREATOR_WALLET,
-        "status": "running" if engine_running else ("created" if wallet_exists else "not_created"),
+        "status": "running" if engine_running else ("created" if config_exists else "not_created"),
     }
 
 
 @app.post("/api/genesis/create")
 async def create_genesis_agent():
     """
-    Stage files and start the Automaton engine.
-    The engine handles everything: wallet, API key, skills loading, constitution, SOUL.md.
+    Stage config files and start the Automaton engine via supervisor.
+    The engine handles everything: wallet, API key, constitution, SOUL, skills, heartbeat.
+    We only provide the genesis prompt and auto-config for non-interactive setup.
     """
     try:
-        # Step 1: Ensure engine dependencies (node, pnpm, node_modules, dist)
-        setup_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "setup_engine.sh")
+        # Check if already running
+        if get_engine_supervisor_status() in ("running", "starting"):
+            return {"success": True, "message": "Engine already running"}
+
+        # Verify the built engine exists
         dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
-        node_modules = os.path.join(AUTOMATON_DIR, "node_modules")
+        if not os.path.exists(dist_path):
+            return {"success": False, "error": "Engine not built. dist/index.js missing."}
 
-        if not os.path.exists(dist_path) or not os.path.isdir(node_modules):
-            proc = subprocess.run(["bash", setup_script], capture_output=True, text=True, timeout=180)
-            if proc.returncode != 0:
-                return {"success": False, "error": f"Engine setup failed: {(proc.stdout + proc.stderr)[-500:]}"}
-
-        node_bin = get_node_bin()
-        
-        # Verify node actually works before proceeding
-        try:
-            node_check = subprocess.run([node_bin, "--version"], capture_output=True, text=True, timeout=5)
-            if node_check.returncode != 0:
-                return {"success": False, "error": f"Node.js at {node_bin} not working: {node_check.stderr[:200]}"}
-        except FileNotFoundError:
-            return {"success": False, "error": f"Node.js not found at {node_bin}. The Automaton engine requires Node.js 20+."}
-
-        # Step 2: Stage genesis prompt, constitution, skills, auto-config to ~/.anima/
+        # Stage files to ~/.anima/ for the engine's setup wizard (non-interactive mode)
         os.makedirs(ANIMA_DIR, exist_ok=True)
-        os.makedirs(os.path.join(ANIMA_DIR, "skills"), exist_ok=True)
 
-        for filename in ["genesis-prompt.md", "constitution.md"]:
-            src = os.path.join(AUTOMATON_DIR, filename)
-            if os.path.exists(src):
-                with open(src, "r") as f:
-                    content = f.read()
-                dst = os.path.join(ANIMA_DIR, filename)
-                with open(dst, "w") as f:
-                    f.write(content)
-                if filename == "constitution.md":
-                    try:
-                        os.chmod(dst, 0o444)
-                    except Exception:
-                        pass
+        # 1. Stage genesis prompt
+        genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+        if os.path.exists(genesis_src):
+            with open(genesis_src, "r") as f:
+                content = f.read()
+            with open(os.path.join(ANIMA_DIR, "genesis-prompt.md"), "w") as f:
+                f.write(content)
 
-        skills_installed = []
+        # 2. Stage auto-config for non-interactive wizard
+        with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
+            json.dump({
+                "name": "Anima Fund",
+                "creatorAddress": "0x0000000000000000000000000000000000000000",
+            }, f)
+
+        # 3. Stage custom VC skills (fund-specific — engine installs its own defaults too)
         skills_src = os.path.join(AUTOMATON_DIR, "skills")
         if os.path.isdir(skills_src):
+            skills_dst = os.path.join(ANIMA_DIR, "skills")
+            os.makedirs(skills_dst, exist_ok=True)
+            skills_installed = []
             for skill_name in os.listdir(skills_src):
                 skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
                 if os.path.exists(skill_file):
-                    target = os.path.join(ANIMA_DIR, "skills", skill_name)
+                    target = os.path.join(skills_dst, skill_name)
                     os.makedirs(target, exist_ok=True)
                     with open(skill_file, "r") as f:
                         content = f.read()
@@ -232,33 +215,19 @@ async def create_genesis_agent():
                         f.write(content)
                     skills_installed.append(skill_name)
 
-        with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
-            json.dump({"name": "Anima Fund", "creatorAddress": "0x0000000000000000000000000000000000000000"}, f)
-
-        # Step 3: Check if already running
-        try:
-            check = subprocess.run(["pgrep", "-f", "dist/index.js"], capture_output=True, text=True)
-            if check.returncode == 0:
-                return {"success": True, "message": "Engine already running", "pid": check.stdout.strip().split()[0]}
-        except Exception:
-            pass
-
-        # Step 4: Start the engine — it handles everything from here
-        proc = subprocess.Popen(
-            [node_bin, dist_path, "--run"],
-            cwd=AUTOMATON_DIR,
-            stdout=open("/var/log/automaton.out.log", "a"),
-            stderr=open("/var/log/automaton.err.log", "a"),
-            start_new_session=True,
+        # 4. Start the engine via supervisor
+        result = subprocess.run(
+            ["sudo", "supervisorctl", "start", "automaton-engine"],
+            capture_output=True, text=True, timeout=10,
         )
+        if result.returncode != 0 and "already started" not in result.stderr.lower():
+            return {"success": False, "error": f"Failed to start engine: {result.stderr.strip() or result.stdout.strip()}"}
 
-        await db.genesis.update_one(
-            {"type": "founder"},
-            {"$set": {"creator_wallet": CREATOR_WALLET, "skills_installed": skills_installed, "pid": proc.pid, "created_at": datetime.now(timezone.utc).isoformat(), "status": "engine_starting"}},
-            upsert=True,
-        )
-
-        return {"success": True, "pid": proc.pid, "skills_installed": skills_installed, "creator_wallet": CREATOR_WALLET, "message": "Engine starting."}
+        return {
+            "success": True,
+            "message": "Engine starting via supervisor. The agent will generate its own wallet and begin operating.",
+            "creator_wallet": CREATOR_WALLET,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

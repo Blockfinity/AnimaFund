@@ -224,39 +224,11 @@ export default function AgentMind() {
         setSoul(soulData.content || null);
         setStats({ total_turns: turnsData.total || 0, source: 'engine', agent_state: engine.agent_state, turn_count: engine.turn_count });
       } else {
-        // DEMO: fetch agents + activity
-        const [agRes, actRes] = await Promise.all([
-          fetch(`${API}/api/agents`),
-          fetch(`${API}/api/activity?limit=50`),
-        ]);
-        const [agData, actData] = await Promise.all([agRes.json(), actRes.json()]);
-
-        // Build agent list from data, labeled by role
-        const agentMap = {};
-        for (const a of (agData.agents || [])) {
-          agentMap[a.name] = { id: a.agent_id, name: a.name, role: a.role, department: a.department, status: a.status };
-        }
-        setAgents(Object.values(agentMap));
-
-        // Build demo turns from activity, tagged with agent_name
-        const demoTurns = (actData.activities || []).map((a, i) => ({
-          turn_id: a.activity_id || `demo-${i}`,
-          timestamp: a.timestamp,
-          state: 'running',
-          input: null,
-          agent_name: a.agent_name,
-          thinking: `${a.description}`,
-          tool_calls: [{
-            id: `tc-${i}`, tool: a.tool_used, arguments: {},
-            result: a.description,
-            duration_ms: Math.floor(Math.random() * 2000) + 100, error: null,
-          }],
-          token_usage: { totalTokens: Math.floor(Math.random() * 3000) + 500 },
-          cost_cents: Math.floor(Math.random() * 50) + 5,
-        }));
-        setTurns(demoTurns);
+        // Engine not running — show empty state, no fabricated data
+        setAgents([]);
+        setTurns([]);
         setSoul(null);
-        setStats({ total_turns: demoTurns.length, source: 'demo', agent_state: 'demo', turn_count: demoTurns.length });
+        setStats({ total_turns: 0, source: 'waiting', agent_state: 'not_started', turn_count: 0 });
       }
     } catch (e) { console.error('AgentMind fetch error:', e); }
     finally { setLoading(false); }
@@ -435,7 +407,7 @@ export default function AgentMind() {
                 <MiniStat label="DB" value={engineState?.db_exists ? 'Found' : 'Not found'} color={engineState?.db_exists ? '#34D399' : '#FF5252'} />
                 <MiniStat label="Turns" value={engineState?.turn_count || 0} />
                 <MiniStat label="Agents" value={agents.length} />
-                <MiniStat label="Source" value={stats?.source || 'demo'} color={stats?.source === 'engine' ? '#34D399' : '#FFB347'} />
+                <MiniStat label="Source" value={stats?.source || 'waiting'} color={stats?.source === 'engine' ? '#34D399' : '#71717a'} />
               </div>
             </>
           )}
