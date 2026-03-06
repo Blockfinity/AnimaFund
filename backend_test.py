@@ -6,7 +6,7 @@ import time
 import os
 
 class AnimaFundAPITester:
-    def __init__(self, base_url="https://ai-bootstrap-1.preview.emergentagent.com"):
+    def __init__(self, base_url="https://genesis-engine-2.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0

@@ -10,7 +10,7 @@ from datetime import datetime
 
 
 class AnimaFundAPITester:
-    def __init__(self, base_url="https://ai-bootstrap-1.preview.emergentagent.com"):
+    def __init__(self, base_url="https://genesis-engine-2.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0
@@ -84,7 +84,7 @@ def main():
     print("=" * 80)
     print("🚀 ANIMA FUND BACKEND API TEST SUITE")
     print("=" * 80)
-    print(f"Testing against: https://ai-bootstrap-1.preview.emergentagent.com")
+    print(f"Testing against: https://genesis-engine-2.preview.emergentagent.com")
     print(f"Test time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
 
