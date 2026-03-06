@@ -31,6 +31,11 @@ from engine_bridge import (
     get_live_inbox_messages, get_live_relationships,
     get_live_reputation, get_live_discovered_agents,
     get_child_lifecycle_events, get_live_identity,
+    get_live_working_memory, get_live_episodic_memory,
+    get_live_procedural_memory, get_live_installed_tools,
+    get_live_skills, get_live_metric_snapshots,
+    get_live_policy_decisions, get_live_soul_history,
+    get_live_onchain_transactions, get_live_session_summaries,
 )
 
 load_dotenv()
@@ -347,6 +352,47 @@ async def live_lifecycle(child_id: str = None, limit: int = Query(default=50, le
 async def live_reputation_endpoint(address: str = None):
     reps = get_live_reputation(address)
     return {"reputation": reps, "total": len(reps), "source": "engine"}
+
+
+@app.get("/api/live/working-memory")
+async def live_working_memory():
+    return {"items": get_live_working_memory(), "source": "engine"}
+
+@app.get("/api/live/episodic-memory")
+async def live_episodic_memory(limit: int = Query(default=50, le=200)):
+    return {"events": get_live_episodic_memory(limit), "source": "engine"}
+
+@app.get("/api/live/procedural-memory")
+async def live_procedural_memory():
+    return {"procedures": get_live_procedural_memory(), "source": "engine"}
+
+@app.get("/api/live/tools")
+async def live_installed_tools():
+    return {"tools": get_live_installed_tools(), "source": "engine"}
+
+@app.get("/api/live/skills")
+async def live_skills():
+    return {"skills": get_live_skills(), "source": "engine"}
+
+@app.get("/api/live/metrics")
+async def live_metrics(limit: int = Query(default=50, le=200)):
+    return {"snapshots": get_live_metric_snapshots(limit), "source": "engine"}
+
+@app.get("/api/live/policy")
+async def live_policy(limit: int = Query(default=50, le=200)):
+    return {"decisions": get_live_policy_decisions(limit), "source": "engine"}
+
+@app.get("/api/live/soul-history")
+async def live_soul_history():
+    return {"versions": get_live_soul_history(), "source": "engine"}
+
+@app.get("/api/live/onchain")
+async def live_onchain(limit: int = Query(default=50, le=200)):
+    return {"transactions": get_live_onchain_transactions(limit), "source": "engine"}
+
+@app.get("/api/live/sessions")
+async def live_sessions(limit: int = Query(default=20, le=100)):
+    return {"sessions": get_live_session_summaries(limit), "source": "engine"}
 
 
 # ═══════════════════════════════════════════════════════════

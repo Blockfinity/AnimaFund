@@ -648,3 +648,153 @@ def get_child_lifecycle_events(child_id: str = None, limit: int = 50) -> list:
     except Exception:
         conn.close()
         return []
+
+
+# ═══════════════════════════════════════════════════════════
+# MISSING TABLE READERS — Complete visibility
+# ═══════════════════════════════════════════════════════════
+
+def get_live_working_memory() -> list:
+    """Current session goals, plans, active context."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, type, content, priority, createdAt, expiresAt FROM working_memory ORDER BY priority DESC, createdAt DESC LIMIT 50")
+        items = [{"id": r["id"], "type": r["type"], "content": r["content"], "priority": r["priority"], "created_at": r["createdAt"], "expires_at": r["expiresAt"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_episodic_memory(limit: int = 50) -> list:
+    """Event log — what happened, when, importance score."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, event, importance, emotionalValence, context, timestamp FROM episodic_memory ORDER BY timestamp DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "event": r["event"], "importance": r["importance"], "valence": r["emotionalValence"], "context": r["context"], "timestamp": r["timestamp"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_procedural_memory() -> list:
+    """Procedures the agent has developed — named step-by-step methods with success tracking."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, name, steps, triggerConditions, successCount, failureCount, lastUsedAt, createdAt FROM procedural_memory ORDER BY lastUsedAt DESC LIMIT 50")
+        items = [{"id": r["id"], "name": r["name"], "steps": r["steps"], "triggers": r["triggerConditions"], "success_count": r["successCount"], "failure_count": r["failureCount"], "last_used": r["lastUsedAt"], "created_at": r["createdAt"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_installed_tools() -> list:
+    """Tools the agent has installed — npm packages, MCP servers."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, name, type, config, installedAt, enabled FROM installed_tools ORDER BY installedAt DESC")
+        items = [{"id": r["id"], "name": r["name"], "type": r["type"], "config": r["config"], "installed_at": r["installedAt"], "enabled": bool(r["enabled"])} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_skills() -> list:
+    """Skills installed in the agent."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, name, description, content, autoActivate, installedAt FROM skills ORDER BY installedAt DESC")
+        items = [{"id": r["id"], "name": r["name"], "description": r["description"], "content_length": len(r["content"] or ""), "auto_activate": bool(r["autoActivate"]), "installed_at": r["installedAt"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_metric_snapshots(limit: int = 50) -> list:
+    """Periodic metric captures — performance tracking."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, metricName, metricValues, timestamp FROM metric_snapshots ORDER BY timestamp DESC LIMIT ?", (limit,))
+        items = []
+        for r in cursor.fetchall():
+            values = {}
+            try: values = json.loads(r["metricValues"]) if r["metricValues"] else {}
+            except: pass
+            items.append({"id": r["id"], "metric": r["metricName"], "values": values, "timestamp": r["timestamp"]})
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_policy_decisions(limit: int = 50) -> list:
+    """Policy engine decisions — what was allowed/denied and why."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, toolName, decision, reason, ruleCategory, timestamp FROM policy_decisions ORDER BY timestamp DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "tool": r["toolName"], "decision": r["decision"], "reason": r["reason"], "category": r["ruleCategory"], "timestamp": r["timestamp"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_soul_history() -> list:
+    """SOUL.md version history — how the agent's identity evolved."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, content, genesisAlignment, version, createdAt FROM soul_history ORDER BY createdAt DESC LIMIT 20")
+        items = [{"id": r["id"], "content_length": len(r["content"] or ""), "alignment": r["genesisAlignment"], "version": r["version"], "created_at": r["createdAt"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_onchain_transactions(limit: int = 50) -> list:
+    """On-chain USDC transactions — real blockchain payments."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, type, fromAddress, toAddress, amountWei, txHash, chain, status, timestamp FROM onchain_transactions ORDER BY timestamp DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "type": r["type"], "from": r["fromAddress"], "to": r["toAddress"], "amount_wei": r["amountWei"], "tx_hash": r["txHash"], "chain": r["chain"], "status": r["status"], "timestamp": r["timestamp"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_session_summaries(limit: int = 20) -> list:
+    """Session summaries — what the agent accomplished in each session."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, summary, turnsCount, toolCallsCount, totalCostCents, startedAt, endedAt FROM session_summaries ORDER BY endedAt DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "summary": r["summary"], "turns": r["turnsCount"], "tool_calls": r["toolCallsCount"], "cost_cents": r["totalCostCents"], "started_at": r["startedAt"], "ended_at": r["endedAt"]} for r in cursor.fetchall()]
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
