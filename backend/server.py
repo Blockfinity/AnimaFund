@@ -95,7 +95,7 @@ def get_engine_supervisor_status():
     """Check automaton-engine process status via supervisor."""
     try:
         r = subprocess.run(
-            ["sudo", "supervisorctl", "status", "automaton-engine"],
+            ["supervisorctl", "status", "automaton-engine"],
             capture_output=True, text=True, timeout=5,
         )
         output = r.stdout.strip()
@@ -217,7 +217,7 @@ async def create_genesis_agent():
 
         # 4. Start the engine via supervisor
         result = subprocess.run(
-            ["sudo", "supervisorctl", "start", "automaton-engine"],
+            ["supervisorctl", "start", "automaton-engine"],
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode != 0 and "already started" not in result.stderr.lower():
