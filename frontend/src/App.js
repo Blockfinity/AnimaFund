@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Toaster, toast } from 'sonner';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import EngineConsole from './components/EngineConsole';
 import AgentMind from './pages/AgentMind';
 import FundHQ from './pages/FundHQ';
 import Agents from './pages/Agents';
@@ -142,6 +143,11 @@ function App() {
                   {genesisState?.engine_state && <div>State: {genesisState.engine_state}</div>}
                   {!walletAddr && isRunning && <div style={{ color: '#FFB347', marginTop: '4px' }}>{genesisState?.stage === 'generating_wallet' ? 'Generating wallet...' : genesisState?.stage === 'provisioning' ? 'Wallet generated. Provisioning API key (may take 1-2 min)...' : 'Starting engine...'}</div>}
                 </div>
+              </div>
+
+              {/* Engine Console — live process tracker */}
+              <div style={{ marginBottom: '12px' }}>
+                <EngineConsole isRunning={isRunning || creating} />
               </div>
 
               {/* Creator wallet */}
