@@ -206,7 +206,7 @@ export default function AgentMind() {
       setEngineState(engine);
 
       // Always fetch agent list for the selector
-      if (engine.live) {
+      if (engine.live || engine.db_exists) {
         const [agRes, turnsRes, soulRes] = await Promise.all([
           fetch(`${API}/api/live/agents`),
           fetch(`${API}/api/live/turns?limit=100`),
@@ -369,7 +369,7 @@ export default function AgentMind() {
             <div style={{ padding: '40px', textAlign: 'center' }}>
               <Brain className="w-8 h-8" style={{ color: '#27272a', margin: '0 auto 12px' }} />
               <p style={{ fontSize: '12px', color: '#52525b' }}>
-                {engineState?.live ? 'No turns yet — agent is initializing...' : 'Engine not running.'}
+                {engineState?.live || engineState?.db_exists ? 'No turns yet — agent is initializing...' : 'Engine not running.'}
               </p>
             </div>
           )}
@@ -424,7 +424,7 @@ export default function AgentMind() {
             color: '#a1a1aa', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             background: '#0a0a0f', borderRadius: '4px', padding: '8px',
           }}>
-            {soul || (engineState?.live
+            {soul || (engineState?.live || engineState?.db_exists
                 ? 'Loading SOUL.md...'
                 : 'Engine not running.\n\nThe agent\'s SOUL.md — its self-authored identity — will appear here when the engine is live.'
             )}

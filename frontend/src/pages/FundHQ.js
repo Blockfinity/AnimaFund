@@ -226,7 +226,7 @@ export default function FundHQ({ fundName }) {
       const engine = await engineRes.json();
       setEngineState(engine);
 
-      if (engine.live) {
+      if (engine.live || engine.db_exists) {
         const [agRes, actRes] = await Promise.all([
           fetch(`${API}/api/live/agents`),
           fetch(`${API}/api/live/activity?limit=20`),
@@ -278,7 +278,7 @@ export default function FundHQ({ fundName }) {
   }
 
   const totalAgents = agents.length;
-  const isLive = engineState?.live || false;
+  const isLive = engineState?.live || engineState?.db_exists || false;
   const totalSpend = departments.reduce((s, d) => s + d.agents.length * 850, 0);
   const notifColors = { income: '#60EE79', deal: '#5B9CFF', milestone: '#FFB347', hire: '#9B6BFF', reject: '#FF5252', operational: '#34D399' };
 
