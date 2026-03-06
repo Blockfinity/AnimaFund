@@ -50,18 +50,24 @@ AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
 ANIMA_DIR = os.path.expanduser("~/.anima")
 CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r")
 
-# Node.js is installed system-wide at /usr/bin/node
-# If not available, run: bash /app/scripts/install_node.sh
+# Node.js is in the container (frontend uses it via yarn start)
 def get_node_bin():
-    """Get node binary path. Install if missing."""
+    """Find node binary."""
     import shutil
     node = shutil.which("node")
     if node:
         return node
-    # Try installing
-    subprocess.run(["bash", "/app/scripts/install_node.sh"], capture_output=True, timeout=120)
-    node = shutil.which("node")
-    return node or "node"
+    for p in ["/usr/bin/node", "/usr/local/bin/node", "/opt/node/bin/node"]:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    # Ask bash
+    try:
+        r = subprocess.run(["bash", "-lc", "which node"], capture_output=True, text=True, timeout=5)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return "node"
 
 
 @asynccontextmanager
@@ -185,6 +191,14 @@ async def create_genesis_agent():
                 return {"success": False, "error": f"Engine setup failed: {(proc.stdout + proc.stderr)[-500:]}"}
 
         node_bin = get_node_bin()
+        
+        # Verify node actually works before proceeding
+        try:
+            node_check = subprocess.run([node_bin, "--version"], capture_output=True, text=True, timeout=5)
+            if node_check.returncode != 0:
+                return {"success": False, "error": f"Node.js at {node_bin} not working: {node_check.stderr[:200]}"}
+        except FileNotFoundError:
+            return {"success": False, "error": f"Node.js not found at {node_bin}. The Automaton engine requires Node.js 20+."}
 
         # Step 2: Stage genesis prompt, constitution, skills, auto-config to ~/.anima/
         os.makedirs(ANIMA_DIR, exist_ok=True)
