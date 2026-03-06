@@ -128,9 +128,12 @@ async def genesis_status():
     """Check if the genesis agent has been created."""
     engine = is_engine_live()
     config_exists = os.path.exists(os.path.join(ANIMA_DIR, "anima.json"))
+    wallet_file = os.path.join(ANIMA_DIR, "wallet.json")
+    wallet_exists = os.path.exists(wallet_file)
     genesis_staged = os.path.exists(os.path.join(ANIMA_DIR, "genesis-prompt.md"))
+    api_key_exists = os.path.exists(os.path.join(ANIMA_DIR, "config.json"))
 
-    # The Automaton stores the wallet address in anima.json after setup wizard runs
+    # Read wallet address — try anima.json first, fall back to wallet.json
     wallet_address = None
     if config_exists:
         try:
@@ -139,11 +142,45 @@ async def genesis_status():
                 wallet_address = config.get("walletAddress")
         except Exception:
             pass
+    if not wallet_address and wallet_exists:
+        try:
+            from eth_account import Account
+            with open(wallet_file, "r") as f:
+                wd = json.load(f)
+            pk = wd.get("privateKey", "")
+            if pk:
+                acct = Account.from_key(pk)
+                wallet_address = acct.address
+        except Exception:
+            # Derive address using basic crypto if eth_account not available
+            try:
+                with open(wallet_file, "r") as f:
+                    wd = json.load(f)
+                # wallet.json has privateKey, but address is derived by viem
+                # We can't derive it in Python without web3 — check if the engine wrote it
+                wallet_address = wd.get("address")
+            except Exception:
+                pass
 
     # Check engine process
     engine_running = is_engine_process_running()
 
-    # Generate QR if we have a real address from the engine
+    # Determine detailed stage
+    if engine_running:
+        if config_exists and api_key_exists:
+            stage = "running"
+        elif wallet_exists and not api_key_exists:
+            stage = "provisioning"  # Wallet done, waiting for API key
+        elif wallet_exists and api_key_exists:
+            stage = "configuring"  # API key done, writing config
+        else:
+            stage = "generating_wallet"
+    elif config_exists:
+        stage = "created"
+    else:
+        stage = "not_created"
+
+    # Generate QR if we have a real address
     qr_b64 = None
     if wallet_address and wallet_address.startswith("0x"):
         try:
@@ -162,6 +199,8 @@ async def genesis_status():
         "wallet_address": wallet_address,
         "qr_code": qr_b64,
         "config_exists": config_exists,
+        "wallet_exists": wallet_exists,
+        "api_key_exists": api_key_exists,
         "genesis_staged": genesis_staged,
         "engine_live": engine.get("live", False),
         "engine_running": engine_running,
@@ -169,6 +208,7 @@ async def genesis_status():
         "fund_name": engine.get("fund_name"),
         "turn_count": engine.get("turn_count", 0),
         "creator_wallet": CREATOR_WALLET,
+        "stage": stage,
         "status": "running" if engine_running else ("created" if config_exists else "not_created"),
     }
 
@@ -421,3 +461,27 @@ async def engine_status():
         "skills": skills,
         "creator_wallet": CREATOR_WALLET,
     }
+
+
+@app.get("/api/engine/logs")
+async def engine_logs(lines: int = Query(default=50, le=200)):
+    """Read engine stdout/stderr logs for debugging."""
+    result = {}
+    for name, path in [("stdout", "/var/log/automaton.out.log"), ("stderr", "/var/log/automaton.err.log")]:
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    all_lines = f.readlines()
+                    result[name] = "".join(all_lines[-lines:])
+            except Exception as e:
+                result[name] = f"Error reading: {e}"
+        else:
+            result[name] = ""
+    # Also check ~/.anima/ directory contents for debugging
+    anima_files = []
+    if os.path.isdir(ANIMA_DIR):
+        for f in os.listdir(ANIMA_DIR):
+            fp = os.path.join(ANIMA_DIR, f)
+            anima_files.append({"name": f, "is_dir": os.path.isdir(fp), "size": os.path.getsize(fp) if os.path.isfile(fp) else 0})
+    result["anima_dir"] = anima_files
+    return result
