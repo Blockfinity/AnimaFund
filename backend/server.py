@@ -24,6 +24,9 @@ from engine_bridge import (
     get_live_transactions, get_live_financials,
     get_live_heartbeat_history, get_live_memory_facts, get_live_soul,
     get_live_turns, get_live_modifications,
+    get_live_inbox_messages, get_live_relationships,
+    get_live_reputation, get_live_discovered_agents,
+    get_child_lifecycle_events,
 )
 
 load_dotenv()

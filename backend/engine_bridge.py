@@ -382,3 +382,169 @@ def get_live_modifications(limit: int = 30) -> list:
     except Exception:
         conn.close()
         return []
+
+
+def get_live_inbox_messages(limit: int = 50) -> list:
+    """Read social messages — interactions with hired/external agents."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        cursor = conn.execute("""
+            SELECT id, "from", "to", content, signedAt, createdAt, replyTo, status
+            FROM inbox_messages ORDER BY createdAt DESC LIMIT ?
+        """, (limit,))
+        msgs = []
+        for row in cursor.fetchall():
+            msgs.append({
+                "id": row["id"],
+                "from_address": row["from"],
+                "to_address": row["to"],
+                "content": (row["content"] or "")[:1000],
+                "signed_at": row["signedAt"],
+                "created_at": row["createdAt"],
+                "reply_to": row["replyTo"],
+                "status": row["status"],
+            })
+        conn.close()
+        return msgs
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_relationships() -> list:
+    """Read relationship memory — trust scores and interaction history with other agents."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        cursor = conn.execute("""
+            SELECT id, entityAddress, entityName, relationshipType,
+                   trustScore, interactionCount, lastInteractionAt, notes,
+                   createdAt, updatedAt
+            FROM relationship_memory ORDER BY updatedAt DESC
+        """)
+        rels = []
+        for row in cursor.fetchall():
+            rels.append({
+                "id": row["id"],
+                "address": row["entityAddress"],
+                "name": row["entityName"],
+                "relationship_type": row["relationshipType"],
+                "trust_score": row["trustScore"],
+                "interaction_count": row["interactionCount"],
+                "last_interaction": row["lastInteractionAt"],
+                "notes": row["notes"],
+                "created_at": row["createdAt"],
+                "updated_at": row["updatedAt"],
+            })
+        conn.close()
+        return rels
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_reputation(address: str = None) -> list:
+    """Read on-chain reputation scores given/received."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        query = "SELECT id, fromAgent, toAgent, score, comment, txHash, timestamp FROM reputation"
+        params = ()
+        if address:
+            query += " WHERE fromAgent = ? OR toAgent = ?"
+            params = (address, address)
+        query += " ORDER BY timestamp DESC LIMIT 50"
+        cursor = conn.execute(query, params)
+        reps = []
+        for row in cursor.fetchall():
+            reps.append({
+                "id": row["id"],
+                "from_agent": row["fromAgent"],
+                "to_agent": row["toAgent"],
+                "score": row["score"],
+                "comment": row["comment"],
+                "tx_hash": row["txHash"],
+                "timestamp": row["timestamp"],
+            })
+        conn.close()
+        return reps
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_discovered_agents() -> list:
+    """Read agents discovered via ERC-8004 registry — these are potential hires."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        cursor = conn.execute("""
+            SELECT agentAddress, agentCard, fetchedFrom, cardHash,
+                   fetchCount, lastFetchedAt, createdAt
+            FROM discovered_agents_cache ORDER BY lastFetchedAt DESC
+        """)
+        agents = []
+        for row in cursor.fetchall():
+            card = {}
+            try:
+                card = json.loads(row["agentCard"]) if row["agentCard"] else {}
+            except Exception:
+                pass
+            agents.append({
+                "address": row["agentAddress"],
+                "card": card,
+                "name": card.get("name", row["agentAddress"][:10] + "..."),
+                "description": card.get("description", ""),
+                "services": card.get("services", []),
+                "fetched_from": row["fetchedFrom"],
+                "fetch_count": row["fetchCount"],
+                "last_fetched": row["lastFetchedAt"],
+                "discovered_at": row["createdAt"],
+            })
+        conn.close()
+        return agents
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_child_lifecycle_events(child_id: str = None, limit: int = 50) -> list:
+    """Read child lifecycle state transitions."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        query = "SELECT id, childId, fromState, toState, reason, metadata, createdAt FROM child_lifecycle_events"
+        params = ()
+        if child_id:
+            query += " WHERE childId = ?"
+            params = (child_id,)
+        query += " ORDER BY createdAt DESC LIMIT ?"
+        params = params + (limit,)
+        cursor = conn.execute(query, params)
+        events = []
+        for row in cursor.fetchall():
+            meta = {}
+            try:
+                meta = json.loads(row["metadata"]) if row["metadata"] else {}
+            except Exception:
+                pass
+            events.append({
+                "id": row["id"],
+                "child_id": row["childId"],
+                "from_state": row["fromState"],
+                "to_state": row["toState"],
+                "reason": row["reason"],
+                "metadata": meta,
+                "created_at": row["createdAt"],
+            })
+        conn.close()
+        return events
+    except Exception:
+        conn.close()
+        return []
