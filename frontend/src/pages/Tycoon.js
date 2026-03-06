@@ -213,66 +213,31 @@ function DepartmentFloor({ deptName, agents, floorNum, spendCents }) {
 
 // ─── Main Tycoon Component ──────────────────────────────
 export default function Tycoon() {
-  const [overview, setOverview] = useState(null);
   const [agents, setAgents] = useState([]);
   const [activities, setActivities] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [engineState, setEngineState] = useState(null);
-  const [demoMode, setDemoMode] = useState(true);
   const [loading, setLoading] = useState(true);
   const buildingRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     try {
-      // Check if engine is live
       const engineRes = await fetch(`${API}/api/engine/live`);
       const engine = await engineRes.json();
       setEngineState(engine);
 
-      // Auto-switch to live if engine is running
-      if (engine.live && demoMode) {
-        // Engine just came online — could auto-switch, but we let user decide
-      }
-
-      if (!demoMode && engine.live) {
-        // ═══ LIVE MODE: Read from engine ═══
-        const [agRes, actRes, finRes] = await Promise.all([
+      if (engine.live) {
+        const [agRes, actRes] = await Promise.all([
           fetch(`${API}/api/live/agents`),
           fetch(`${API}/api/live/activity?limit=20`),
-          fetch(`${API}/api/live/financials`),
         ]);
-        const [ag, act, fin] = await Promise.all([agRes.json(), actRes.json(), finRes.json()]);
-
+        const [ag, act] = await Promise.all([agRes.json(), actRes.json()]);
         setAgents(ag.agents || []);
         setActivities((act.activities || []).map(a => ({
           text: `${a.tool_name}: ${(a.result_preview || '').slice(0, 60)}`,
-          type: a.error ? 'reject' : categorizeToolCall(a.tool_name),
+          type: categorizeToolCall(a.tool_name),
           id: a.activity_id,
-          timestamp: a.timestamp,
         })));
-
-        // Build overview from live financial data
-        const credits = parseInt(fin.last_known_balance || '0', 10) / 100;
-        const usdc = parseFloat(fin.last_known_usdc || '0');
-        setOverview({
-          fund_name: engine.fund_name || 'Anima Fund',
-          current_aum: usdc + credits,
-          usdc_balance: usdc,
-          conway_credits: credits,
-          survival_tier: engine.agent_state || 'unknown',
-          total_agents: ag.agents?.length || 0,
-          alive_agents: (ag.agents || []).filter(a => a.status !== 'dead').length,
-          total_deals: 0,
-          funded_deals: 0,
-          portfolio_companies: 0,
-          rejection_rate: 99,
-          management_fee: 3,
-          carried_interest: 20,
-          turn_count: engine.turn_count || 0,
-          source: 'engine',
-        });
-
-        // Build departments from actual agent roles
         const deptMap = {};
         for (const a of (ag.agents || [])) {
           const dept = a.department || guessDepartment(a.role);
@@ -281,43 +246,25 @@ export default function Tycoon() {
           deptMap[dept].spend += (a.funded_cents || 0);
         }
         setDepartments(Object.values(deptMap));
-
       } else {
-        // ═══ DEMO MODE: Read from MongoDB ═══
-        const [ovRes, agRes, actRes, deptRes] = await Promise.all([
-          fetch(`${API}/api/fund/overview`),
-          fetch(`${API}/api/agents`),
-          fetch(`${API}/api/activity?limit=20`),
-          fetch(`${API}/api/departments`),
-        ]);
-        const [ov, ag, act, dept] = await Promise.all([ovRes.json(), agRes.json(), actRes.json(), deptRes.json()]);
-
-        setOverview({ ...ov, source: 'demo' });
-        setAgents(ag.agents || []);
-        setActivities((act.activities || []).map(a => ({
-          text: `${a.agent_name}: ${a.description}`,
-          type: categorizeActivity(a.category),
-          id: a.activity_id,
-          timestamp: a.timestamp,
-        })));
-
-        // Build departments from actual agent data
-        const deptMap = {};
-        for (const a of (ag.agents || [])) {
-          const dName = a.department || 'Unassigned';
-          if (!deptMap[dName]) deptMap[dName] = { name: dName, agents: [], spend: 0 };
-          deptMap[dName].agents.push(a);
-          deptMap[dName].spend += (a.credits_balance || 0) * 100;
-        }
-        setDepartments(Object.values(deptMap));
+        setAgents([]);
+        setActivities([]);
+        setDepartments([]);
       }
     } catch (e) { console.error('Tycoon fetch error:', e); }
     finally { setLoading(false); }
-  }, [demoMode]);
+  }, []);
 
   useEffect(() => { fetchData(); const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData]);
 
   const scrollBuilding = (dir) => { if (buildingRef.current) buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' }); };
+
+  const getDeptAgentCount = (dept) => {
+    return agents.filter(a => {
+      const dn = (a.department || '').toLowerCase();
+      return dn.includes(dept.id) || dn.includes(dept.name.split('&')[0].trim().toLowerCase().replace(/ /g, ''));
+    }).length;
+  };
 
   if (loading) {
     return (
@@ -330,9 +277,8 @@ export default function Tycoon() {
     );
   }
 
-  const totalAgents = demoMode ? agents.length : (overview?.total_agents || 0);
-  const aliveAgents = overview?.alive_agents || 0;
-  const fundLevel = Math.max(1, Math.floor((overview?.current_aum || 0) / 1_000_000));
+  const totalAgents = agents.length;
+  const isLive = engineState?.live || false;
   const totalSpend = departments.reduce((s, d) => s + d.agents.length * 850, 0);
   const notifColors = { income: '#60EE79', deal: '#5B9CFF', milestone: '#FFB347', hire: '#9B6BFF', reject: '#FF5252', operational: '#34D399' };
 
@@ -345,51 +291,20 @@ export default function Tycoon() {
 
       {/* ═══ TOP INFO BAR ═══ */}
       <div style={{ background: '#18181b', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '6px 6px 0 0', gap: '10px', flexWrap: 'wrap' }}>
-        {/* Fund Level */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'rgba(255,179,71,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24"><polygon points="12,2 15,9 22,9 16,14 18,21 12,17 6,21 8,14 2,9 9,9" fill="#FFB347"/></svg>
-          </div>
-          <div>
-            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>FUND LEVEL</div>
-            <div style={{ fontSize: '16px', color: '#fff', fontWeight: 900 }}>{fundLevel}</div>
-          </div>
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isLive ? '#34D399' : '#71717a', boxShadow: isLive ? '0 0 8px #34D399' : 'none' }} />
+          <span style={{ fontSize: '12px', fontWeight: 900, color: '#fff', letterSpacing: '1px' }}>
+            {isLive ? 'LIVE' : 'WAITING FOR ENGINE'}
+          </span>
         </div>
         <Sep />
-        <Stat label="AUM" value={formatMoney(overview?.current_aum || 0)} />
+        <Stat label="AGENTS" value={totalAgents} />
         <Sep />
-        <Stat label="USDC" value={formatMoney(overview?.usdc_balance || 0)} color="#60EE79" />
+        <Stat label="DEPARTMENTS" value={departments.length} />
         <Sep />
-        <Stat label="CREDITS" value={formatMoney(overview?.conway_credits || 0)} color="#5B9CFF" />
+        <Stat label="TURNS" value={engineState?.turn_count || 0} />
         <Sep />
-        <Stat label="DAILY FEES" value={`${formatMoney((overview?.current_aum || 0) * 0.03 / 365)}/d`} color="#FFB347" />
-        <Sep />
-        <Stat label="AGENTS" value={`${aliveAgents} / ${totalAgents}`} />
-        <Sep />
-        <Stat label="PORTFOLIO" value={`${overview?.portfolio_companies || 0}`} color="#5B9CFF" />
-        <Sep />
-        {/* Data source + demo toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '1px' }}>
-            {overview?.source === 'engine' ? 'LIVE' : 'DEMO'}
-          </div>
-          <button
-            data-testid="demo-mode-toggle"
-            onClick={() => { setDemoMode(!demoMode); setLoading(true); }}
-            style={{
-              width: '40px', height: '20px', borderRadius: '10px', border: 'none', cursor: 'pointer',
-              background: demoMode ? 'rgba(255,255,255,0.2)' : '#60EE79', position: 'relative', transition: 'background 0.2s',
-            }}
-          >
-            <div style={{
-              width: '16px', height: '16px', borderRadius: '50%', background: '#fff', position: 'absolute',
-              top: '2px', transition: 'left 0.2s', left: demoMode ? '2px' : '22px',
-            }} />
-          </button>
-          {engineState && !engineState.live && !demoMode && (
-            <span style={{ fontSize: '8px', color: '#FF5252', fontWeight: 700 }}>ENGINE OFFLINE</span>
-          )}
-        </div>
+        <Stat label="STATE" value={(engineState?.agent_state || 'offline').toUpperCase()} color={isLive ? '#34D399' : '#71717a'} />
       </div>
 
       {/* ═══ MAIN: Building + Sidebar ═══ */}
@@ -408,11 +323,11 @@ export default function Tycoon() {
         <div ref={buildingRef} style={{ flex: 1, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', overflowX: 'hidden', border: '4px solid #35638C', borderRadius: '4px', background: '#B8D8F0', scrollbarWidth: 'thin' }}>
           <div style={{ background: 'linear-gradient(180deg, #7AD2FF, #A2E5FF)', padding: '8px', textAlign: 'center', borderBottom: '4px solid #35638C' }}>
             <span style={{ fontSize: '13px', fontWeight: 900, color: '#35638C', letterSpacing: '3px' }}>
-              {overview?.fund_name || 'ANIMA FUND'} HQ
+              ANIMA FUND HQ
             </span>
             <div style={{ fontSize: '9px', color: '#4A7EB5', fontWeight: 700, marginTop: '2px' }}>
-              {departments.length} Floors | {totalAgents} Agents | AUM {formatMoney(overview?.current_aum || 0)}
-              {overview?.source === 'engine' && <span style={{ color: '#60EE79', marginLeft: '8px' }}>LIVE</span>}
+              {departments.length} Floors | {totalAgents} Agents
+              {isLive && <span style={{ color: '#60EE79', marginLeft: '8px' }}>LIVE</span>}
             </div>
           </div>
 

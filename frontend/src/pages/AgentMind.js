@@ -191,7 +191,7 @@ export default function AgentMind() {
   const [agents, setAgents] = useState([]);
   const [selectedAgent, setSelectedAgent] = useState('all');
   const [engineState, setEngineState] = useState(null);
-  const [demoMode, setDemoMode] = useState(true);
+  const [demoMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
