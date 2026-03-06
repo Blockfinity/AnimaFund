@@ -3,7 +3,20 @@
 
 cd /app/automaton
 
-# Try system node
+# ── Swap better-sqlite3 native addon to match current arch ──
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64|amd64) PREBUILD_DIR="prebuilds/linux-x64" ;;
+    aarch64|arm64) PREBUILD_DIR="prebuilds/linux-arm64" ;;
+esac
+
+BSQ_PREBUILD="node_modules/better-sqlite3/${PREBUILD_DIR}/build/Release/better_sqlite3.node"
+BSQ_TARGET="node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+if [ -f "$BSQ_PREBUILD" ]; then
+    cp "$BSQ_PREBUILD" "$BSQ_TARGET" 2>/dev/null && echo "Loaded better-sqlite3 for $ARCH"
+fi
+
+# ── Find node ──
 for p in /usr/bin/node /usr/local/bin/node; do
     if [ -x "$p" ]; then
         echo "Using system node: $p ($($p --version))"
@@ -17,7 +30,6 @@ if [ -n "$NODE" ] && [ -x "$NODE" ]; then
     yes "" 2>/dev/null | exec "$NODE" dist/index.js --run
 fi
 
-# Use bundled node binary
 if [ -x "/app/automaton/bin/node" ]; then
     echo "Using bundled node: $(/app/automaton/bin/node --version)"
     yes "" 2>/dev/null | exec /app/automaton/bin/node dist/index.js --run
