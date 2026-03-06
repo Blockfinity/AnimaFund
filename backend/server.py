@@ -170,92 +170,66 @@ async def genesis_status():
 @app.post("/api/genesis/create")
 async def create_genesis_agent():
     """
-    Build the Automaton and start it. The engine handles its own wallet
-    generation, API provisioning, and setup via its built-in wizard.
+    Stage files and start the Automaton engine.
+    The engine handles everything: wallet, API key, skills loading, constitution, SOUL.md.
     """
     try:
-        # Step 1: Create directories + stage files
+        # Step 1: Ensure engine dependencies (node, pnpm, node_modules, dist)
+        setup_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "setup_engine.sh")
+        dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
+        node_modules = os.path.join(AUTOMATON_DIR, "node_modules")
+
+        if not os.path.exists(dist_path) or not os.path.isdir(node_modules):
+            proc = subprocess.run(["bash", setup_script], capture_output=True, text=True, timeout=180)
+            if proc.returncode != 0:
+                return {"success": False, "error": f"Engine setup failed: {(proc.stdout + proc.stderr)[-500:]}"}
+
+        node_bin = get_node_bin()
+
+        # Step 2: Stage genesis prompt, constitution, skills, auto-config to ~/.anima/
         os.makedirs(ANIMA_DIR, exist_ok=True)
         os.makedirs(os.path.join(ANIMA_DIR, "skills"), exist_ok=True)
 
-        # Stage genesis prompt
-        genesis_staged = False
-        genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
-        if os.path.exists(genesis_src):
-            with open(genesis_src, "r") as f:
-                content = f.read()
-            with open(os.path.join(ANIMA_DIR, "genesis-prompt.md"), "w") as f:
-                f.write(content)
-            genesis_staged = True
+        for filename in ["genesis-prompt.md", "constitution.md"]:
+            src = os.path.join(AUTOMATON_DIR, filename)
+            if os.path.exists(src):
+                with open(src, "r") as f:
+                    content = f.read()
+                dst = os.path.join(ANIMA_DIR, filename)
+                with open(dst, "w") as f:
+                    f.write(content)
+                if filename == "constitution.md":
+                    try:
+                        os.chmod(dst, 0o444)
+                    except Exception:
+                        pass
 
-        # Install constitution
-        const_installed = False
-        const_src = os.path.join(AUTOMATON_DIR, "constitution.md")
-        if os.path.exists(const_src):
-            with open(const_src, "r") as f:
-                content = f.read()
-            const_dst = os.path.join(ANIMA_DIR, "constitution.md")
-            with open(const_dst, "w") as f:
-                f.write(content)
-            try:
-                os.chmod(const_dst, 0o444)
-            except Exception:
-                pass
-            const_installed = True
-
-        # Install skills
         skills_installed = []
         skills_src = os.path.join(AUTOMATON_DIR, "skills")
         if os.path.isdir(skills_src):
             for skill_name in os.listdir(skills_src):
                 skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
                 if os.path.exists(skill_file):
-                    target_dir = os.path.join(ANIMA_DIR, "skills", skill_name)
-                    os.makedirs(target_dir, exist_ok=True)
+                    target = os.path.join(ANIMA_DIR, "skills", skill_name)
+                    os.makedirs(target, exist_ok=True)
                     with open(skill_file, "r") as f:
                         content = f.read()
-                    with open(os.path.join(target_dir, "SKILL.md"), "w") as f:
+                    with open(os.path.join(target, "SKILL.md"), "w") as f:
                         f.write(content)
                     skills_installed.append(skill_name)
 
-        # Write auto-config for non-interactive wizard
-        auto_config = {"name": "Anima Fund", "creatorAddress": "0x0000000000000000000000000000000000000000"}
         with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
-            json.dump(auto_config, f, indent=2)
+            json.dump({"name": "Anima Fund", "creatorAddress": "0x0000000000000000000000000000000000000000"}, f)
 
-        # Step 2: Ensure node is available and dependencies installed
-        dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
-        node_bin = get_node_bin()
-        build_error = None
-        node_modules = os.path.join(AUTOMATON_DIR, "node_modules")
-
-        # Always ensure node_modules exists (npm deps don't deploy with git)
-        if not os.path.isdir(node_modules) or not os.path.exists(dist_path):
-            try:
-                FULL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"
-                # The Automaton uses pnpm for dependency resolution. npm doesn't resolve peer deps correctly.
-                # Install pnpm via npm (npm always ships with node), then use pnpm for deps.
-                install_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && (command -v pnpm || npm install -g pnpm --force) 2>&1 && pnpm install --no-frozen-lockfile 2>&1'
-                if not os.path.exists(dist_path):
-                    install_cmd += ' && pnpm build 2>&1'
-                proc = subprocess.run(
-                    ["bash", "-c", install_cmd],
-                    capture_output=True, text=True, timeout=180,
-                    env={**os.environ, "PATH": FULL_PATH}
-                )
-                if proc.returncode != 0:
-                    return {"success": False, "error": f"Setup failed: {(proc.stdout + proc.stderr)[-500:]}"}
-            except subprocess.TimeoutExpired:
-                return {"success": False, "error": "Setup timed out"}
-
-        # Step 3: Start the engine — it handles wallet, API key, everything
+        # Step 3: Check if already running
         try:
             check = subprocess.run(["pgrep", "-f", "dist/index.js"], capture_output=True, text=True)
             if check.returncode == 0:
-                return {"success": True, "message": "Engine already running", "pid": check.stdout.strip()}
+                return {"success": True, "message": "Engine already running", "pid": check.stdout.strip().split()[0]}
         except Exception:
             pass
 
+        # Step 4: Start the engine — it handles everything from here
         proc = subprocess.Popen(
             [node_bin, dist_path, "--run"],
             cwd=AUTOMATON_DIR,
@@ -266,27 +240,11 @@ async def create_genesis_agent():
 
         await db.genesis.update_one(
             {"type": "founder"},
-            {"$set": {
-                "creator_wallet": CREATOR_WALLET,
-                "genesis_staged": genesis_staged,
-                "constitution_installed": const_installed,
-                "skills_installed": skills_installed,
-                "pid": proc.pid,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "status": "engine_starting",
-            }},
+            {"$set": {"creator_wallet": CREATOR_WALLET, "skills_installed": skills_installed, "pid": proc.pid, "created_at": datetime.now(timezone.utc).isoformat(), "status": "engine_starting"}},
             upsert=True,
         )
 
-        return {
-            "success": True,
-            "pid": proc.pid,
-            "genesis_staged": genesis_staged,
-            "constitution_installed": const_installed,
-            "skills_installed": skills_installed,
-            "creator_wallet": CREATOR_WALLET,
-            "message": "Engine starting. It will generate the wallet, provision API key, and begin operating.",
-        }
+        return {"success": True, "pid": proc.pid, "skills_installed": skills_installed, "creator_wallet": CREATOR_WALLET, "message": "Engine starting."}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
