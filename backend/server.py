@@ -1,6 +1,10 @@
 """
 Anima Fund - Autonomous AI-to-AI VC Fund Platform
 FastAPI Backend Server
+
+Data sources:
+  LIVE MODE  — reads from Automaton's SQLite state.db (~/.anima/state.db)
+  DEMO MODE  — reads from MongoDB (seeded demo data)
 """
 import os
 import json
@@ -10,11 +14,16 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
+from engine_bridge import (
+    is_engine_live, get_live_agents, get_live_activity,
+    get_live_transactions, get_live_financials,
+    get_live_heartbeat_history, get_live_memory_facts, get_live_soul,
+)
 
 load_dotenv()
 
@@ -522,3 +531,115 @@ async def get_departments():
             "current_count": count,
         })
     return {"departments": result}
+
+
+
+# ═══════════════════════════════════════════════════════════
+# LIVE ENGINE ENDPOINTS
+# These read from the Automaton's actual SQLite state.db
+# when the engine is running on Conway Cloud.
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/api/engine/live")
+async def check_engine_live():
+    """Check if the Automaton engine is running with real state."""
+    return is_engine_live()
+
+
+@app.get("/api/live/agents")
+async def get_live_agents_endpoint():
+    """Get agents from the engine's children table (real spawned/hired agents)."""
+    agents = get_live_agents()
+    return {"agents": agents, "total": len(agents), "source": "engine"}
+
+
+@app.get("/api/live/activity")
+async def get_live_activity_endpoint(limit: int = Query(default=50, le=200)):
+    """Get real tool call activity from the engine's turns/tool_calls tables."""
+    activity = get_live_activity(limit)
+    return {"activities": activity, "total": len(activity), "source": "engine"}
+
+
+@app.get("/api/live/transactions")
+async def get_live_transactions_endpoint(limit: int = Query(default=50, le=200)):
+    """Get real financial transactions from the engine."""
+    txns = get_live_transactions(limit)
+    return {"transactions": txns, "total": len(txns), "source": "engine"}
+
+
+@app.get("/api/live/financials")
+async def get_live_financials_endpoint():
+    """Get real financial state from the engine's KV store and spend tracking."""
+    return get_live_financials()
+
+
+@app.get("/api/live/heartbeat")
+async def get_live_heartbeat_endpoint(limit: int = Query(default=20, le=100)):
+    """Get heartbeat task execution history from the engine."""
+    history = get_live_heartbeat_history(limit)
+    return {"history": history, "total": len(history), "source": "engine"}
+
+
+@app.get("/api/live/memory")
+async def get_live_memory_endpoint():
+    """Get semantic memory facts (portfolio data, financial facts, learned info)."""
+    facts = get_live_memory_facts()
+    return {"facts": facts, "total": len(facts), "source": "engine"}
+
+
+@app.get("/api/live/soul")
+async def get_live_soul_endpoint():
+    """Get the current SOUL.md content from the running engine."""
+    content = get_live_soul()
+    if content is None:
+        return {"content": None, "exists": False}
+    return {"content": content, "exists": True}
+
+
+# ─── Unified endpoint: auto-selects live vs demo ─────────
+@app.get("/api/unified/overview")
+async def get_unified_overview(source: str = Query(default="auto")):
+    """
+    Returns fund overview from the best available source.
+    source=auto: Use engine if live, else demo.
+    source=live: Force engine (returns empty if not running).
+    source=demo: Force MongoDB demo data.
+    """
+    engine_state = is_engine_live()
+
+    if source == "live" or (source == "auto" and engine_state.get("live")):
+        financials = get_live_financials()
+        agents = get_live_agents()
+        alive = [a for a in agents if a["status"] not in ("dead", "cleaned_up", "failed")]
+
+        credits = 0
+        usdc = 0
+        try:
+            credits = int(financials.get("last_known_balance", "0"))
+        except (ValueError, TypeError):
+            pass
+        try:
+            usdc = float(financials.get("last_known_usdc", "0"))
+        except (ValueError, TypeError):
+            pass
+
+        return {
+            "source": "engine",
+            "engine_live": True,
+            "fund_name": engine_state.get("fund_name", "Anima Fund"),
+            "agent_state": engine_state.get("agent_state", "unknown"),
+            "turn_count": engine_state.get("turn_count", 0),
+            "total_agents": len(agents),
+            "alive_agents": len(alive),
+            "conway_credits": credits / 100,
+            "usdc_balance": usdc,
+            "total_inference_cost": financials.get("total_inference_cost_cents", 0) / 100,
+            "total_inference_calls": financials.get("total_inference_calls", 0),
+            "spend_by_category": financials.get("spend_by_category", {}),
+        }
+    else:
+        # Fall back to demo data
+        overview = await get_fund_overview()
+        overview["source"] = "demo"
+        overview["engine_live"] = engine_state.get("live", False)
+        return overview
