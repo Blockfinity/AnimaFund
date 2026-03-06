@@ -233,15 +233,13 @@ async def create_genesis_agent():
         if not os.path.isdir(node_modules) or not os.path.exists(dist_path):
             try:
                 FULL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"
-                # Install deps + build if needed
-                if os.path.exists(dist_path):
-                    # dist exists (deployed), just need deps
-                    build_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && corepack enable 2>/dev/null; pnpm install --no-frozen-lockfile 2>&1'
-                else:
-                    # Need full build
-                    build_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && corepack enable 2>/dev/null; pnpm install --no-frozen-lockfile 2>&1 && pnpm build 2>&1'
+                # The Automaton uses pnpm for dependency resolution. npm doesn't resolve peer deps correctly.
+                # Install pnpm via npm (npm always ships with node), then use pnpm for deps.
+                install_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && (command -v pnpm || npm install -g pnpm --force) 2>&1 && pnpm install --no-frozen-lockfile 2>&1'
+                if not os.path.exists(dist_path):
+                    install_cmd += ' && pnpm build 2>&1'
                 proc = subprocess.run(
-                    ["bash", "-c", build_cmd],
+                    ["bash", "-c", install_cmd],
                     capture_output=True, text=True, timeout=180,
                     env={**os.environ, "PATH": FULL_PATH}
                 )
