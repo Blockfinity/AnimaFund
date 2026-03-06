@@ -15,6 +15,8 @@ const pageLabels = {
 
 export default function Header({ overview, currentPage, onToggleSidebar }) {
   const isLive = overview?.live || false;
+  const dbExists = overview?.db_exists || false;
+  const agentState = overview?.agent_state;
   return (
     <header data-testid="header" className="h-14 bg-white border-b border-border flex items-center justify-between px-6 flex-shrink-0">
       <div className="flex items-center gap-4">
@@ -24,9 +26,9 @@ export default function Header({ overview, currentPage, onToggleSidebar }) {
         <h1 className="font-heading text-lg font-semibold tracking-tight text-foreground">{pageLabels[currentPage] || 'Dashboard'}</h1>
       </div>
       <div className="flex items-center gap-2 text-xs font-mono">
-        <CircleDot className={`w-3 h-3 ${isLive ? 'text-success animate-pulse-dot' : 'text-muted-foreground'}`} />
+        <CircleDot className={`w-3 h-3 ${isLive ? 'text-success animate-pulse-dot' : dbExists ? 'text-amber-400 animate-pulse-dot' : 'text-muted-foreground'}`} />
         <span className="text-muted-foreground uppercase tracking-wider">
-          {isLive ? `LIVE | ${overview.turn_count || 0} turns` : 'WAITING FOR ENGINE'}
+          {isLive ? `LIVE | ${overview.turn_count || 0} turns` : dbExists ? `ENGINE ACTIVE | ${agentState || 'awaiting funding'}` : 'WAITING FOR ENGINE'}
         </span>
       </div>
     </header>
