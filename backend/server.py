@@ -52,7 +52,7 @@ CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEj
 
 # Find node/pnpm/corepack dynamically — production paths vary
 def find_binary(name):
-    """Find a binary, checking PATH and common locations."""
+    """Find a binary, checking PATH, common locations, and yarn/npx paths."""
     import shutil
     found = shutil.which(name)
     if found:
@@ -244,14 +244,12 @@ async def create_genesis_agent():
 
         if not os.path.exists(dist_path):
             try:
-                node_bin = find_binary("node")
-                pnpm_bin = find_binary("pnpm")
-                corepack_bin = find_binary("corepack")
-                build_cmd = f"cd {AUTOMATON_DIR} && {corepack_bin} enable 2>/dev/null; {pnpm_bin} install --no-frozen-lockfile 2>&1 && {pnpm_bin} build 2>&1"
+                FULL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"
+                build_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && corepack enable 2>/dev/null; pnpm install --no-frozen-lockfile 2>&1 && pnpm build 2>&1'
                 proc = subprocess.run(
                     ["bash", "-c", build_cmd],
                     capture_output=True, text=True, timeout=180,
-                    env={**os.environ, "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"}
+                    env={**os.environ, "PATH": FULL_PATH}
                 )
                 if proc.returncode != 0:
                     return {"success": False, "error": f"Build failed: {(proc.stdout + proc.stderr)[-500:]}"}
@@ -266,12 +264,16 @@ async def create_genesis_agent():
         except Exception:
             pass
 
+        # Use bash to run node — bash resolves PATH better than Python's subprocess
+        FULL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:/root/.nvm/versions/node/v20.20.0/bin"
+        node_bin = find_binary("node")
+
         proc = subprocess.Popen(
-            [find_binary("node"), dist_path, "--run"],
+            ["bash", "-c", f'export PATH="{FULL_PATH}:$PATH" && exec {node_bin} {dist_path} --run'],
             cwd=AUTOMATON_DIR,
             stdout=open("/var/log/automaton.out.log", "a"),
             stderr=open("/var/log/automaton.err.log", "a"),
-            env={**os.environ, "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"},
+            env={**os.environ, "PATH": FULL_PATH},
             start_new_session=True,
         )
 
