@@ -30,7 +30,7 @@ function App() {
       const res = await fetch(`${API}/api/genesis/status`);
       const data = await res.json();
       setGenesisState(data);
-      if (data.wallet_exists || data.wallet_address) {
+      if (data.wallet_exists) {
         const [idRes, engRes] = await Promise.all([
           fetch(`${API}/api/live/identity`),
           fetch(`${API}/api/engine/live`),
@@ -39,7 +39,7 @@ function App() {
         setEngineState(await engRes.json());
       }
       if (view === 'loading') {
-        setView(data.wallet_exists || data.wallet_address ? 'dashboard' : 'genesis');
+        setView(data.wallet_exists ? 'dashboard' : 'genesis');
       }
     } catch (e) {
       console.error(e);
@@ -80,7 +80,7 @@ function App() {
   };
 
   const walletAddr = genesisState?.wallet_address;
-  const isCreated = genesisState?.wallet_exists || walletAddr;
+  const isCreated = genesisState?.wallet_exists;
   const isLive = engineState?.live || genesisState?.engine_live;
   const fundName = identity?.name || null;
 

@@ -106,9 +106,14 @@ async def genesis_status():
     # Also check MongoDB for stored genesis data
     mongo_genesis = await db.genesis.find_one({"type": "founder"}, {"_id": 0})
 
+    # If wallet file doesn't exist but MongoDB has stale data, clean it
+    if not wallet_exists and mongo_genesis:
+        await db.genesis.delete_many({"type": "founder"})
+        mongo_genesis = None
+
     return {
         "wallet_exists": wallet_exists,
-        "wallet_address": wallet_address or (mongo_genesis or {}).get("wallet_address"),
+        "wallet_address": wallet_address,
         "genesis_staged": genesis_staged,
         "engine_live": engine.get("live", False),
         "engine_state": engine.get("agent_state"),
