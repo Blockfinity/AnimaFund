@@ -223,24 +223,32 @@ async def create_genesis_agent():
         with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
             json.dump(auto_config, f, indent=2)
 
-        # Step 2: Ensure node is available, then build/run
+        # Step 2: Ensure node is available and dependencies installed
         dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
         node_bin = get_node_bin()
         build_error = None
+        node_modules = os.path.join(AUTOMATON_DIR, "node_modules")
 
-        if not os.path.exists(dist_path):
+        # Always ensure node_modules exists (npm deps don't deploy with git)
+        if not os.path.isdir(node_modules) or not os.path.exists(dist_path):
             try:
                 FULL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin"
-                build_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && corepack enable 2>/dev/null; pnpm install --no-frozen-lockfile 2>&1 && pnpm build 2>&1'
+                # Install deps + build if needed
+                if os.path.exists(dist_path):
+                    # dist exists (deployed), just need deps
+                    build_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && corepack enable 2>/dev/null; pnpm install --no-frozen-lockfile 2>&1'
+                else:
+                    # Need full build
+                    build_cmd = f'export PATH="{FULL_PATH}:$PATH" && cd {AUTOMATON_DIR} && corepack enable 2>/dev/null; pnpm install --no-frozen-lockfile 2>&1 && pnpm build 2>&1'
                 proc = subprocess.run(
                     ["bash", "-c", build_cmd],
                     capture_output=True, text=True, timeout=180,
                     env={**os.environ, "PATH": FULL_PATH}
                 )
                 if proc.returncode != 0:
-                    return {"success": False, "error": f"Build failed: {(proc.stdout + proc.stderr)[-500:]}"}
+                    return {"success": False, "error": f"Setup failed: {(proc.stdout + proc.stderr)[-500:]}"}
             except subprocess.TimeoutExpired:
-                return {"success": False, "error": "Build timed out"}
+                return {"success": False, "error": "Setup timed out"}
 
         # Step 3: Start the engine — it handles wallet, API key, everything
         try:
