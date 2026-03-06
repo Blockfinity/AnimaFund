@@ -188,6 +188,8 @@ function TurnBlock({ turn, index }) {
 
 export default function AgentMind() {
   const [turns, setTurns] = useState([]);
+  const [agents, setAgents] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState('all');
   const [engineState, setEngineState] = useState(null);
   const [demoMode, setDemoMode] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -204,38 +206,51 @@ export default function AgentMind() {
       const engine = await engineRes.json();
       setEngineState(engine);
 
+      // Always fetch agent list for the selector
       if (!demoMode && engine.live) {
-        // ═══ LIVE: Read actual turns from engine ═══
-        const [turnsRes, soulRes] = await Promise.all([
+        const [agRes, turnsRes, soulRes] = await Promise.all([
+          fetch(`${API}/api/live/agents`),
           fetch(`${API}/api/live/turns?limit=100`),
           fetch(`${API}/api/live/soul`),
         ]);
-        const [turnsData, soulData] = await Promise.all([turnsRes.json(), soulRes.json()]);
+        const [agData, turnsData, soulData] = await Promise.all([agRes.json(), turnsRes.json(), soulRes.json()]);
+        const liveAgents = (agData.agents || []).map(a => ({
+          id: a.agent_id, name: a.name, role: a.role, status: a.status,
+          wallet: a.wallet_address, sandbox: a.sandbox_id,
+        }));
+        // Add founder as first entry
+        liveAgents.unshift({ id: 'founder', name: engine.fund_name || 'Founder AI', role: 'Founder AI', status: engine.agent_state, wallet: '', sandbox: '' });
+        setAgents(liveAgents);
         setTurns(turnsData.turns || []);
         setSoul(soulData.content || null);
-        setStats({
-          total_turns: turnsData.total || 0,
-          source: 'engine',
-          agent_state: engine.agent_state,
-          turn_count: engine.turn_count,
-        });
+        setStats({ total_turns: turnsData.total || 0, source: 'engine', agent_state: engine.agent_state, turn_count: engine.turn_count });
       } else {
-        // ═══ DEMO: Build turn-like objects from activity data ═══
-        const actRes = await fetch(`${API}/api/activity?limit=50`);
-        const actData = await actRes.json();
+        // DEMO: fetch agents + activity
+        const [agRes, actRes] = await Promise.all([
+          fetch(`${API}/api/agents`),
+          fetch(`${API}/api/activity?limit=50`),
+        ]);
+        const [agData, actData] = await Promise.all([agRes.json(), actRes.json()]);
+
+        // Build agent list from data, labeled by role
+        const agentMap = {};
+        for (const a of (agData.agents || [])) {
+          agentMap[a.name] = { id: a.agent_id, name: a.name, role: a.role, department: a.department, status: a.status };
+        }
+        setAgents(Object.values(agentMap));
+
+        // Build demo turns from activity, tagged with agent_name
         const demoTurns = (actData.activities || []).map((a, i) => ({
           turn_id: a.activity_id || `demo-${i}`,
           timestamp: a.timestamp,
           state: 'running',
           input: null,
-          thinking: `Agent ${a.agent_name} is performing: ${a.description}`,
+          agent_name: a.agent_name,
+          thinking: `${a.description}`,
           tool_calls: [{
-            id: `tc-${i}`,
-            tool: a.tool_used,
-            arguments: {},
+            id: `tc-${i}`, tool: a.tool_used, arguments: {},
             result: a.description,
-            duration_ms: Math.floor(Math.random() * 2000) + 100,
-            error: null,
+            duration_ms: Math.floor(Math.random() * 2000) + 100, error: null,
           }],
           token_usage: { totalTokens: Math.floor(Math.random() * 3000) + 500 },
           cost_cents: Math.floor(Math.random() * 50) + 5,
@@ -255,18 +270,27 @@ export default function AgentMind() {
     if (autoScroll && feedRef.current) feedRef.current.scrollTop = 0;
   }, [turns, autoScroll]);
 
-  // Filter turns
+  // Filter turns by agent + type + search
   const filtered = turns.filter(t => {
+    // Agent filter
+    if (selectedAgent !== 'all') {
+      const agentName = t.agent_name || '';
+      const selectedAgentObj = agents.find(a => a.id === selectedAgent);
+      if (selectedAgentObj && agentName && !agentName.includes(selectedAgentObj.name)) return false;
+      if (selectedAgentObj && !agentName && selectedAgent !== 'founder') return false;
+    }
     if (filter === 'thinking' && !t.thinking) return false;
     if (filter === 'tools' && (!t.tool_calls || t.tool_calls.length === 0)) return false;
     if (filter === 'errors' && !t.tool_calls?.some(tc => tc.error)) return false;
     if (search) {
       const s = search.toLowerCase();
-      const text = `${t.thinking || ''} ${t.tool_calls?.map(tc => `${tc.tool} ${tc.result || ''}`).join(' ') || ''}`.toLowerCase();
+      const text = `${t.thinking || ''} ${t.agent_name || ''} ${t.tool_calls?.map(tc => `${tc.tool} ${tc.result || ''}`).join(' ') || ''}`.toLowerCase();
       if (!text.includes(s)) return false;
     }
     return true;
   });
+
+  const selectedAgentObj = selectedAgent !== 'all' ? agents.find(a => a.id === selectedAgent) : null;
 
   if (loading) {
     return (
@@ -297,8 +321,28 @@ export default function AgentMind() {
               background: stats?.source === 'engine' ? '#34D399' : '#FFB347',
               boxShadow: `0 0 8px ${stats?.source === 'engine' ? '#34D399' : '#FFB347'}`,
             }} />
+
+            {/* Agent Selector */}
+            <select
+              data-testid="agent-selector"
+              value={selectedAgent}
+              onChange={e => setSelectedAgent(e.target.value)}
+              style={{
+                background: '#18181b', border: '1px solid #27272a', borderRadius: '4px',
+                padding: '3px 8px', fontSize: '11px', color: '#d4d4d8', cursor: 'pointer',
+                fontFamily: 'JetBrains Mono, monospace', outline: 'none', maxWidth: '260px',
+              }}
+            >
+              <option value="all">All Agents ({agents.length})</option>
+              {agents.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.role || a.name}{a.department ? ` — ${a.department}` : ''}{a.status ? ` [${a.status}]` : ''}
+                </option>
+              ))}
+            </select>
+
             <span style={{ fontSize: '10px', color: '#71717a', fontFamily: 'JetBrains Mono, monospace' }}>
-              {stats?.source === 'engine' ? 'LIVE' : 'DEMO'} | {stats?.turn_count || 0} turns | {stats?.agent_state || '—'}
+              {filtered.length} turns
             </span>
           </div>
 
@@ -372,18 +416,38 @@ export default function AgentMind() {
       {/* ═══ RIGHT PANEL: SOUL + Stats ═══ */}
       <div style={{ width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
 
-        {/* Engine Status */}
+        {/* Engine Status / Selected Agent */}
         <div style={{ background: '#09090b', borderRadius: '6px', padding: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-            <Cpu className="w-3.5 h-3.5" style={{ color: '#5B9CFF' }} />
-            <span style={{ fontSize: '10px', fontWeight: 800, color: '#fff', letterSpacing: '1px' }}>ENGINE STATUS</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <MiniStat label="State" value={engineState?.agent_state || (demoMode ? 'demo' : 'offline')} color={engineState?.live ? '#34D399' : '#FFB347'} />
-            <MiniStat label="DB" value={engineState?.db_exists ? 'Found' : 'Not found'} color={engineState?.db_exists ? '#34D399' : '#FF5252'} />
-            <MiniStat label="Turns" value={engineState?.turn_count || 0} />
-            <MiniStat label="Source" value={stats?.source || 'demo'} color={stats?.source === 'engine' ? '#34D399' : '#FFB347'} />
-          </div>
+          {selectedAgentObj ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: selectedAgentObj.status === 'alive' || selectedAgentObj.status === 'running' ? '#34D399' : selectedAgentObj.status === 'sleeping' ? '#5B9CFF' : '#71717a' }} />
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#fff', letterSpacing: '1px' }}>SELECTED AGENT</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <MiniStat label="Name" value={selectedAgentObj.name} color="#d4d4d8" />
+                <MiniStat label="Role" value={selectedAgentObj.role || '—'} color="#9B6BFF" />
+                {selectedAgentObj.department && <MiniStat label="Dept" value={selectedAgentObj.department} color="#5B9CFF" />}
+                <MiniStat label="Status" value={selectedAgentObj.status || '—'} color={selectedAgentObj.status === 'alive' ? '#34D399' : '#FFB347'} />
+                {selectedAgentObj.wallet && <MiniStat label="Wallet" value={`${selectedAgentObj.wallet.slice(0, 8)}...${selectedAgentObj.wallet.slice(-4)}`} color="#71717a" />}
+                <MiniStat label="Turns" value={filtered.length} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <Cpu className="w-3.5 h-3.5" style={{ color: '#5B9CFF' }} />
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#fff', letterSpacing: '1px' }}>ENGINE STATUS</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <MiniStat label="State" value={engineState?.agent_state || (demoMode ? 'demo' : 'offline')} color={engineState?.live ? '#34D399' : '#FFB347'} />
+                <MiniStat label="DB" value={engineState?.db_exists ? 'Found' : 'Not found'} color={engineState?.db_exists ? '#34D399' : '#FF5252'} />
+                <MiniStat label="Turns" value={engineState?.turn_count || 0} />
+                <MiniStat label="Agents" value={agents.length} />
+                <MiniStat label="Source" value={stats?.source || 'demo'} color={stats?.source === 'engine' ? '#34D399' : '#FFB347'} />
+              </div>
+            </>
+          )}
         </div>
 
         {/* SOUL.md */}
