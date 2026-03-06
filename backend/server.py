@@ -91,51 +91,69 @@ async def genesis_status():
     """Check if the genesis agent has been created."""
     engine = is_engine_live()
     wallet_exists = os.path.exists(os.path.join(ANIMA_DIR, "wallet.json"))
+    config_exists = os.path.exists(os.path.join(ANIMA_DIR, "anima.json"))
     genesis_staged = os.path.exists(os.path.join(ANIMA_DIR, "genesis-prompt.md"))
 
-    # Read wallet address from the Automaton's own wallet.json
+    # The Automaton stores the wallet address in anima.json after setup wizard runs
     wallet_address = None
-    if wallet_exists:
+    if config_exists:
         try:
-            with open(os.path.join(ANIMA_DIR, "wallet.json"), "r") as f:
-                wallet_data = json.load(f)
-                # The Automaton stores privateKey as 0x-prefixed hex
-                # We need to derive the address — use the Automaton's own format
-                # The address is also stored in config if setup wizard has run
-            config_path = os.path.join(ANIMA_DIR, "anima.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-                    wallet_address = config.get("walletAddress")
+            with open(os.path.join(ANIMA_DIR, "anima.json"), "r") as f:
+                config = json.load(f)
+                wallet_address = config.get("walletAddress")
         except Exception:
             pass
 
-    # Clean stale MongoDB if wallet file doesn't exist
+    # Check if engine process is running
+    engine_running = False
+    try:
+        check = subprocess.run(["pgrep", "-f", "dist/index.js"], capture_output=True, text=True)
+        engine_running = check.returncode == 0
+    except Exception:
+        pass
+
+    # Clean stale MongoDB if no wallet file and no running process
     mongo_genesis = await db.genesis.find_one({"type": "founder"}, {"_id": 0})
-    if not wallet_exists and mongo_genesis:
+    if not wallet_exists and not engine_running and mongo_genesis:
         await db.genesis.delete_many({"type": "founder"})
         mongo_genesis = None
+
+    # Generate QR if we have a real address
+    qr_b64 = None
+    if wallet_address and wallet_address.startswith("0x"):
+        try:
+            qr = qrcode.QRCode(version=1, box_size=8, border=2)
+            qr.add_data(wallet_address)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            qr_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+        except Exception:
+            pass
 
     return {
         "wallet_exists": wallet_exists,
         "wallet_address": wallet_address,
+        "qr_code": qr_b64,
+        "config_exists": config_exists,
         "genesis_staged": genesis_staged,
         "engine_live": engine.get("live", False),
+        "engine_running": engine_running,
         "engine_state": engine.get("agent_state"),
+        "fund_name": engine.get("fund_name"),
         "turn_count": engine.get("turn_count", 0),
         "creator_wallet": CREATOR_WALLET,
-        "status": (mongo_genesis or {}).get("status", "not_created"),
+        "status": "running" if engine_running else ("created" if wallet_exists else "not_created"),
     }
 
 
 @app.post("/api/genesis/create")
 async def create_genesis_agent():
     """
-    Create the genesis agent using the Automaton's own code:
-    1. Build the Automaton runtime (pnpm install + build)
-    2. Stage genesis prompt, constitution, skills, auto-config
-    3. Run the Automaton's --init to generate the wallet
-    4. Return wallet address + QR code
+    Build the Automaton and start it. The engine handles its own wallet
+    generation, API provisioning, and setup via its built-in wizard.
     """
     try:
         # Step 1: Create directories + stage files
@@ -189,7 +207,6 @@ async def create_genesis_agent():
 
         # Step 2: Build the Automaton runtime
         dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
-        build_status = "already_built" if os.path.exists(dist_path) else "building"
         build_error = None
 
         if not os.path.exists(dist_path):
@@ -200,188 +217,19 @@ async def create_genesis_agent():
                     capture_output=True, text=True, timeout=180,
                     env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
                 )
-                if proc.returncode == 0:
-                    build_status = "built"
-                else:
-                    build_status = "build_failed"
-                    build_error = (proc.stdout + proc.stderr)[-1000:]
+                if proc.returncode != 0:
+                    return {"success": False, "error": f"Build failed: {(proc.stdout + proc.stderr)[-500:]}"}
             except subprocess.TimeoutExpired:
-                build_status = "build_timeout"
-                build_error = "Build timed out"
-            except Exception as e:
-                build_status = "build_error"
-                build_error = str(e)
+                return {"success": False, "error": "Build timed out"}
 
-        if build_status not in ("built", "already_built"):
-            return {"success": False, "build_status": build_status, "build_error": build_error}
-
-        # Step 3: Run the Automaton's own --init to generate the wallet
-        wallet_address = None
-        wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
-        if not os.path.exists(wallet_path):
-            try:
-                init_proc = subprocess.run(
-                    ["/usr/bin/node", dist_path, "--init"],
-                    capture_output=True, text=True, timeout=30,
-                    cwd=AUTOMATON_DIR,
-                    env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin"}
-                )
-                # Parse output for address
-                if init_proc.returncode == 0:
-                    for line in init_proc.stdout.strip().split("\n"):
-                        line = line.strip()
-                        if line.startswith("{"):
-                            try:
-                                init_data = json.loads(line)
-                                wallet_address = init_data.get("address")
-                            except Exception:
-                                pass
-            except Exception as e:
-                build_error = f"Wallet init failed: {e}"
-
-        # Read wallet address using a small node script against the Automaton's own viem
-        if not wallet_address and os.path.exists(wallet_path):
-            try:
-                addr_script = f"""
-                const fs = require('fs');
-                const d = JSON.parse(fs.readFileSync('{wallet_path}', 'utf-8'));
-                const {{ privateKeyToAccount }} = require('viem/accounts');
-                const acct = privateKeyToAccount(d.privateKey);
-                console.log(acct.address);
-                """
-                addr_proc = subprocess.run(
-                    ["/usr/bin/node", "-e", addr_script],
-                    capture_output=True, text=True, timeout=10,
-                    cwd=AUTOMATON_DIR,
-                    env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin", "NODE_PATH": os.path.join(AUTOMATON_DIR, "node_modules")}
-                )
-                if addr_proc.returncode == 0:
-                    wallet_address = addr_proc.stdout.strip()
-            except Exception:
-                pass
-
-        if not wallet_address:
-            wallet_address = "Wallet created — start engine to see address"
-
-        # Step 4: Generate QR code
-        qr_b64 = None
-        if wallet_address and wallet_address.startswith("0x"):
-            qr = qrcode.QRCode(version=1, box_size=8, border=2)
-            qr.add_data(wallet_address)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            buf.seek(0)
-            qr_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
-
-        # Step 5: Store in MongoDB
-        await db.genesis.update_one(
-            {"type": "founder"},
-            {"$set": {
-                "wallet_address": wallet_address,
-                "creator_wallet": CREATOR_WALLET,
-                "genesis_staged": genesis_staged,
-                "constitution_installed": const_installed,
-                "skills_installed": skills_installed,
-                "build_status": build_status,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "status": "created_awaiting_funding",
-            }},
-            upsert=True,
-        )
-
-        return {
-            "success": True,
-            "wallet_address": wallet_address,
-            "qr_code": qr_b64,
-            "genesis_staged": genesis_staged,
-            "constitution_installed": const_installed,
-            "skills_installed": skills_installed,
-            "build_status": build_status,
-            "build_error": build_error,
-            "creator_wallet": CREATOR_WALLET,
-            "next_step": f"Fund wallet {wallet_address} with USDC on Base to start the agent.",
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/genesis/qr/{address}")
-async def genesis_qr(address: str):
-    """Generate a QR code for a wallet address."""
-    qr = qrcode.QRCode(version=1, box_size=10, border=2)
-    qr.add_data(address)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return Response(content=buf.getvalue(), media_type="image/png")
-
-
-@app.post("/api/genesis/start")
-async def start_genesis_engine():
-    """Start the Automaton engine as a background process."""
-    import subprocess
-
-    dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
-
-    # If Automaton isn't built, build it now
-    if not os.path.exists(dist_path):
+        # Step 3: Start the engine — it handles wallet, API key, everything
         try:
-            build_cmd = f"cd {AUTOMATON_DIR} && /usr/bin/corepack enable 2>/dev/null; /usr/bin/pnpm install --no-frozen-lockfile 2>&1 && /usr/bin/pnpm build 2>&1"
-            proc = subprocess.run(
-                ["bash", "-c", build_cmd],
-                capture_output=True, text=True, timeout=180,
-                env={**os.environ, "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
-            )
-            if proc.returncode != 0:
-                return {"started": False, "error": f"Build failed: {(proc.stdout + proc.stderr)[-500:]}"}
-        except subprocess.TimeoutExpired:
-            return {"started": False, "error": "Build timed out"}
+            check = subprocess.run(["pgrep", "-f", "dist/index.js"], capture_output=True, text=True)
+            if check.returncode == 0:
+                return {"success": True, "message": "Engine already running", "pid": check.stdout.strip()}
+        except Exception:
+            pass
 
-    wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
-
-    # If wallet file missing but we have it in MongoDB, recreate
-    if not os.path.exists(wallet_path):
-        mongo_genesis = await db.genesis.find_one({"type": "founder"})
-        if not mongo_genesis or not mongo_genesis.get("wallet_address"):
-            return {"started": False, "error": "No agent created yet. Click 'Create Genesis Agent' first."}
-        # Need to create a new wallet since we can't recover the private key from just the address
-        # Force user to re-create
-        return {"started": False, "error": "Wallet files missing (new deployment). Click 'Create Genesis Agent' to generate a new wallet."}
-
-    # Ensure genesis prompt and constitution are staged
-    genesis_path = os.path.join(ANIMA_DIR, "genesis-prompt.md")
-    if not os.path.exists(genesis_path):
-        genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
-        if os.path.exists(genesis_src):
-            with open(genesis_src, "r") as f:
-                content = f.read()
-            with open(genesis_path, "w") as f:
-                f.write(content)
-
-    const_path = os.path.join(ANIMA_DIR, "constitution.md")
-    if not os.path.exists(const_path):
-        const_src = os.path.join(AUTOMATON_DIR, "constitution.md")
-        if os.path.exists(const_src):
-            with open(const_src, "r") as f:
-                content = f.read()
-            with open(const_path, "w") as f:
-                f.write(content)
-
-    # Check if already running
-    try:
-        check = subprocess.run(["pgrep", "-f", "dist/index.js.*--run"], capture_output=True, text=True)
-        if check.returncode == 0:
-            return {"started": True, "message": "Engine already running", "pid": check.stdout.strip()}
-    except Exception:
-        pass
-
-    # Start the engine
-    try:
         proc = subprocess.Popen(
             ["/usr/bin/node", dist_path, "--run"],
             cwd=AUTOMATON_DIR,
@@ -393,28 +241,30 @@ async def start_genesis_engine():
 
         await db.genesis.update_one(
             {"type": "founder"},
-            {"$set": {"status": "engine_starting", "pid": proc.pid, "started_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {
+                "creator_wallet": CREATOR_WALLET,
+                "genesis_staged": genesis_staged,
+                "constitution_installed": const_installed,
+                "skills_installed": skills_installed,
+                "pid": proc.pid,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "status": "engine_starting",
+            }},
             upsert=True,
         )
 
-        return {"started": True, "pid": proc.pid, "message": "Engine starting."}
+        return {
+            "success": True,
+            "pid": proc.pid,
+            "genesis_staged": genesis_staged,
+            "constitution_installed": const_installed,
+            "skills_installed": skills_installed,
+            "creator_wallet": CREATOR_WALLET,
+            "message": "Engine starting. It will generate the wallet, provision API key, and begin operating.",
+        }
 
     except Exception as e:
-        return {"started": False, "error": str(e)}
-
-
-@app.get("/api/genesis/qr-base64/{address}")
-async def genesis_qr_base64(address: str):
-    """Generate a QR code as base64 string for embedding in frontend."""
-    qr = qrcode.QRCode(version=1, box_size=8, border=2)
-    qr.add_data(address)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return {"qr": f"data:image/png;base64,{b64}", "address": address}
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -427,22 +277,7 @@ async def check_engine_live():
 
 @app.get("/api/live/identity")
 async def live_identity():
-    """Get the fund's identity — name, wallet, sandbox, deployed services, domains, installed tools."""
     return get_live_identity()
-
-
-@app.post("/api/genesis/stop")
-async def stop_genesis_engine():
-    """Stop the Automaton engine process."""
-    import subprocess
-    try:
-        result = subprocess.run(["pkill", "-f", "dist/index.js.*--run"], capture_output=True, text=True)
-        if result.returncode == 0:
-            await db.genesis.update_one({"type": "founder"}, {"$set": {"status": "stopped"}}, upsert=True)
-            return {"stopped": True}
-        return {"stopped": False, "error": "No engine process found"}
-    except Exception as e:
-        return {"stopped": False, "error": str(e)}
 
 @app.get("/api/live/agents")
 async def live_agents():
