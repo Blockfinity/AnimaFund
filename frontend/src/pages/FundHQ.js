@@ -211,8 +211,8 @@ function DepartmentFloor({ deptName, agents, floorNum, spendCents }) {
   );
 }
 
-// ─── Main Tycoon Component ──────────────────────────────
-export default function Tycoon({ fundName }) {
+// ─── Main FundHQ Component ──────────────────────────────
+export default function FundHQ({ fundName }) {
   const [agents, setAgents] = useState([]);
   const [activities, setActivities] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -251,7 +251,7 @@ export default function Tycoon({ fundName }) {
         setActivities([]);
         setDepartments([]);
       }
-    } catch (e) { console.error('Tycoon fetch error:', e); }
+    } catch (e) { console.error('FundHQ fetch error:', e); }
     finally { setLoading(false); }
   }, []);
 
@@ -268,7 +268,7 @@ export default function Tycoon({ fundName }) {
 
   if (loading) {
     return (
-      <div data-testid="tycoon-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', background: '#A2E5FF' }}>
+      <div data-testid="fundhq-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', background: '#A2E5FF' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ width: '40px', height: '40px', border: '4px solid #5DA2E0', borderTop: '4px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} />
           <p style={{ marginTop: '12px', color: '#35638C', fontWeight: 800 }}>Connecting to Anima Fund...</p>
@@ -283,7 +283,7 @@ export default function Tycoon({ fundName }) {
   const notifColors = { income: '#60EE79', deal: '#5B9CFF', milestone: '#FFB347', hire: '#9B6BFF', reject: '#FF5252', operational: '#34D399' };
 
   return (
-    <div data-testid="tycoon-page" style={{ fontFamily: 'Manrope, sans-serif' }}>
+    <div data-testid="fundhq-page" style={{ fontFamily: 'Manrope, sans-serif' }}>
       <style>{`
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
@@ -344,7 +344,7 @@ export default function Tycoon({ fundName }) {
           ) : (
             <div style={{ padding: '40px', textAlign: 'center' }}>
               <span style={{ fontSize: '12px', color: '#35638C', fontWeight: 700 }}>
-                {demoMode ? 'No departments found' : 'Waiting for founder AI to hire agents...'}
+                {isLive ? 'No departments found' : 'Waiting for founder AI to hire agents...'}
               </span>
             </div>
           )}
@@ -369,27 +369,21 @@ export default function Tycoon({ fundName }) {
                 </div>
               )) : (
                 <span style={{ fontSize: '9px', color: '#999' }}>
-                  {demoMode ? 'Waiting for activity...' : 'Engine not running — no events yet'}
+                  {isLive ? 'No activity yet...' : 'Engine not running'}
                 </span>
               )}
             </div>
           </SidePanel>
 
-          {/* Fund Stats — from real overview data */}
+          {/* Fund Stats */}
           <SidePanel title="FUND STATS">
-            {overview && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <StatRow label="Mgmt Fee" value={`${overview.management_fee || 3}%`} />
-                <StatRow label="Carry" value={`${overview.carried_interest || 20}%`} />
-                <StatRow label="Rejection Rate" value={`${overview.rejection_rate || 99}%`} />
-                <StatRow label="Portfolio" value={`${overview.portfolio_companies || 0}`} />
-                <StatRow label="Deals Funded" value={`${overview.funded_deals || 0}`} />
-                <StatRow label="Survival" value={(overview.survival_tier || 'unknown').toUpperCase()} />
-                {overview.turn_count !== undefined && <StatRow label="Turns" value={overview.turn_count} />}
-                <StatRow label="Total Spend" value={formatMoney(totalSpend)} />
-                <StatRow label="Source" value={overview.source === 'engine' ? 'LIVE' : 'DEMO'} />
-              </div>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <StatRow label="Agents" value={totalAgents} />
+              <StatRow label="Departments" value={departments.length} />
+              <StatRow label="Turns" value={engineState?.turn_count || 0} />
+              <StatRow label="State" value={(engineState?.agent_state || 'offline').toUpperCase()} />
+              <StatRow label="Engine" value={isLive ? 'LIVE' : 'OFFLINE'} />
+            </div>
           </SidePanel>
 
           {/* Departments — from real department data */}

@@ -3,7 +3,7 @@ import { Menu, CircleDot } from 'lucide-react';
 
 const pageLabels = {
   mind: 'Agent Mind',
-  tycoon: 'Fund HQ',
+  fundhq: 'Fund HQ',
   config: 'Configuration',
 };
 

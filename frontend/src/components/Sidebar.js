@@ -5,7 +5,7 @@ import {
 
 const navItems = [
   { id: 'mind', label: 'Agent Mind', icon: Brain },
-  { id: 'tycoon', label: 'Fund HQ', icon: Building2 },
+  { id: 'fundhq', label: 'Fund HQ', icon: Building2 },
   { id: 'config', label: 'Configuration', icon: Settings },
 ];
 

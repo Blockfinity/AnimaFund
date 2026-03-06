@@ -390,6 +390,20 @@ async def live_identity():
     """Get the fund's identity — name, wallet, sandbox, deployed services, domains, installed tools."""
     return get_live_identity()
 
+
+@app.post("/api/genesis/stop")
+async def stop_genesis_engine():
+    """Stop the Automaton engine process."""
+    import subprocess
+    try:
+        result = subprocess.run(["pkill", "-f", "dist/index.js.*--run"], capture_output=True, text=True)
+        if result.returncode == 0:
+            await db.genesis.update_one({"type": "founder"}, {"$set": {"status": "stopped"}}, upsert=True)
+            return {"stopped": True}
+        return {"stopped": False, "error": "No engine process found"}
+    except Exception as e:
+        return {"stopped": False, "error": str(e)}
+
 @app.get("/api/live/agents")
 async def live_agents():
     agents = get_live_agents()
