@@ -1,0 +1,10 @@
+.env
+*.log
+.DS_Store
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.tgz
+.automaton/wallet.json
+.automaton/state.db

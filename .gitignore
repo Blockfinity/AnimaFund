@@ -1,21 +1,5 @@
 # Anima Fund
-node_modules/
 __pycache__/
 *.pyc
 .DS_Store
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+frontend/node_modules/
