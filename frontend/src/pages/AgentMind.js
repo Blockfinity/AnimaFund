@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Brain, Terminal, Wrench, DollarSign, AlertTriangle, Clock, Cpu, Eye, ChevronDown, ChevronRight, Search, Wallet, Copy, ExternalLink } from 'lucide-react';
+import { Brain, Terminal, Wrench, DollarSign, AlertTriangle, Clock, Cpu, Eye, ChevronDown, ChevronRight, Search, Wallet, Copy } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -193,6 +193,7 @@ export default function AgentMind({ genesisState }) {
   const [logs, setLogs] = useState([]);
   const [activeTab, setActiveTab] = useState('logs'); // 'logs' or 'turns'
   const [copied, setCopied] = useState(false);
+  const [balance, setBalance] = useState(null);
   const feedRef = useRef(null);
   const logRef = useRef(null);
 
@@ -205,6 +206,23 @@ export default function AgentMind({ genesisState }) {
       const engine = await engineRes.json();
       const logsData = await logsRes.json();
       setEngineState(engine);
+
+      // Fetch balance from KV store
+      try {
+        const kvRes = await fetch(`${API}/api/live/kv`);
+        const kvData = await kvRes.json();
+        const balItem = (kvData.items || []).find(i => i.key === 'last_known_balance');
+        const creditItem = (kvData.items || []).find(i => i.key === 'last_credit_check');
+        const usdcItem = (kvData.items || []).find(i => i.key === 'last_usdc_check');
+        setBalance({
+          credits: creditItem?.value?.credits ?? null,
+          creditsCents: balItem?.value?.creditsCents ?? null,
+          usdcBalance: usdcItem?.value?.balance ?? balItem?.value?.usdcBalance ?? null,
+          tier: creditItem?.value?.tier ?? null,
+          lastCheck: usdcItem?.value?.timestamp || creditItem?.value?.timestamp || null,
+        });
+      } catch {}
+
 
       // Parse logs
       const rawLines = (logsData.stdout || '').split('\n');
@@ -447,21 +465,44 @@ export default function AgentMind({ genesisState }) {
             </button>
             {copied && <div style={{ fontSize: '9px', color: '#34D399', textAlign: 'center', marginTop: '4px' }}>Copied!</div>}
 
-            {/* Funding Instructions */}
-            <div style={{ marginTop: '10px', padding: '8px', background: '#0a1a0a', border: '1px solid #166534', borderRadius: '4px' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, color: '#34D399', marginBottom: '6px', letterSpacing: '0.5px' }}>FUND THIS AGENT</div>
-              <div style={{ fontSize: '9px', color: '#a1a1aa', lineHeight: 1.6 }}>
-                <div style={{ marginBottom: '4px' }}>1. Transfer Conway credits:</div>
-                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '8px', color: '#71717a', padding: '2px 4px', background: '#18181b', borderRadius: '2px', marginBottom: '6px' }}>
-                  conway credits transfer {walletAddr ? `${walletAddr.slice(0, 8)}...` : '<addr>'} &lt;amount&gt;
+            {/* Live Balance */}
+            {balance && (
+              <div style={{ marginTop: '10px', padding: '8px', background: '#18181b', borderRadius: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '9px', fontWeight: 700, color: '#a1a1aa', letterSpacing: '0.5px' }}>BALANCE</span>
+                  {balance.lastCheck && <span style={{ fontSize: '8px', color: '#52525b' }}>checked {timeAgo(balance.lastCheck)}</span>}
                 </div>
-                <div style={{ marginBottom: '4px' }}>2. Send USDC on Base to the address above</div>
-                <div style={{ marginBottom: '2px' }}>3. Fund via Conway Cloud:</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '9px', color: '#71717a' }}>USDC</span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: (balance.usdcBalance || 0) > 0 ? '#34D399' : '#71717a' }}>
+                      ${(balance.usdcBalance || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '9px', color: '#71717a' }}>Credits</span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: (balance.creditsCents || 0) > 0 ? '#34D399' : '#71717a' }}>
+                      ${((balance.creditsCents || 0) / 100).toFixed(2)}
+                    </span>
+                  </div>
+                  {balance.tier && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '9px', color: '#71717a' }}>Tier</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
+                        color: balance.tier === 'critical' ? '#f87171' : balance.tier === 'normal' ? '#34D399' : '#FFB347' }}>
+                        {balance.tier.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer" data-testid="conway-cloud-link"
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: '#5B9CFF', textDecoration: 'none', marginTop: '4px' }}>
-                <ExternalLink className="w-3 h-3" /> app.conway.tech
-              </a>
+            )}
+
+            {/* Simple funding instruction */}
+            <div style={{ marginTop: '10px', padding: '8px', background: '#0a1a0a', border: '1px solid #166534', borderRadius: '4px' }}>
+              <div style={{ fontSize: '9px', color: '#a1a1aa', lineHeight: 1.6 }}>
+                Send <span style={{ fontWeight: 700, color: '#34D399' }}>USDC on Base</span> to this wallet address. The agent will automatically convert it to Conway credits.
+              </div>
             </div>
           </div>
         )}

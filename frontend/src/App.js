@@ -94,6 +94,9 @@ function App() {
   const isLive = genesisState?.engine_live || engineState?.live || false;
   const fundName = identity?.name || genesisState?.fund_name || null;
   const dbExists = engineState?.db_exists || false;
+  const agentState = genesisState?.engine_state || engineState?.agent_state || '';
+  const isSleeping = agentState === 'sleeping';
+  const isCritical = agentState === 'critical';
 
   // Show the status panel if: engine started, creating, running, wallet exists, or config exists
   const showStatusPanel = engineStarted || creating || isRunning || walletAddr || status === 'running';
@@ -141,9 +144,11 @@ function App() {
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isLive ? '#34D399' : (isRunning || dbExists) ? '#FFB347' : '#71717a', boxShadow: isLive ? '0 0 8px #34D399' : 'none' }} />
                   <span style={{ fontSize: '13px', fontWeight: 800, color: isLive ? '#34D399' : (isRunning || dbExists) ? '#FFB347' : '#71717a' }}>
                     {isLive ? 'Agent Running' :
-                     isRunning && walletAddr ? 'Engine Running — Awaiting Funding' :
+                     isRunning && walletAddr && isSleeping ? 'Agent Sleeping — Send USDC to wake' :
+                     isRunning && walletAddr && isCritical ? 'Agent Active — Credits Low' :
+                     isRunning && walletAddr ? 'Engine Running' :
                      isRunning ? 'Engine Starting...' :
-                     dbExists ? 'Engine Configured — Awaiting Restart' :
+                     dbExists ? 'Engine Configured' :
                      creating ? 'Starting Engine...' : 'Initializing...'}
                   </span>
                 </div>
