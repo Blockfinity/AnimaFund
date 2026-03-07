@@ -37,7 +37,8 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] **Memory page**: Shows 16 KV store items, 8 wake events, with tabs for Runtime State/Wake Events/Semantic Memory (2026-03-07)
 - [x] **Agents page**: Shows Founder Agent identity, 6 heartbeat schedule tasks with cron expressions, with tabs for Founder/Children/Discovered/Heartbeat Tasks (2026-03-07)
 - [x] **Fund HQ**: Falls back to heartbeat events when no tool call activity (2026-03-07)
-- [x] **New API endpoints**: /api/live/kv, /api/live/wake-events, /api/live/heartbeat-schedule (2026-03-07)
+- [x] **New API endpoints**: /api/live/kv, /api/live/wake-events, /api/live/heartbeat-schedule, /api/live/skills-full (2026-03-07)
+- [x] **Skills Page**: Dedicated page showing 80 skills (53 Anima Fund + 27 Conway Platform), 6 AI models. Filters: by source (Anima/Conway/MCP/OpenClaw), by agent, sort (A-Z/Most Used/Recently Acquired), search. Skills grouped by category. Model registry table. (2026-03-07)
 
 ## Deployment Hardening (2026-03-07)
 - [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
