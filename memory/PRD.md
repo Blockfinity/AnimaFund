@@ -32,6 +32,12 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] **Agent Mind — Live Logs**: LOGS/TURNS tabs, color-coded real-time engine logs with tags (ERROR, CRITICAL, THINK, SLEEP, HEARTBEAT, STATE, LOOP) (2026-03-07)
 - [x] **Wallet & Funding from Dashboard**: Wallet QR code, copyable address, funding instructions (Conway credits, USDC on Base, Conway Cloud link) in Agent Mind right panel (2026-03-07)
 - [x] **Dashboard ↔ Wallet Navigation**: "Wallet & Logs" sidebar nav returns to genesis/wallet screen; "Open Dashboard" button returns to dashboard (2026-03-07)
+- [x] **SQL Column Fix (P0)**: Fixed ALL SQL queries in engine_bridge.py from camelCase to snake_case column names. This was a systemic bug silently breaking every data endpoint (2026-03-07)
+- [x] **Activity page**: Shows real heartbeat events (38+), 53 skills, with tabs for Heartbeat/Tool Calls/Messages/Skills (2026-03-07)
+- [x] **Memory page**: Shows 16 KV store items, 8 wake events, with tabs for Runtime State/Wake Events/Semantic Memory (2026-03-07)
+- [x] **Agents page**: Shows Founder Agent identity, 6 heartbeat schedule tasks with cron expressions, with tabs for Founder/Children/Discovered/Heartbeat Tasks (2026-03-07)
+- [x] **Fund HQ**: Falls back to heartbeat events when no tool call activity (2026-03-07)
+- [x] **New API endpoints**: /api/live/kv, /api/live/wake-events, /api/live/heartbeat-schedule (2026-03-07)
 
 ## Deployment Hardening (2026-03-07)
 - [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
