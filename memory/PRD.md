@@ -24,10 +24,14 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] Agent creation flow (non-interactive via auto-config.json)
 - [x] Wallet generation and API key provisioning
 - [x] Real-time Engine Console with live logs
-- [x] Dashboard with 9 pages (Fund HQ, Agent Mind, etc.)
+- [x] Dashboard with 10 pages (Fund HQ, Agent Mind, Agents, Deal Flow, Portfolio, Financials, Activity, Memory, Configuration, Wallet & Logs)
 - [x] Engine bridge reading from state.db
 - [x] **P0 FIX**: better-sqlite3 native addon loading without node_modules (2026-03-06)
 - [x] UI fixes: button disable during creation, flicker prevention, accurate status display
+- [x] **Deployment hardening**: Untracked node_modules, fixed dist/index.js references (2026-03-07)
+- [x] **Agent Mind — Live Logs**: LOGS/TURNS tabs, color-coded real-time engine logs with tags (ERROR, CRITICAL, THINK, SLEEP, HEARTBEAT, STATE, LOOP) (2026-03-07)
+- [x] **Wallet & Funding from Dashboard**: Wallet QR code, copyable address, funding instructions (Conway credits, USDC on Base, Conway Cloud link) in Agent Mind right panel (2026-03-07)
+- [x] **Dashboard ↔ Wallet Navigation**: "Wallet & Logs" sidebar nav returns to genesis/wallet screen; "Open Dashboard" button returns to dashboard (2026-03-07)
 
 ## Deployment Hardening (2026-03-07)
 - [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
