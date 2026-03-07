@@ -387,5 +387,107 @@ class TestAdditionalLiveEndpoints:
         print(f"✓ Live skills: {len(data['skills'])} skills")
 
 
+class TestNewLiveEndpoints:
+    """Tests for new /api/live/* endpoints added for data display fixes"""
+    
+    def test_live_heartbeat_returns_200(self):
+        """Live heartbeat endpoint returns 200 with history"""
+        response = requests.get(f"{BASE_URL}/api/live/heartbeat")
+        assert response.status_code == 200
+        data = response.json()
+        assert "history" in data
+        assert "total" in data
+        assert "source" in data
+        assert data["source"] == "engine"
+        # Verify we have heartbeat data (per context: ~30+ events)
+        assert len(data["history"]) > 0
+        print(f"✓ Live heartbeat: {len(data['history'])} events")
+    
+    def test_live_heartbeat_event_structure(self):
+        """Heartbeat events have correct structure"""
+        response = requests.get(f"{BASE_URL}/api/live/heartbeat?limit=5")
+        data = response.json()
+        if len(data["history"]) > 0:
+            event = data["history"][0]
+            assert "id" in event
+            assert "task" in event
+            assert "started_at" in event
+            assert "result" in event
+            # result should be success or failure
+            assert event["result"] in ["success", "failure", "pending", None]
+        print("✓ Heartbeat event structure verified")
+    
+    def test_live_kv_returns_200(self):
+        """Live KV store endpoint returns 200 with items"""
+        response = requests.get(f"{BASE_URL}/api/live/kv")
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "source" in data
+        assert data["source"] == "engine"
+        # Verify we have KV data (per context: 16 items)
+        assert len(data["items"]) > 0
+        print(f"✓ Live KV: {len(data['items'])} items")
+    
+    def test_live_kv_item_structure(self):
+        """KV items have correct structure"""
+        response = requests.get(f"{BASE_URL}/api/live/kv")
+        data = response.json()
+        if len(data["items"]) > 0:
+            item = data["items"][0]
+            assert "key" in item
+            assert "value" in item
+            assert "raw" in item
+        print("✓ KV item structure verified")
+    
+    def test_live_wake_events_returns_200(self):
+        """Live wake events endpoint returns 200 with events"""
+        response = requests.get(f"{BASE_URL}/api/live/wake-events")
+        assert response.status_code == 200
+        data = response.json()
+        assert "events" in data
+        assert "source" in data
+        assert data["source"] == "engine"
+        # Verify we have wake event data (per context: 6 events)
+        assert len(data["events"]) > 0
+        print(f"✓ Live wake events: {len(data['events'])} events")
+    
+    def test_live_wake_event_structure(self):
+        """Wake events have correct structure"""
+        response = requests.get(f"{BASE_URL}/api/live/wake-events?limit=5")
+        data = response.json()
+        if len(data["events"]) > 0:
+            event = data["events"][0]
+            assert "id" in event
+            assert "source" in event
+            assert "reason" in event
+            assert "created_at" in event
+        print("✓ Wake event structure verified")
+    
+    def test_live_heartbeat_schedule_returns_200(self):
+        """Live heartbeat schedule endpoint returns 200 with tasks"""
+        response = requests.get(f"{BASE_URL}/api/live/heartbeat-schedule")
+        assert response.status_code == 200
+        data = response.json()
+        assert "tasks" in data
+        assert "source" in data
+        assert data["source"] == "engine"
+        # Verify we have schedule data (per context: 6 tasks)
+        assert len(data["tasks"]) > 0
+        print(f"✓ Live heartbeat schedule: {len(data['tasks'])} tasks")
+    
+    def test_live_heartbeat_schedule_task_structure(self):
+        """Heartbeat schedule tasks have correct structure"""
+        response = requests.get(f"{BASE_URL}/api/live/heartbeat-schedule")
+        data = response.json()
+        if len(data["tasks"]) > 0:
+            task = data["tasks"][0]
+            assert "task" in task
+            assert "cron" in task
+            assert "enabled" in task
+            assert "run_count" in task
+        print("✓ Heartbeat schedule task structure verified")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

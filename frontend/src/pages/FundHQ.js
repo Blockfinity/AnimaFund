@@ -227,17 +227,29 @@ export default function FundHQ({ fundName }) {
       setEngineState(engine);
 
       if (engine.live || engine.db_exists) {
-        const [agRes, actRes] = await Promise.all([
+        const [agRes, actRes, hbRes] = await Promise.all([
           fetch(`${API}/api/live/agents`),
           fetch(`${API}/api/live/activity?limit=20`),
+          fetch(`${API}/api/live/heartbeat?limit=20`),
         ]);
-        const [ag, act] = await Promise.all([agRes.json(), actRes.json()]);
+        const [ag, act, hb] = await Promise.all([agRes.json(), actRes.json(), hbRes.json()]);
         setAgents(ag.agents || []);
-        setActivities((act.activities || []).map(a => ({
+        const toolActivities = (act.activities || []).map(a => ({
           text: `${a.tool_name}: ${(a.result_preview || '').slice(0, 60)}`,
           type: categorizeToolCall(a.tool_name),
           id: a.activity_id,
-        })));
+        }));
+        // If no tool calls yet, show heartbeat events as activity
+        if (toolActivities.length === 0) {
+          const hbActivities = (hb.history || []).map(h => ({
+            text: `${h.task}: ${h.result || 'pending'}${h.duration_ms ? ` (${h.duration_ms}ms)` : ''}`,
+            type: 'operational',
+            id: h.id,
+          }));
+          setActivities(hbActivities);
+        } else {
+          setActivities(toolActivities);
+        }
         const deptMap = {};
         for (const a of (ag.agents || [])) {
           const dept = a.department || guessDepartment(a.role);

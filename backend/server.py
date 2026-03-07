@@ -36,6 +36,7 @@ from engine_bridge import (
     get_live_skills, get_live_metric_snapshots,
     get_live_policy_decisions, get_live_soul_history,
     get_live_onchain_transactions, get_live_session_summaries,
+    get_live_kv_store, get_live_wake_events, get_live_heartbeat_schedule,
 )
 
 load_dotenv()
@@ -409,6 +410,19 @@ async def live_onchain(limit: int = Query(default=50, le=200)):
 @app.get("/api/live/sessions")
 async def live_sessions(limit: int = Query(default=20, le=100)):
     return {"sessions": get_live_session_summaries(limit), "source": "engine"}
+
+@app.get("/api/live/kv")
+async def live_kv():
+    return {"items": get_live_kv_store(), "source": "engine"}
+
+@app.get("/api/live/wake-events")
+async def live_wake_events(limit: int = Query(default=20, le=100)):
+    return {"events": get_live_wake_events(limit), "source": "engine"}
+
+@app.get("/api/live/heartbeat-schedule")
+async def live_heartbeat_schedule():
+    return {"tasks": get_live_heartbeat_schedule(), "source": "engine"}
+
 
 
 # ═══════════════════════════════════════════════════════════

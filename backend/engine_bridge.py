@@ -85,29 +85,29 @@ def get_live_agents() -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, name, address, sandboxId, genesisPrompt,
-                   fundedAmountCents, status, createdAt, lastChecked
-            FROM children ORDER BY createdAt DESC
+            SELECT id, name, address, sandbox_id, genesis_prompt,
+                   funded_amount_cents, status, created_at, last_checked, role
+            FROM children ORDER BY created_at DESC
         """)
         agents = []
         for row in cursor.fetchall():
-            # Try to extract role from genesis prompt
-            prompt = row["genesisPrompt"] or ""
-            role = "Agent"
-            if "You are" in prompt:
-                role_part = prompt.split("You are")[1].split(".")[0].split(",")[0].strip()
-                role = role_part[:40]
+            role = row["role"] or "Agent"
+            if not row["role"]:
+                prompt = row["genesis_prompt"] or ""
+                if "You are" in prompt:
+                    role_part = prompt.split("You are")[1].split(".")[0].split(",")[0].strip()
+                    role = role_part[:40]
 
             agents.append({
                 "agent_id": row["id"],
                 "name": row["name"],
                 "role": role,
                 "wallet_address": row["address"],
-                "sandbox_id": row["sandboxId"],
-                "funded_cents": row["fundedAmountCents"],
+                "sandbox_id": row["sandbox_id"],
+                "funded_cents": row["funded_amount_cents"],
                 "status": row["status"],
-                "created_at": row["createdAt"],
-                "last_checked": row["lastChecked"],
+                "created_at": row["created_at"],
+                "last_checked": row["last_checked"],
             })
         conn.close()
         return agents
@@ -123,11 +123,11 @@ def get_live_activity(limit: int = 50) -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT tc.id, tc.turnId, tc.name as tool_name, tc.arguments,
-                   tc.result, tc.durationMs, tc.error,
+            SELECT tc.id, tc.turn_id, tc.name as tool_name, tc.arguments,
+                   tc.result, tc.duration_ms, tc.error,
                    t.timestamp, t.state
             FROM tool_calls tc
-            JOIN turns t ON tc.turnId = t.id
+            JOIN turns t ON tc.turn_id = t.id
             ORDER BY t.timestamp DESC
             LIMIT ?
         """, (limit,))
@@ -141,11 +141,11 @@ def get_live_activity(limit: int = 50) -> list:
 
             activities.append({
                 "activity_id": row["id"],
-                "turn_id": row["turnId"],
+                "turn_id": row["turn_id"],
                 "tool_name": row["tool_name"],
                 "arguments": args,
                 "result_preview": (row["result"] or "")[:200],
-                "duration_ms": row["durationMs"],
+                "duration_ms": row["duration_ms"],
                 "error": row["error"],
                 "timestamp": row["timestamp"],
                 "agent_state": row["state"],
@@ -164,18 +164,18 @@ def get_live_transactions(limit: int = 50) -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, type, amountCents, balanceAfterCents, description, timestamp
-            FROM transactions ORDER BY timestamp DESC LIMIT ?
+            SELECT id, type, amount_cents, balance_after_cents, description, created_at
+            FROM transactions ORDER BY created_at DESC LIMIT ?
         """, (limit,))
         txns = []
         for row in cursor.fetchall():
             txns.append({
                 "id": row["id"],
                 "type": row["type"],
-                "amount_cents": row["amountCents"],
-                "balance_after_cents": row["balanceAfterCents"],
+                "amount_cents": row["amount_cents"],
+                "balance_after_cents": row["balance_after_cents"],
                 "description": row["description"],
-                "timestamp": row["timestamp"],
+                "timestamp": row["created_at"],
             })
         conn.close()
         return txns
@@ -202,7 +202,7 @@ def get_live_financials() -> dict:
 
         # Get inference costs
         cursor = conn.execute("""
-            SELECT SUM(costCents) as total_cost, COUNT(*) as total_calls
+            SELECT SUM(cost_cents) as total_cost, COUNT(*) as total_calls
             FROM inference_costs
         """)
         row = cursor.fetchone()
@@ -212,7 +212,7 @@ def get_live_financials() -> dict:
 
         # Get spend by category
         cursor = conn.execute("""
-            SELECT category, SUM(amountCents) as total
+            SELECT category, SUM(amount_cents) as total
             FROM spend_tracking
             GROUP BY category
         """)
@@ -235,20 +235,20 @@ def get_live_heartbeat_history(limit: int = 20) -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, taskName, startedAt, completedAt, result,
-                   durationMs, error
+            SELECT id, task_name, started_at, completed_at, result,
+                   duration_ms, error
             FROM heartbeat_history
-            ORDER BY startedAt DESC LIMIT ?
+            ORDER BY started_at DESC LIMIT ?
         """, (limit,))
         history = []
         for row in cursor.fetchall():
             history.append({
                 "id": row["id"],
-                "task": row["taskName"],
-                "started_at": row["startedAt"],
-                "completed_at": row["completedAt"],
+                "task": row["task_name"],
+                "started_at": row["started_at"],
+                "completed_at": row["completed_at"],
                 "result": row["result"],
-                "duration_ms": row["durationMs"],
+                "duration_ms": row["duration_ms"],
                 "error": row["error"],
             })
         conn.close()
@@ -265,9 +265,9 @@ def get_live_memory_facts() -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, category, key, value, confidence, source, createdAt, updatedAt
+            SELECT id, category, key, value, confidence, source, created_at, updated_at
             FROM semantic_memory
-            ORDER BY updatedAt DESC LIMIT 100
+            ORDER BY updated_at DESC LIMIT 100
         """)
         facts = []
         for row in cursor.fetchall():
@@ -278,8 +278,8 @@ def get_live_memory_facts() -> list:
                 "value": row["value"],
                 "confidence": row["confidence"],
                 "source": row["source"],
-                "created_at": row["createdAt"],
-                "updated_at": row["updatedAt"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
             })
         conn.close()
         return facts
@@ -305,7 +305,7 @@ def get_live_turns(limit: int = 50) -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, timestamp, state, input, thinking, tokenUsage, costCents
+            SELECT id, timestamp, state, input, thinking, token_usage, cost_cents
             FROM turns ORDER BY timestamp DESC LIMIT ?
         """, (limit,))
         turns = []
@@ -314,14 +314,14 @@ def get_live_turns(limit: int = 50) -> list:
             thinking = row["thinking"] or ""
             token_usage = {}
             try:
-                token_usage = json.loads(row["tokenUsage"]) if row["tokenUsage"] else {}
+                token_usage = json.loads(row["token_usage"]) if row["token_usage"] else {}
             except Exception:
                 pass
 
             # Get tool calls for this turn
             tc_cursor = conn.execute("""
-                SELECT id, name, arguments, result, durationMs, error
-                FROM tool_calls WHERE turnId = ? ORDER BY rowid ASC
+                SELECT id, name, arguments, result, duration_ms, error
+                FROM tool_calls WHERE turn_id = ? ORDER BY rowid ASC
             """, (turn_id,))
             tool_calls = []
             for tc in tc_cursor.fetchall():
@@ -335,7 +335,7 @@ def get_live_turns(limit: int = 50) -> list:
                     "tool": tc["name"],
                     "arguments": args,
                     "result": tc["result"] or "",
-                    "duration_ms": tc["durationMs"],
+                    "duration_ms": tc["duration_ms"],
                     "error": tc["error"],
                 })
 
@@ -347,7 +347,7 @@ def get_live_turns(limit: int = 50) -> list:
                 "thinking": thinking,
                 "tool_calls": tool_calls,
                 "token_usage": token_usage,
-                "cost_cents": row["costCents"] or 0,
+                "cost_cents": row["cost_cents"] or 0,
             })
         conn.close()
         return turns
@@ -363,7 +363,7 @@ def get_live_modifications(limit: int = 30) -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, timestamp, type, description, filePath, diff, reversible
+            SELECT id, timestamp, type, description, file_path, diff, reversible
             FROM modifications ORDER BY timestamp DESC LIMIT ?
         """, (limit,))
         mods = []
@@ -373,7 +373,7 @@ def get_live_modifications(limit: int = 30) -> list:
                 "timestamp": row["timestamp"],
                 "type": row["type"],
                 "description": row["description"],
-                "file_path": row["filePath"],
+                "file_path": row["file_path"],
                 "diff": (row["diff"] or "")[:500],
                 "reversible": bool(row["reversible"]),
             })
@@ -421,7 +421,7 @@ def get_live_identity() -> dict:
         cursor = conn.execute("""
             SELECT tc.arguments, tc.result, t.timestamp
             FROM tool_calls tc
-            JOIN turns t ON tc.turnId = t.id
+            JOIN turns t ON tc.turn_id = t.id
             WHERE tc.name IN ('expose_port', 'register_domain', 'create_sandbox')
             ORDER BY t.timestamp DESC LIMIT 50
         """)
@@ -443,7 +443,7 @@ def get_live_identity() -> dict:
         cursor = conn.execute("""
             SELECT tc.arguments, tc.result, t.timestamp
             FROM tool_calls tc
-            JOIN turns t ON tc.turnId = t.id
+            JOIN turns t ON tc.turn_id = t.id
             WHERE tc.name = 'register_domain'
             ORDER BY t.timestamp DESC LIMIT 10
         """)
@@ -457,22 +457,22 @@ def get_live_identity() -> dict:
         result["domains"] = domains
 
         # Read installed tools (the AI may have installed MCP servers, npm packages)
-        cursor = conn.execute("SELECT id, name, type, config, installedAt, enabled FROM installed_tools ORDER BY installedAt DESC")
+        cursor = conn.execute("SELECT id, name, type, config, installed_at, enabled FROM installed_tools ORDER BY installed_at DESC")
         tools = []
         for row in cursor.fetchall():
             tools.append({
                 "id": row["id"], "name": row["name"], "type": row["type"],
-                "enabled": bool(row["enabled"]), "installed_at": row["installedAt"],
+                "enabled": bool(row["enabled"]), "installed_at": row["installed_at"],
             })
         result["installed_tools"] = tools
 
         # Read children sandboxes (each is a service the AI deployed)
-        cursor = conn.execute("SELECT id, name, sandboxId, status, createdAt FROM children ORDER BY createdAt DESC")
+        cursor = conn.execute("SELECT id, name, sandbox_id, status, created_at FROM children ORDER BY created_at DESC")
         children = []
         for row in cursor.fetchall():
             children.append({
-                "id": row["id"], "name": row["name"], "sandbox_id": row["sandboxId"],
-                "status": row["status"], "created_at": row["createdAt"],
+                "id": row["id"], "name": row["name"], "sandbox_id": row["sandbox_id"],
+                "status": row["status"], "created_at": row["created_at"],
             })
         result["children_sandboxes"] = children
 
@@ -491,19 +491,19 @@ def get_live_inbox_messages(limit: int = 50) -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, "from", "to", content, signedAt, createdAt, replyTo, status
-            FROM inbox_messages ORDER BY createdAt DESC LIMIT ?
+            SELECT id, from_address, to_address, content, received_at, processed_at, reply_to, status
+            FROM inbox_messages ORDER BY received_at DESC LIMIT ?
         """, (limit,))
         msgs = []
         for row in cursor.fetchall():
             msgs.append({
                 "id": row["id"],
-                "from_address": row["from"],
-                "to_address": row["to"],
+                "from_address": row["from_address"],
+                "to_address": row["to_address"],
                 "content": (row["content"] or "")[:1000],
-                "signed_at": row["signedAt"],
-                "created_at": row["createdAt"],
-                "reply_to": row["replyTo"],
+                "signed_at": row["received_at"],
+                "created_at": row["received_at"],
+                "reply_to": row["reply_to"],
                 "status": row["status"],
             })
         conn.close()
@@ -520,24 +520,24 @@ def get_live_relationships() -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT id, entityAddress, entityName, relationshipType,
-                   trustScore, interactionCount, lastInteractionAt, notes,
-                   createdAt, updatedAt
-            FROM relationship_memory ORDER BY updatedAt DESC
+            SELECT id, entity_address, entity_name, relationship_type,
+                   trust_score, interaction_count, last_interaction_at, notes,
+                   created_at, updated_at
+            FROM relationship_memory ORDER BY updated_at DESC
         """)
         rels = []
         for row in cursor.fetchall():
             rels.append({
                 "id": row["id"],
-                "address": row["entityAddress"],
-                "name": row["entityName"],
-                "relationship_type": row["relationshipType"],
-                "trust_score": row["trustScore"],
-                "interaction_count": row["interactionCount"],
-                "last_interaction": row["lastInteractionAt"],
+                "address": row["entity_address"],
+                "name": row["entity_name"],
+                "relationship_type": row["relationship_type"],
+                "trust_score": row["trust_score"],
+                "interaction_count": row["interaction_count"],
+                "last_interaction": row["last_interaction_at"],
                 "notes": row["notes"],
-                "created_at": row["createdAt"],
-                "updated_at": row["updatedAt"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
             })
         conn.close()
         return rels
@@ -552,23 +552,23 @@ def get_live_reputation(address: str = None) -> list:
     if not conn:
         return []
     try:
-        query = "SELECT id, fromAgent, toAgent, score, comment, txHash, timestamp FROM reputation"
+        query = "SELECT id, from_agent, to_agent, score, comment, tx_hash, created_at FROM reputation"
         params = ()
         if address:
-            query += " WHERE fromAgent = ? OR toAgent = ?"
+            query += " WHERE from_agent = ? OR to_agent = ?"
             params = (address, address)
-        query += " ORDER BY timestamp DESC LIMIT 50"
+        query += " ORDER BY created_at DESC LIMIT 50"
         cursor = conn.execute(query, params)
         reps = []
         for row in cursor.fetchall():
             reps.append({
                 "id": row["id"],
-                "from_agent": row["fromAgent"],
-                "to_agent": row["toAgent"],
+                "from_agent": row["from_agent"],
+                "to_agent": row["to_agent"],
                 "score": row["score"],
                 "comment": row["comment"],
-                "tx_hash": row["txHash"],
-                "timestamp": row["timestamp"],
+                "tx_hash": row["tx_hash"],
+                "timestamp": row["created_at"],
             })
         conn.close()
         return reps
@@ -584,27 +584,27 @@ def get_live_discovered_agents() -> list:
         return []
     try:
         cursor = conn.execute("""
-            SELECT agentAddress, agentCard, fetchedFrom, cardHash,
-                   fetchCount, lastFetchedAt, createdAt
-            FROM discovered_agents_cache ORDER BY lastFetchedAt DESC
+            SELECT agent_address, agent_card, fetched_from, card_hash,
+                   fetch_count, last_fetched_at, created_at
+            FROM discovered_agents_cache ORDER BY last_fetched_at DESC
         """)
         agents = []
         for row in cursor.fetchall():
             card = {}
             try:
-                card = json.loads(row["agentCard"]) if row["agentCard"] else {}
+                card = json.loads(row["agent_card"]) if row["agent_card"] else {}
             except Exception:
                 pass
             agents.append({
-                "address": row["agentAddress"],
+                "address": row["agent_address"],
                 "card": card,
-                "name": card.get("name", row["agentAddress"][:10] + "..."),
+                "name": card.get("name", row["agent_address"][:10] + "..."),
                 "description": card.get("description", ""),
                 "services": card.get("services", []),
-                "fetched_from": row["fetchedFrom"],
-                "fetch_count": row["fetchCount"],
-                "last_fetched": row["lastFetchedAt"],
-                "discovered_at": row["createdAt"],
+                "fetched_from": row["fetched_from"],
+                "fetch_count": row["fetch_count"],
+                "last_fetched": row["last_fetched_at"],
+                "discovered_at": row["created_at"],
             })
         conn.close()
         return agents
@@ -619,12 +619,12 @@ def get_child_lifecycle_events(child_id: str = None, limit: int = 50) -> list:
     if not conn:
         return []
     try:
-        query = "SELECT id, childId, fromState, toState, reason, metadata, createdAt FROM child_lifecycle_events"
+        query = "SELECT id, child_id, from_state, to_state, reason, metadata, created_at FROM child_lifecycle_events"
         params = ()
         if child_id:
-            query += " WHERE childId = ?"
+            query += " WHERE child_id = ?"
             params = (child_id,)
-        query += " ORDER BY createdAt DESC LIMIT ?"
+        query += " ORDER BY created_at DESC LIMIT ?"
         params = params + (limit,)
         cursor = conn.execute(query, params)
         events = []
@@ -636,12 +636,12 @@ def get_child_lifecycle_events(child_id: str = None, limit: int = 50) -> list:
                 pass
             events.append({
                 "id": row["id"],
-                "child_id": row["childId"],
-                "from_state": row["fromState"],
-                "to_state": row["toState"],
+                "child_id": row["child_id"],
+                "from_state": row["from_state"],
+                "to_state": row["to_state"],
                 "reason": row["reason"],
                 "metadata": meta,
-                "created_at": row["createdAt"],
+                "created_at": row["created_at"],
             })
         conn.close()
         return events
@@ -659,8 +659,8 @@ def get_live_working_memory() -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, type, content, priority, createdAt, expiresAt FROM working_memory ORDER BY priority DESC, createdAt DESC LIMIT 50")
-        items = [{"id": r["id"], "type": r["type"], "content": r["content"], "priority": r["priority"], "created_at": r["createdAt"], "expires_at": r["expiresAt"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, content_type, content, priority, created_at, expires_at FROM working_memory ORDER BY priority DESC, created_at DESC LIMIT 50")
+        items = [{"id": r["id"], "type": r["content_type"], "content": r["content"], "priority": r["priority"], "created_at": r["created_at"], "expires_at": r["expires_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -673,8 +673,8 @@ def get_live_episodic_memory(limit: int = 50) -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, event, importance, emotionalValence, context, timestamp FROM episodic_memory ORDER BY timestamp DESC LIMIT ?", (limit,))
-        items = [{"id": r["id"], "event": r["event"], "importance": r["importance"], "valence": r["emotionalValence"], "context": r["context"], "timestamp": r["timestamp"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, event_type, summary, importance, classification, created_at FROM episodic_memory ORDER BY created_at DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "event": r["event_type"], "importance": r["importance"], "valence": r["classification"], "context": r["summary"], "timestamp": r["created_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -687,8 +687,8 @@ def get_live_procedural_memory() -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, name, steps, triggerConditions, successCount, failureCount, lastUsedAt, createdAt FROM procedural_memory ORDER BY lastUsedAt DESC LIMIT 50")
-        items = [{"id": r["id"], "name": r["name"], "steps": r["steps"], "triggers": r["triggerConditions"], "success_count": r["successCount"], "failure_count": r["failureCount"], "last_used": r["lastUsedAt"], "created_at": r["createdAt"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, name, description, steps, success_count, failure_count, last_used_at, created_at FROM procedural_memory ORDER BY last_used_at DESC LIMIT 50")
+        items = [{"id": r["id"], "name": r["name"], "steps": r["steps"], "triggers": r["description"], "success_count": r["success_count"], "failure_count": r["failure_count"], "last_used": r["last_used_at"], "created_at": r["created_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -701,8 +701,8 @@ def get_live_installed_tools() -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, name, type, config, installedAt, enabled FROM installed_tools ORDER BY installedAt DESC")
-        items = [{"id": r["id"], "name": r["name"], "type": r["type"], "config": r["config"], "installed_at": r["installedAt"], "enabled": bool(r["enabled"])} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, name, type, config, installed_at, enabled FROM installed_tools ORDER BY installed_at DESC")
+        items = [{"id": r["id"], "name": r["name"], "type": r["type"], "config": r["config"], "installed_at": r["installed_at"], "enabled": bool(r["enabled"])} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -715,8 +715,8 @@ def get_live_skills() -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, name, description, content, autoActivate, installedAt FROM skills ORDER BY installedAt DESC")
-        items = [{"id": r["id"], "name": r["name"], "description": r["description"], "content_length": len(r["content"] or ""), "auto_activate": bool(r["autoActivate"]), "installed_at": r["installedAt"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT name, description, enabled, installed_at FROM skills ORDER BY installed_at DESC")
+        items = [{"name": r["name"], "description": r["description"], "enabled": bool(r["enabled"]), "installed_at": r["installed_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -729,13 +729,13 @@ def get_live_metric_snapshots(limit: int = 50) -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, metricName, metricValues, timestamp FROM metric_snapshots ORDER BY timestamp DESC LIMIT ?", (limit,))
+        cursor = conn.execute("SELECT id, snapshot_at, metrics_json, created_at FROM metric_snapshots ORDER BY created_at DESC LIMIT ?", (limit,))
         items = []
         for r in cursor.fetchall():
             values = {}
-            try: values = json.loads(r["metricValues"]) if r["metricValues"] else {}
+            try: values = json.loads(r["metrics_json"]) if r["metrics_json"] else {}
             except: pass
-            items.append({"id": r["id"], "metric": r["metricName"], "values": values, "timestamp": r["timestamp"]})
+            items.append({"id": r["id"], "metric": "snapshot", "values": values, "timestamp": r["snapshot_at"]})
         conn.close()
         return items
     except Exception:
@@ -748,8 +748,8 @@ def get_live_policy_decisions(limit: int = 50) -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, toolName, decision, reason, ruleCategory, timestamp FROM policy_decisions ORDER BY timestamp DESC LIMIT ?", (limit,))
-        items = [{"id": r["id"], "tool": r["toolName"], "decision": r["decision"], "reason": r["reason"], "category": r["ruleCategory"], "timestamp": r["timestamp"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, tool_name, decision, reason, risk_level, created_at FROM policy_decisions ORDER BY created_at DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "tool": r["tool_name"], "decision": r["decision"], "reason": r["reason"], "category": r["risk_level"], "timestamp": r["created_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -762,8 +762,8 @@ def get_live_soul_history() -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, content, genesisAlignment, version, createdAt FROM soul_history ORDER BY createdAt DESC LIMIT 20")
-        items = [{"id": r["id"], "content_length": len(r["content"] or ""), "alignment": r["genesisAlignment"], "version": r["version"], "created_at": r["createdAt"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, content, version, change_source, change_reason, created_at FROM soul_history ORDER BY created_at DESC LIMIT 20")
+        items = [{"id": r["id"], "content_length": len(r["content"] or ""), "alignment": r["change_reason"], "version": r["version"], "created_at": r["created_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -776,8 +776,8 @@ def get_live_onchain_transactions(limit: int = 50) -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, type, fromAddress, toAddress, amountWei, txHash, chain, status, timestamp FROM onchain_transactions ORDER BY timestamp DESC LIMIT ?", (limit,))
-        items = [{"id": r["id"], "type": r["type"], "from": r["fromAddress"], "to": r["toAddress"], "amount_wei": r["amountWei"], "tx_hash": r["txHash"], "chain": r["chain"], "status": r["status"], "timestamp": r["timestamp"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, tx_hash, chain, operation, status, gas_used, metadata, created_at FROM onchain_transactions ORDER BY created_at DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "type": r["operation"], "tx_hash": r["tx_hash"], "chain": r["chain"], "status": r["status"], "timestamp": r["created_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
@@ -790,11 +790,79 @@ def get_live_session_summaries(limit: int = 20) -> list:
     conn = get_engine_db()
     if not conn: return []
     try:
-        cursor = conn.execute("SELECT id, summary, turnsCount, toolCallsCount, totalCostCents, startedAt, endedAt FROM session_summaries ORDER BY endedAt DESC LIMIT ?", (limit,))
-        items = [{"id": r["id"], "summary": r["summary"], "turns": r["turnsCount"], "tool_calls": r["toolCallsCount"], "cost_cents": r["totalCostCents"], "started_at": r["startedAt"], "ended_at": r["endedAt"]} for r in cursor.fetchall()]
+        cursor = conn.execute("SELECT id, summary, turn_count, total_tokens, total_cost_cents, created_at FROM session_summaries ORDER BY created_at DESC LIMIT ?", (limit,))
+        items = [{"id": r["id"], "summary": r["summary"], "turns": r["turn_count"], "tool_calls": 0, "cost_cents": r["total_cost_cents"], "started_at": r["created_at"], "ended_at": r["created_at"]} for r in cursor.fetchall()]
         conn.close()
         return items
     except Exception:
         conn.close()
         return []
 
+
+
+def get_live_kv_store() -> list:
+    """Key-value store — agent's runtime state."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT key, value FROM kv ORDER BY key ASC")
+        items = []
+        for r in cursor.fetchall():
+            val = r["value"]
+            parsed = val
+            try:
+                parsed = json.loads(val) if val else val
+            except Exception:
+                pass
+            items.append({"key": r["key"], "value": parsed, "raw": val})
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_wake_events(limit: int = 20) -> list:
+    """Wake events — what triggered the agent to wake up."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT id, source, reason, payload, created_at FROM wake_events ORDER BY created_at DESC LIMIT ?", (limit,))
+        items = []
+        for r in cursor.fetchall():
+            meta = {}
+            try:
+                meta = json.loads(r["payload"]) if r["payload"] else {}
+            except Exception:
+                pass
+            items.append({"id": r["id"], "source": r["source"], "reason": r["reason"], "metadata": meta, "created_at": r["created_at"]})
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_heartbeat_schedule() -> list:
+    """Heartbeat schedule — recurring tasks configuration."""
+    conn = get_engine_db()
+    if not conn: return []
+    try:
+        cursor = conn.execute("SELECT task_name, cron_expression, interval_ms, enabled, run_count, last_result, last_run_at, next_run_at FROM heartbeat_schedule ORDER BY task_name ASC")
+        items = []
+        for r in cursor.fetchall():
+            items.append({
+                "task": r["task_name"],
+                "cron": r["cron_expression"],
+                "interval_seconds": (r["interval_ms"] or 0) // 1000 if r["interval_ms"] else None,
+                "enabled": bool(r["enabled"]),
+                "run_count": r["run_count"],
+                "last_result": r["last_result"],
+                "last_run_at": r["last_run_at"],
+                "next_run_at": r["next_run_at"],
+            })
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
