@@ -42,6 +42,7 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] **Real-Time On-Chain Balance**: `/api/wallet/balance` endpoint queries Base blockchain RPC directly for USDC/ETH balance, bypassing agent's 5-minute cycle. Integrated into Agent Mind dashboard with LIVE indicator. (2026-03-07)
 - [x] **P0 Verification (2026-03-07)**: All P0 features verified — real-time balance display, all API endpoints, frontend navigation, genesis screen, dashboard pages. Testing: 96% backend (55/57 pass, 2 expected due to sleeping engine), 100% frontend.
 - [x] **Deployment Hardening v2 (2026-03-07)**: Removed eth-account and all eth-* blockchain libraries (deployment blocker). Simplified wallet address fallback to read from wallet.json directly. Deleted dead frontend files (AgentNetwork.js, Overview.js). Deleted obsolete dist/better-sqlite3-shim.mjs. Deployment agent: ALL CHECKS PASS.
+- [x] **Genesis Config Fix (2026-03-07)**: Fixed agent not receiving creatorMessage and proper genesisPrompt on first boot. Patched bundle.mjs to pass autoConfig.creatorMessage to createConfig(). Added ~/.automaton → ~/.anima symlink for path consistency. Added POST /api/genesis/reset endpoint. Testing: 96% backend, 100% frontend.
 
 ## Deployment Hardening (2026-03-07)
 - [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
@@ -63,7 +64,8 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 
 ## API Endpoints
 All prefixed with `/api`:
-- `POST /api/genesis/create` — Start the engine
+- `POST /api/genesis/create` — Start the engine (stages genesisPrompt + creatorMessage in auto-config)
+- `POST /api/genesis/reset` — Stop engine, clean state, preserve wallet
 - `GET /api/genesis/status` — Agent status, wallet, stage
 - `GET /api/wallet/balance` — Real-time on-chain USDC/ETH balance via Base RPC
 - `GET /api/health` — Health check
