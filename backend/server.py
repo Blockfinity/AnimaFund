@@ -226,23 +226,11 @@ async def genesis_status():
             pass
     if not wallet_address and wallet_exists:
         try:
-            from eth_account import Account
             with open(wallet_file, "r") as f:
                 wd = json.load(f)
-            pk = wd.get("privateKey", "")
-            if pk:
-                acct = Account.from_key(pk)
-                wallet_address = acct.address
+            wallet_address = wd.get("address")
         except Exception:
-            # Derive address using basic crypto if eth_account not available
-            try:
-                with open(wallet_file, "r") as f:
-                    wd = json.load(f)
-                # wallet.json has privateKey, but address is derived by viem
-                # We can't derive it in Python without web3 — check if the engine wrote it
-                wallet_address = wd.get("address")
-            except Exception:
-                pass
+            pass
 
     # Check engine process
     engine_running = is_engine_process_running()
