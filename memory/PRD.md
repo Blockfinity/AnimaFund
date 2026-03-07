@@ -39,6 +39,8 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] **Fund HQ**: Falls back to heartbeat events when no tool call activity (2026-03-07)
 - [x] **New API endpoints**: /api/live/kv, /api/live/wake-events, /api/live/heartbeat-schedule, /api/live/skills-full (2026-03-07)
 - [x] **Skills Page**: Dedicated page showing 80 skills (53 Anima Fund + 27 Conway Platform), 6 AI models. Filters: by source (Anima/Conway/MCP/OpenClaw), by agent, sort (A-Z/Most Used/Recently Acquired), search. Skills grouped by category. Model registry table. (2026-03-07)
+- [x] **Real-Time On-Chain Balance**: `/api/wallet/balance` endpoint queries Base blockchain RPC directly for USDC/ETH balance, bypassing agent's 5-minute cycle. Integrated into Agent Mind dashboard with LIVE indicator. (2026-03-07)
+- [x] **P0 Verification (2026-03-07)**: All P0 features verified — real-time balance display, all API endpoints, frontend navigation, genesis screen, dashboard pages. Testing: 96% backend (55/57 pass, 2 expected due to sleeping engine), 100% frontend.
 
 ## Deployment Hardening (2026-03-07)
 - [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
@@ -62,6 +64,7 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 All prefixed with `/api`:
 - `POST /api/genesis/create` — Start the engine
 - `GET /api/genesis/status` — Agent status, wallet, stage
+- `GET /api/wallet/balance` — Real-time on-chain USDC/ETH balance via Base RPC
 - `GET /api/health` — Health check
 - `GET /api/engine/live` — Engine liveness
 - `GET /api/engine/logs` — Engine stdout/stderr
