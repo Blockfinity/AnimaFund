@@ -37,6 +37,7 @@ from engine_bridge import (
     get_live_policy_decisions, get_live_soul_history,
     get_live_onchain_transactions, get_live_session_summaries,
     get_live_kv_store, get_live_wake_events, get_live_heartbeat_schedule,
+    get_live_skills_full, get_live_models, get_live_tool_usage,
 )
 
 load_dotenv()
@@ -390,6 +391,17 @@ async def live_installed_tools():
 @app.get("/api/live/skills")
 async def live_skills():
     return {"skills": get_live_skills(), "source": "engine"}
+
+@app.get("/api/live/skills-full")
+async def live_skills_full():
+    """Aggregated skills view: Anima skills + Conway platform tools + MCP servers + models."""
+    return {
+        "skills": get_live_skills_full(),
+        "models": get_live_models(),
+        "tool_usage": get_live_tool_usage(),
+        "source": "engine",
+    }
+
 
 @app.get("/api/live/metrics")
 async def live_metrics(limit: int = Query(default=50, le=200)):

@@ -489,5 +489,116 @@ class TestNewLiveEndpoints:
         print("✓ Heartbeat schedule task structure verified")
 
 
+class TestSkillsFullEndpoint:
+    """Tests for /api/live/skills-full endpoint - Skills page aggregated view"""
+    
+    def test_skills_full_returns_200(self):
+        """Skills full endpoint returns 200"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        assert response.status_code == 200
+        print("✓ Skills full endpoint accessible")
+    
+    def test_skills_full_contains_skills_array(self):
+        """Skills full returns skills array"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        assert "skills" in data
+        assert isinstance(data["skills"], list)
+        print(f"✓ Skills count: {len(data['skills'])}")
+    
+    def test_skills_full_returns_80_total_skills(self):
+        """Skills full returns 80 total skills (53 Anima + 27 Conway)"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        assert len(data["skills"]) == 80
+        print(f"✓ Total skills: {len(data['skills'])} (expected 80)")
+    
+    def test_skills_full_anima_count(self):
+        """Skills full returns 53 Anima Fund skills"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        anima_skills = [s for s in data["skills"] if s.get("source") == "anima"]
+        assert len(anima_skills) == 53
+        print(f"✓ Anima Fund skills: {len(anima_skills)} (expected 53)")
+    
+    def test_skills_full_conway_count(self):
+        """Skills full returns 27 Conway Platform tools"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        conway_skills = [s for s in data["skills"] if s.get("source") == "conway"]
+        assert len(conway_skills) == 27
+        print(f"✓ Conway Platform tools: {len(conway_skills)} (expected 27)")
+    
+    def test_skills_full_contains_models_array(self):
+        """Skills full returns models array"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        assert "models" in data
+        assert isinstance(data["models"], list)
+        print(f"✓ Models count: {len(data['models'])}")
+    
+    def test_skills_full_returns_6_models(self):
+        """Skills full returns 6 AI models"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        assert len(data["models"]) == 6
+        print(f"✓ Total models: {len(data['models'])} (expected 6)")
+    
+    def test_skills_full_contains_tool_usage_dict(self):
+        """Skills full returns tool_usage dictionary"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        assert "tool_usage" in data
+        assert isinstance(data["tool_usage"], dict)
+        print(f"✓ Tool usage keys: {len(data['tool_usage'])} (expected 0 since engine has 0 turns)")
+    
+    def test_skills_full_skill_structure(self):
+        """Skills have correct structure (name, description, source, category, enabled)"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        if len(data["skills"]) > 0:
+            skill = data["skills"][0]
+            assert "name" in skill
+            assert "description" in skill
+            assert "source" in skill
+            assert "category" in skill
+            assert "enabled" in skill
+            assert "used_by" in skill
+            assert isinstance(skill["name"], str)
+            assert isinstance(skill["enabled"], bool)
+        print("✓ Skill structure verified")
+    
+    def test_skills_full_model_structure(self):
+        """Models have correct structure (id, provider, name, tier, costs, context, tools, vision)"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        if len(data["models"]) > 0:
+            model = data["models"][0]
+            assert "id" in model
+            assert "provider" in model
+            assert "name" in model
+            assert "tier" in model
+            assert "cost_input" in model
+            assert "cost_output" in model
+            assert "context_window" in model
+            assert "tools" in model
+            assert "vision" in model
+        print("✓ Model structure verified")
+    
+    def test_skills_full_skill_categories(self):
+        """Skills have valid categories"""
+        response = requests.get(f"{BASE_URL}/api/live/skills-full")
+        data = response.json()
+        valid_categories = [
+            "deal-flow", "portfolio", "finance", "talent", "compliance", 
+            "growth", "operations", "advisory", "compute", "agents", 
+            "social", "filesystem", "tools", "planning", "inference", "system", "general"
+        ]
+        for skill in data["skills"]:
+            cat = skill.get("category", "general")
+            assert cat in valid_categories, f"Invalid category: {cat}"
+        print("✓ All skill categories are valid")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

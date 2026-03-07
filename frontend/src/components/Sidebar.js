@@ -9,6 +9,7 @@ const navItems = [
   { id: 'mind', label: 'Agent Mind', icon: Brain },
   { id: 'fundhq', label: 'Fund HQ', icon: Building2 },
   { id: 'agents', label: 'Agents', icon: Users },
+  { id: 'skills', label: 'Skills', icon: Zap },
   { id: 'deals', label: 'Deal Flow', icon: GitPullRequest },
   { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
   { id: 'financials', label: 'Financials', icon: DollarSign },

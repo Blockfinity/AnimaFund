@@ -866,3 +866,195 @@ def get_live_heartbeat_schedule() -> list:
     except Exception:
         conn.close()
         return []
+
+
+# Conway platform built-in tools (extracted from the automaton engine source)
+CONWAY_PLATFORM_TOOLS = [
+    {"name": "create_sandbox", "description": "Create a new Conway Cloud sandbox (VM) for running code and services", "category": "compute"},
+    {"name": "list_sandboxes", "description": "List all active Conway Cloud sandboxes", "category": "compute"},
+    {"name": "expose_port", "description": "Expose a port from a sandbox to the internet", "category": "compute"},
+    {"name": "register_domain", "description": "Register a .web4.ai domain pointing to a sandbox", "category": "compute"},
+    {"name": "search_domains", "description": "Search for available .web4.ai domains", "category": "compute"},
+    {"name": "spawn_child", "description": "Spawn a new child agent with its own wallet and sandbox", "category": "agents"},
+    {"name": "list_children", "description": "List all spawned child agents and their status", "category": "agents"},
+    {"name": "check_child_status", "description": "Check the health and status of a child agent", "category": "agents"},
+    {"name": "send_message", "description": "Send a signed message to another agent via Conway social protocol", "category": "social"},
+    {"name": "check_social_inbox", "description": "Check for incoming messages from other agents", "category": "social"},
+    {"name": "check_reputation", "description": "Check or update reputation scores for agents", "category": "social"},
+    {"name": "read_file", "description": "Read a file from the agent's sandbox filesystem", "category": "filesystem"},
+    {"name": "write_file", "description": "Write content to a file in the agent's sandbox", "category": "filesystem"},
+    {"name": "install_npm_package", "description": "Install an npm package in the agent's sandbox", "category": "tools"},
+    {"name": "install_mcp_server", "description": "Install and configure an MCP (Model Context Protocol) server", "category": "tools"},
+    {"name": "install_skill", "description": "Install a new skill from a SKILL.md definition", "category": "tools"},
+    {"name": "install_skill_from_git", "description": "Install a skill from a Git repository", "category": "tools"},
+    {"name": "install_skill_from_url", "description": "Install a skill from a URL", "category": "tools"},
+    {"name": "create_skill", "description": "Create a new custom skill definition", "category": "tools"},
+    {"name": "list_skills", "description": "List all installed skills", "category": "tools"},
+    {"name": "create_goal", "description": "Create a new goal in the agent's task graph", "category": "planning"},
+    {"name": "list_goals", "description": "List all active goals and their status", "category": "planning"},
+    {"name": "list_models", "description": "List available AI models and their costs", "category": "inference"},
+    {"name": "check_credits", "description": "Check Conway credit balance", "category": "finance"},
+    {"name": "check_usdc_balance", "description": "Check USDC balance on Base chain", "category": "finance"},
+    {"name": "check_inference_spending", "description": "Check inference cost tracking", "category": "finance"},
+    {"name": "check_for_updates", "description": "Check for engine and skill updates", "category": "system"},
+]
+
+
+def get_live_skills_full() -> list:
+    """All skills with source categorization + Conway platform tools + MCP servers."""
+    conn = get_engine_db()
+    if not conn:
+        return [{"name": t["name"], "description": t["description"], "source": "conway", "category": t["category"], "enabled": True, "installed_at": None, "auto_activate": True, "used_by": ["founder"], "use_count": 0} for t in CONWAY_PLATFORM_TOOLS]
+
+    try:
+        # 1. Anima Fund skills from skills table
+        cursor = conn.execute("SELECT name, description, source, enabled, installed_at, auto_activate FROM skills ORDER BY name")
+        items = []
+        for r in cursor.fetchall():
+            src = r["source"] or "builtin"
+            # Categorize by source
+            if "openclaw" in src.lower() or "open_claw" in src.lower():
+                source_label = "openclaw"
+            elif "mcp" in src.lower():
+                source_label = "mcp"
+            elif src in ("builtin", "genesis", "local"):
+                source_label = "anima"
+            else:
+                source_label = src
+
+            # Infer category from skill name
+            name = r["name"]
+            if any(k in name for k in ["deal", "pitch", "scout", "inbound", "outbound"]):
+                cat = "deal-flow"
+            elif any(k in name for k in ["incubat", "portfolio", "kpi", "exit"]):
+                cat = "portfolio"
+            elif any(k in name for k in ["capital", "budget", "financ", "treasury", "roi", "lp"]):
+                cat = "finance"
+            elif any(k in name for k in ["hiring", "talent", "hr", "dei", "agent-sust"]):
+                cat = "talent"
+            elif any(k in name for k in ["compliance", "ethics", "scam", "cost-valid"]):
+                cat = "compliance"
+            elif any(k in name for k in ["market", "customer", "crm", "event"]):
+                cat = "growth"
+            elif any(k in name for k in ["conway", "tool", "skill", "admin", "operational", "survival", "strategy"]):
+                cat = "operations"
+            elif any(k in name for k in ["technical", "m-a", "syndic", "term-sheet", "legal"]):
+                cat = "advisory"
+            else:
+                cat = "general"
+
+            items.append({
+                "name": name,
+                "description": r["description"],
+                "source": source_label,
+                "category": cat,
+                "enabled": bool(r["enabled"]),
+                "installed_at": r["installed_at"],
+                "auto_activate": bool(r["auto_activate"]),
+                "used_by": ["founder"],
+                "use_count": 0,
+            })
+
+        # 2. Conway platform tools
+        for t in CONWAY_PLATFORM_TOOLS:
+            items.append({
+                "name": t["name"],
+                "description": t["description"],
+                "source": "conway",
+                "category": t["category"],
+                "enabled": True,
+                "installed_at": None,
+                "auto_activate": True,
+                "used_by": ["founder"],
+                "use_count": 0,
+            })
+
+        # 3. MCP servers from installed_tools
+        cursor = conn.execute("SELECT id, name, type, config, installed_at, enabled FROM installed_tools WHERE type = 'mcp_server' OR type LIKE '%mcp%' ORDER BY installed_at DESC")
+        for r in cursor.fetchall():
+            items.append({
+                "name": r["name"],
+                "description": f"MCP Server: {r['name']}",
+                "source": "mcp",
+                "category": "tools",
+                "enabled": bool(r["enabled"]),
+                "installed_at": r["installed_at"],
+                "auto_activate": True,
+                "used_by": ["founder"],
+                "use_count": 0,
+            })
+
+        # 4. Any non-MCP installed tools (OpenClaw, npm packages, etc.)
+        cursor = conn.execute("SELECT id, name, type, config, installed_at, enabled FROM installed_tools WHERE type != 'mcp_server' AND type NOT LIKE '%mcp%' ORDER BY installed_at DESC")
+        for r in cursor.fetchall():
+            items.append({
+                "name": r["name"],
+                "description": f"{r['type']}: {r['name']}",
+                "source": "openclaw" if "claw" in (r["type"] or "").lower() else "external",
+                "category": "tools",
+                "enabled": bool(r["enabled"]),
+                "installed_at": r["installed_at"],
+                "auto_activate": False,
+                "used_by": ["founder"],
+                "use_count": 0,
+            })
+
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_models() -> list:
+    """AI models available to the agent."""
+    conn = get_engine_db()
+    if not conn:
+        return []
+    try:
+        cursor = conn.execute("SELECT model_id, provider, display_name, tier_minimum, cost_per_1k_input, cost_per_1k_output, max_tokens, context_window, supports_tools, supports_vision, enabled FROM model_registry ORDER BY cost_per_1k_input ASC")
+        items = []
+        for r in cursor.fetchall():
+            items.append({
+                "id": r["model_id"],
+                "provider": r["provider"],
+                "name": r["display_name"],
+                "tier": r["tier_minimum"],
+                "cost_input": r["cost_per_1k_input"],
+                "cost_output": r["cost_per_1k_output"],
+                "max_tokens": r["max_tokens"],
+                "context_window": r["context_window"],
+                "tools": bool(r["supports_tools"]),
+                "vision": bool(r["supports_vision"]),
+                "enabled": bool(r["enabled"]),
+            })
+        conn.close()
+        return items
+    except Exception:
+        conn.close()
+        return []
+
+
+def get_live_tool_usage() -> dict:
+    """Aggregated tool usage stats from tool_calls table."""
+    conn = get_engine_db()
+    if not conn:
+        return {}
+    try:
+        cursor = conn.execute("""
+            SELECT name, COUNT(*) as count, AVG(duration_ms) as avg_ms,
+                   SUM(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) as errors
+            FROM tool_calls GROUP BY name ORDER BY count DESC
+        """)
+        usage = {}
+        for r in cursor.fetchall():
+            usage[r["name"]] = {
+                "count": r["count"],
+                "avg_ms": round(r["avg_ms"] or 0),
+                "errors": r["errors"],
+            }
+        conn.close()
+        return usage
+    except Exception:
+        conn.close()
+        return {}

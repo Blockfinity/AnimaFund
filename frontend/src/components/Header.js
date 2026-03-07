@@ -5,6 +5,7 @@ const pageLabels = {
   mind: 'Agent Mind',
   fundhq: 'Fund HQ',
   agents: 'Agents',
+  skills: 'Skills',
   deals: 'Deal Flow',
   portfolio: 'Portfolio',
   financials: 'Financials',
