@@ -41,6 +41,7 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] **Skills Page**: Dedicated page showing 80 skills (53 Anima Fund + 27 Conway Platform), 6 AI models. Filters: by source (Anima/Conway/MCP/OpenClaw), by agent, sort (A-Z/Most Used/Recently Acquired), search. Skills grouped by category. Model registry table. (2026-03-07)
 - [x] **Real-Time On-Chain Balance**: `/api/wallet/balance` endpoint queries Base blockchain RPC directly for USDC/ETH balance, bypassing agent's 5-minute cycle. Integrated into Agent Mind dashboard with LIVE indicator. (2026-03-07)
 - [x] **P0 Verification (2026-03-07)**: All P0 features verified — real-time balance display, all API endpoints, frontend navigation, genesis screen, dashboard pages. Testing: 96% backend (55/57 pass, 2 expected due to sleeping engine), 100% frontend.
+- [x] **Deployment Hardening v2 (2026-03-07)**: Removed eth-account and all eth-* blockchain libraries (deployment blocker). Simplified wallet address fallback to read from wallet.json directly. Deleted dead frontend files (AgentNetwork.js, Overview.js). Deleted obsolete dist/better-sqlite3-shim.mjs. Deployment agent: ALL CHECKS PASS.
 
 ## Deployment Hardening (2026-03-07)
 - [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
