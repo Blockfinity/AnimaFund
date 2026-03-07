@@ -186,7 +186,7 @@ function App() {
               </div>
 
               {/* Dashboard button */}
-              <button data-testid="go-to-dashboard-btn" onClick={() => setView('dashboard')}
+              <button data-testid="go-to-dashboard-btn" onClick={() => { setCurrentPage('mind'); setView('dashboard'); }}
                 style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}>
                 Open Dashboard
               </button>
@@ -201,7 +201,7 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'fundhq': return <FundHQ fundName={fundName} />;
-      case 'mind': return <AgentMind />;
+      case 'mind': return <AgentMind genesisState={genesisState} />;
       case 'agents': return <Agents />;
       case 'deals': return <DealFlow />;
       case 'portfolio': return <Portfolio />;
@@ -209,7 +209,8 @@ function App() {
       case 'activity': return <Activity />;
       case 'memory': return <Memory />;
       case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} />;
-      default: return <AgentMind />;
+      case 'wallet': setView('genesis'); return null;
+      default: return <AgentMind genesisState={genesisState} />;
     }
   };
 

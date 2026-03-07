@@ -11,6 +11,7 @@ const pageLabels = {
   activity: 'Activity',
   memory: 'Memory',
   config: 'Configuration',
+  wallet: 'Wallet & Logs',
 };
 
 export default function Header({ overview, currentPage, onToggleSidebar }) {
