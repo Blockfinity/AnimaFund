@@ -226,9 +226,9 @@ async def create_genesis_agent():
             return {"success": True, "message": "Engine already running"}
 
         # Verify the built engine exists
-        dist_path = os.path.join(AUTOMATON_DIR, "dist", "index.js")
+        dist_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
         if not os.path.exists(dist_path):
-            return {"success": False, "error": "Engine not built. dist/index.js missing."}
+            return {"success": False, "error": "Engine not built. dist/bundle.mjs missing."}
 
         # Stage files to ~/.anima/ for the engine's setup wizard (non-interactive mode)
         os.makedirs(ANIMA_DIR, exist_ok=True)
@@ -456,7 +456,7 @@ async def engine_status():
         "engine": "Anima Fund Runtime",
         "version": version,
         "repo_present": os.path.isdir(AUTOMATON_DIR),
-        "built": os.path.exists(os.path.join(AUTOMATON_DIR, "dist", "index.js")),
+        "built": os.path.exists(os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")),
         "genesis_prompt_lines": genesis_lines,
         "skills": skills,
         "creator_wallet": CREATOR_WALLET,

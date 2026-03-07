@@ -2,24 +2,27 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Frontend
 frontend/node_modules/
--e 
+
+# Automaton engine — node_modules NOT needed at runtime (bundle.mjs is self-contained)
+automaton/node_modules/
+automaton/node_modules_x64/
+.pnpm-store/
+
 # Environment files
 *.env
 *.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+
+# Runtime state (created by engine at runtime)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+
+# Test reports
+test_reports/

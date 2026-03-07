@@ -29,7 +29,13 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] **P0 FIX**: better-sqlite3 native addon loading without node_modules (2026-03-06)
 - [x] UI fixes: button disable during creation, flicker prevention, accurate status display
 
-## Pending / Backlog
+## Deployment Hardening (2026-03-07)
+- [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
+- [x] Updated `.gitignore` to exclude `automaton/node_modules/`
+- [x] Fixed `dist/index.js` → `dist/bundle.mjs` references in server.py (creation check + status endpoint)
+- [x] Fixed `pgrep` pattern to match `dist/bundle.mjs` instead of `dist/index.js`
+- [x] Verified bundle works WITHOUT `node_modules/` present (production simulation)
+- [x] E2E test passed: create → wallet → provisioning → running → live data
 ### P1
 - Implement real smart contracts (Solidity) for fees, carry, LP vehicle
 
