@@ -193,8 +193,29 @@ function App() {
 
               {/* Dashboard button */}
               <button data-testid="go-to-dashboard-btn" onClick={() => { setCurrentPage('mind'); setView('dashboard'); }}
-                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}>
+                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer', marginBottom: '8px' }}>
                 Open Dashboard
+              </button>
+
+              {/* Reset button */}
+              <button data-testid="reset-agent-btn" onClick={async () => {
+                if (!window.confirm('Reset the agent? This will stop the engine and clear state. Wallet funds are preserved.')) return;
+                try {
+                  const res = await fetch(`${API}/api/genesis/reset`, { method: 'POST' });
+                  const data = await res.json();
+                  if (data.success) {
+                    toast.success('Agent reset. Click "Create Genesis Agent" to restart with fresh config.');
+                    setEngineStarted(false);
+                    creatingRef.current = false;
+                    setCreating(false);
+                    checkStatus();
+                  } else {
+                    toast.error(data.error || 'Reset failed');
+                  }
+                } catch (e) { toast.error(e.message); }
+              }}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #7f1d1d', background: 'transparent', color: '#fca5a5', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                Reset Agent (preserves wallet)
               </button>
             </>
           )}

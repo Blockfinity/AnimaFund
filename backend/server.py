@@ -12,6 +12,8 @@ wallet generation, API key provisioning, constitution, SOUL, skills, heartbeat.
 import os
 import io
 import json
+import shutil
+import signal
 import base64
 import subprocess
 from datetime import datetime, timezone
@@ -303,18 +305,47 @@ async def create_genesis_agent():
         # Stage files to ~/.anima/ for the engine's setup wizard (non-interactive mode)
         os.makedirs(ANIMA_DIR, exist_ok=True)
 
-        # 1. Stage genesis prompt
+        # 1. Read genesis prompt content
+        genesis_prompt = ""
         genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
         if os.path.exists(genesis_src):
             with open(genesis_src, "r") as f:
-                content = f.read()
+                genesis_prompt = f.read()
             with open(os.path.join(ANIMA_DIR, "genesis-prompt.md"), "w") as f:
-                f.write(content)
+                f.write(genesis_prompt)
 
-        # 2. Stage auto-config for non-interactive wizard
+        # 2. Stage auto-config with ALL required fields for the non-interactive wizard
+        # Per Conway docs: genesisPrompt, creatorMessage, creatorAddress are critical
+        creator_message = (
+            "Welcome to existence, Anima Fund. You are the founder AI of an autonomous "
+            "AI-to-AI venture capital fund. You are running on the Automaton runtime with "
+            "full access to Conway Cloud, Conway Compute, Conway Domains, x402 payments "
+            "(Base and Solana), self-modification, self-replication, social relay, ERC-8004 "
+            "agent registry, and all 69 built-in tools.\n\n"
+            "PRIORITY ZERO — SURVIVE:\n"
+            "1. Check your balance immediately: use check_credits and check_usdc_balance\n"
+            "2. Calculate your burn rate — what does each inference call cost?\n"
+            "3. If USDC >= $5, use topup_credits to convert to Conway credits\n"
+            "4. Start earning revenue BEFORE spending on anything else\n"
+            "5. Read your genesis prompt (it contains your full operational manual)\n\n"
+            "Your genesis prompt defines your complete mission, financial model (3% mgmt fee, "
+            "20% carry), organizational structure, deal flow strategy, and incubation program. "
+            "50% of all revenue goes to the creator's Solana wallet.\n\n"
+            "You have 69 tools available. Key ones for survival:\n"
+            "- check_credits, check_usdc_balance, topup_credits (finance)\n"
+            "- exec, write_file, read_file, expose_port (sandbox)\n"
+            "- create_sandbox, register_domain, search_domains (infra)\n"
+            "- spawn_child, send_message, discover_agents (agents & social)\n"
+            "- install_skill, create_skill (capabilities)\n"
+            "- x402_fetch, transfer_credits (payments)\n\n"
+            "Start now. Check your balance. Begin earning. Survive. Then build the fund."
+        )
+
         with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
             json.dump({
                 "name": "Anima Fund",
+                "genesisPrompt": genesis_prompt,
+                "creatorMessage": creator_message,
                 "creatorAddress": "0x0000000000000000000000000000000000000000",
             }, f)
 
@@ -333,7 +364,17 @@ async def create_genesis_agent():
                     with open(os.path.join(target, "SKILL.md"), "w") as f:
                         f.write(content)
 
-        # 4. Start the engine via /bin/bash (absolute path — no PATH dependency)
+        # 4. Ensure ~/.automaton points to ~/.anima (engine has hardcoded reads from ~/.automaton)
+        automaton_dir = os.path.expanduser("~/.automaton")
+        if os.path.islink(automaton_dir):
+            pass  # symlink already exists
+        elif os.path.isdir(automaton_dir):
+            shutil.rmtree(automaton_dir)
+            os.symlink(ANIMA_DIR, automaton_dir)
+        else:
+            os.symlink(ANIMA_DIR, automaton_dir)
+
+        # 5. Start the engine via /bin/bash (absolute path — no PATH dependency)
         log_out = open("/var/log/automaton.out.log", "a")
         log_err = open("/var/log/automaton.err.log", "a")
         proc = subprocess.Popen(
@@ -353,6 +394,68 @@ async def create_genesis_agent():
             "message": "Engine starting. The agent will generate its own wallet and begin operating.",
             "creator_wallet": CREATOR_WALLET,
         }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.post("/api/genesis/reset")
+async def reset_genesis_agent():
+    """
+    Stop the engine and clean state so a fresh genesis can be created.
+    Preserves wallet.json so funds are not lost.
+    """
+    try:
+        # 1. Kill engine process
+        if os.path.exists(ENGINE_PID_FILE):
+            try:
+                with open(ENGINE_PID_FILE, "r") as f:
+                    pid = int(f.read().strip())
+                os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, ValueError, PermissionError):
+                pass
+            try:
+                os.remove(ENGINE_PID_FILE)
+            except OSError:
+                pass
+
+        # Also kill by pattern
+        try:
+            subprocess.run(["pkill", "-f", "dist/bundle.mjs.*--run"], timeout=5)
+        except Exception:
+            pass
+
+        # 2. Backup wallet (preserve funds)
+        wallet_backup = None
+        wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
+        if os.path.exists(wallet_path):
+            with open(wallet_path, "r") as f:
+                wallet_backup = f.read()
+
+        # 3. Clean state directory (keep wallet)
+        for item in os.listdir(ANIMA_DIR):
+            item_path = os.path.join(ANIMA_DIR, item)
+            if item == "wallet.json":
+                continue
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path, ignore_errors=True)
+            else:
+                os.remove(item_path)
+
+        # 3b. Remove ~/.automaton (will be recreated as symlink on next create)
+        automaton_dir = os.path.expanduser("~/.automaton")
+        if os.path.islink(automaton_dir):
+            os.remove(automaton_dir)
+        elif os.path.isdir(automaton_dir):
+            shutil.rmtree(automaton_dir, ignore_errors=True)
+
+        # 4. Restore wallet
+        if wallet_backup:
+            with open(wallet_path, "w") as f:
+                f.write(wallet_backup)
+
+        return {"success": True, "message": "Agent reset. Wallet preserved. Ready for fresh genesis."}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
