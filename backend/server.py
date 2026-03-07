@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 import qrcode
+import aiohttp
 from engine_bridge import (
     is_engine_live, get_live_agents, get_live_activity,
     get_live_transactions, get_live_financials,
@@ -123,6 +124,85 @@ def is_engine_process_running():
         return r.returncode == 0
     except Exception:
         return False
+
+
+# Base chain USDC contract
+USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+BASE_RPC = "https://mainnet.base.org"
+
+async def check_onchain_balance(wallet_address: str) -> dict:
+    """Check USDC balance on Base chain directly via RPC."""
+    if not wallet_address or not wallet_address.startswith("0x"):
+        return {"usdc": 0, "eth": 0, "error": None}
+    try:
+        addr_padded = "0x70a08231" + wallet_address[2:].lower().zfill(64)
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+            # USDC balance (ERC-20 balanceOf)
+            async with session.post(BASE_RPC, json={
+                "jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                "params": [{"to": USDC_CONTRACT, "data": addr_padded}, "latest"]
+            }) as resp:
+                data = await resp.json()
+                usdc_raw = int(data.get("result", "0x0"), 16)
+                usdc = usdc_raw / 1e6  # USDC has 6 decimals
+
+            # ETH balance
+            async with session.post(BASE_RPC, json={
+                "jsonrpc": "2.0", "id": 2, "method": "eth_getBalance",
+                "params": [wallet_address, "latest"]
+            }) as resp:
+                data = await resp.json()
+                eth_raw = int(data.get("result", "0x0"), 16)
+                eth = eth_raw / 1e18
+
+        return {"usdc": usdc, "eth": eth, "error": None}
+    except Exception as e:
+        return {"usdc": 0, "eth": 0, "error": str(e)}
+
+
+@app.get("/api/wallet/balance")
+async def wallet_balance():
+    """Real-time on-chain balance check — queries Base chain directly."""
+    # Get wallet address
+    wallet_address = None
+    config_path = os.path.join(ANIMA_DIR, "anima.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                wallet_address = json.load(f).get("walletAddress")
+        except Exception:
+            pass
+
+    if not wallet_address:
+        return {"usdc": 0, "eth": 0, "credits": None, "wallet": None, "error": "No wallet found"}
+
+    # On-chain balance
+    onchain = await check_onchain_balance(wallet_address)
+
+    # Conway credits from KV store (last known)
+    kv = get_live_kv_store()
+    credits_data = next((i["value"] for i in kv if i["key"] == "last_credit_check"), None)
+    balance_data = next((i["value"] for i in kv if i["key"] == "last_known_balance"), None)
+
+    credits_cents = 0
+    tier = "unknown"
+    if isinstance(credits_data, dict):
+        credits_cents = credits_data.get("credits", 0)
+        if isinstance(credits_cents, (int, float)) and credits_cents > 1:
+            credits_cents = int(credits_cents)
+        else:
+            credits_cents = (balance_data or {}).get("creditsCents", 0) if isinstance(balance_data, dict) else 0
+        tier = credits_data.get("tier", "unknown")
+
+    return {
+        "wallet": wallet_address,
+        "usdc": onchain["usdc"],
+        "eth": onchain["eth"],
+        "credits_cents": credits_cents,
+        "tier": tier,
+        "onchain_error": onchain["error"],
+    }
+
 
 
 @app.get("/api/genesis/status")

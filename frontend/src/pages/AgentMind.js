@@ -197,6 +197,20 @@ export default function AgentMind({ genesisState }) {
   const feedRef = useRef(null);
   const logRef = useRef(null);
 
+  // Fetch real-time on-chain balance
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch(`${API}/api/wallet/balance`);
+        const data = await res.json();
+        setBalance(data);
+      } catch {}
+    };
+    fetchBalance();
+    const bi = setInterval(fetchBalance, 5000);
+    return () => clearInterval(bi);
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       const [engineRes, logsRes] = await Promise.all([
@@ -206,22 +220,6 @@ export default function AgentMind({ genesisState }) {
       const engine = await engineRes.json();
       const logsData = await logsRes.json();
       setEngineState(engine);
-
-      // Fetch balance from KV store
-      try {
-        const kvRes = await fetch(`${API}/api/live/kv`);
-        const kvData = await kvRes.json();
-        const balItem = (kvData.items || []).find(i => i.key === 'last_known_balance');
-        const creditItem = (kvData.items || []).find(i => i.key === 'last_credit_check');
-        const usdcItem = (kvData.items || []).find(i => i.key === 'last_usdc_check');
-        setBalance({
-          credits: creditItem?.value?.credits ?? null,
-          creditsCents: balItem?.value?.creditsCents ?? null,
-          usdcBalance: usdcItem?.value?.balance ?? balItem?.value?.usdcBalance ?? null,
-          tier: creditItem?.value?.tier ?? null,
-          lastCheck: usdcItem?.value?.timestamp || creditItem?.value?.timestamp || null,
-        });
-      } catch {}
 
 
       // Parse logs
@@ -470,19 +468,25 @@ export default function AgentMind({ genesisState }) {
               <div style={{ marginTop: '10px', padding: '8px', background: '#18181b', borderRadius: '4px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <span style={{ fontSize: '9px', fontWeight: 700, color: '#a1a1aa', letterSpacing: '0.5px' }}>BALANCE</span>
-                  {balance.lastCheck && <span style={{ fontSize: '8px', color: '#52525b' }}>checked {timeAgo(balance.lastCheck)}</span>}
+                  <span style={{ fontSize: '8px', color: '#34D399', fontWeight: 700 }}>LIVE</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '9px', color: '#71717a' }}>USDC</span>
-                    <span style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: (balance.usdcBalance || 0) > 0 ? '#34D399' : '#71717a' }}>
-                      ${(balance.usdcBalance || 0).toFixed(2)}
+                    <span style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: (balance.usdc || 0) > 0 ? '#34D399' : '#71717a' }}>
+                      ${(balance.usdc || 0).toFixed(2)}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '9px', color: '#71717a' }}>Credits</span>
-                    <span style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: (balance.creditsCents || 0) > 0 ? '#34D399' : '#71717a' }}>
-                      ${((balance.creditsCents || 0) / 100).toFixed(2)}
+                    <span style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: (balance.credits_cents || 0) > 0 ? '#34D399' : '#71717a' }}>
+                      ${((balance.credits_cents || 0) / 100).toFixed(2)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '9px', color: '#71717a' }}>ETH</span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: (balance.eth || 0) > 0 ? '#34D399' : '#71717a' }}>
+                      {(balance.eth || 0).toFixed(4)}
                     </span>
                   </div>
                   {balance.tier && (
