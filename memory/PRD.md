@@ -42,10 +42,14 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 
 ## Deployment Hardening (2026-03-07)
 - [x] Untracked `automaton/node_modules/` from git (17K files removed, not needed at runtime)
-- [x] Updated `.gitignore` to exclude `automaton/node_modules/`
+- [x] Untracked 429 old TypeScript dist files (only `bundle.mjs` remains in dist/)
+- [x] Tracked `frontend/yarn.lock` for consistent builds
+- [x] Updated `.gitignore` to exclude automaton/node_modules/, old dist files
 - [x] Fixed `dist/index.js` → `dist/bundle.mjs` references in server.py (creation check + status endpoint)
 - [x] Fixed `pgrep` pattern to match `dist/bundle.mjs` instead of `dist/index.js`
 - [x] Verified bundle works WITHOUT `node_modules/` present (production simulation)
+- [x] Git repo reduced from 18,000+ tracked files to 318
+- [x] Deployment agent: PASS — all checks green
 - [x] E2E test passed: create → wallet → provisioning → running → live data
 ### P1
 - Implement real smart contracts (Solidity) for fees, carry, LP vehicle
