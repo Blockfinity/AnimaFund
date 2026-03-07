@@ -9,6 +9,11 @@ frontend/node_modules/
 # Automaton engine — node_modules NOT needed at runtime (bundle.mjs is self-contained)
 automaton/node_modules/
 automaton/node_modules_x64/
+automaton/dist/*.js
+automaton/dist/*.map
+automaton/dist/*.d.ts
+automaton/dist/**/
+!automaton/dist/bundle.mjs
 .pnpm-store/
 
 # Environment files
