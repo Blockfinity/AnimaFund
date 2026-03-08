@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Loader2, Search, ChevronDown, ChevronUp } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -14,10 +14,20 @@ export default function CreateAgentModal({ onClose, onCreated }) {
   const [tgBotToken, setTgBotToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
   const [includeConway, setIncludeConway] = useState(true);
+  const [allSkills, setAllSkills] = useState([]);
+  const [selectedSkills, setSelectedSkills] = useState(new Set());
+  const [skillFilter, setSkillFilter] = useState('');
+  const [showSkills, setShowSkills] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [templateLoaded, setTemplateLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/api/skills/available`).then(r => r.json()).then(d => {
+      setAllSkills(d.skills || []);
+    }).catch(() => {});
+  }, []);
 
   const loadTemplate = async () => {
     try {
@@ -30,6 +40,19 @@ export default function CreateAgentModal({ onClose, onCreated }) {
     } catch {}
   };
 
+  const toggleSkill = (name) => {
+    setSelectedSkills(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
+  const filteredSkills = allSkills.filter(s =>
+    s.name.toLowerCase().includes(skillFilter.toLowerCase()) ||
+    (s.description || '').toLowerCase().includes(skillFilter.toLowerCase())
+  );
+
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) { setError('Name and genesis prompt are required'); return; }
     if (!tgBotToken.trim() || !tgChatId.trim()) { setError('Telegram Bot Token and Chat ID are required for each agent'); return; }
@@ -37,30 +60,30 @@ export default function CreateAgentModal({ onClose, onCreated }) {
     setError('');
     setStatus('Verifying Telegram bot connection...');
 
-    // Step 1: Verify Telegram bot is reachable
+    // Step 1: Verify bot token
     try {
       const verifyRes = await fetch(`https://api.telegram.org/bot${tgBotToken.trim()}/getMe`);
       const verifyData = await verifyRes.json();
       if (!verifyData.ok) {
-        setError(`Telegram bot verification failed: ${verifyData.description || 'Invalid token'}. Get a valid token from @BotFather.`);
+        setError(`Telegram bot verification failed: ${verifyData.description || 'Invalid token'}.`);
         setLoading(false); setStatus(''); return;
       }
-      setStatus(`Bot verified: @${verifyData.result.username}. Testing chat delivery...`);
+      setStatus(`Bot verified: @${verifyData.result.username}. Testing chat...`);
     } catch {
       setError('Could not connect to Telegram API. Check your bot token.');
       setLoading(false); setStatus(''); return;
     }
 
-    // Step 2: Verify chat ID by sending a test message
+    // Step 2: Verify chat ID
     try {
       const chatRes = await fetch(`https://api.telegram.org/bot${tgBotToken.trim()}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: tgChatId.trim(), text: `Agent "${name.trim()}" is being created on Anima Fund. Telegram connection verified.` }),
+        body: JSON.stringify({ chat_id: tgChatId.trim(), text: `Agent "${name.trim()}" is being created. Telegram verified.` }),
       });
       const chatData = await chatRes.json();
       if (!chatData.ok) {
-        setError(`Telegram chat verification failed: ${chatData.description || 'Invalid chat ID'}. Start the bot first and verify the Chat ID.`);
+        setError(`Chat verification failed: ${chatData.description}. Start the bot first.`);
         setLoading(false); setStatus(''); return;
       }
       setStatus('Telegram verified! Creating agent...');
@@ -69,7 +92,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
       setLoading(false); setStatus(''); return;
     }
 
-    // Step 3: Create the agent — the agent is autonomous, it installs its own skills
+    // Step 3: Create agent — selected skills go into genesis prompt as priority list
     try {
       const res = await fetch(`${API}/api/agents/create`, {
         method: 'POST',
@@ -85,6 +108,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
           telegram_bot_token: tgBotToken.trim(),
           telegram_chat_id: tgChatId.trim(),
           include_conway: includeConway,
+          selected_skills: [...selectedSkills],
         }),
       });
       const data = await res.json();
@@ -94,10 +118,8 @@ export default function CreateAgentModal({ onClose, onCreated }) {
         const startData = await startRes.json();
         if (startData.success) {
           setStatus('Engine started! Agent is now autonomous.');
-          setTimeout(() => onCreated(data.agent), 1500);
-        } else {
-          onCreated(data.agent);
         }
+        setTimeout(() => onCreated(data.agent), 1500);
       } else {
         setError(data.detail?.[0]?.msg || data.detail || 'Failed to create agent');
       }
@@ -151,7 +173,46 @@ export default function CreateAgentModal({ onClose, onCreated }) {
               rows={3} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground resize-y" />
           </div>
 
-          {/* Conway Prompt Toggle */}
+          {/* Priority Skills Selector */}
+          <div className="border-t border-border pt-4">
+            <button data-testid="toggle-skills-selector" type="button" onClick={() => setShowSkills(!showSkills)}
+              className="flex items-center justify-between w-full text-left">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                  Priority Skills {selectedSkills.size > 0 && <span className="text-foreground">({selectedSkills.size} selected)</span>}
+                </span>
+                <p className="text-[9px] text-muted-foreground mt-0.5">
+                  Skills the agent should search for and install FIRST from ClawHub. The agent discovers and installs these autonomously.
+                </p>
+              </div>
+              {showSkills ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            </button>
+            {showSkills && (
+              <div className="mt-2 border border-border rounded-md">
+                <div className="p-2 border-b border-border flex items-center gap-2">
+                  <Search className="w-3 h-3 text-muted-foreground" />
+                  <input data-testid="skills-search-input" value={skillFilter} onChange={(e) => setSkillFilter(e.target.value)}
+                    placeholder="Search skills..." className="w-full text-xs bg-transparent focus:outline-none" />
+                  <button type="button" onClick={() => { if (selectedSkills.size === allSkills.length) setSelectedSkills(new Set()); else setSelectedSkills(new Set(allSkills.map(s => s.name))); }}
+                    className="text-[9px] text-muted-foreground hover:text-foreground whitespace-nowrap">
+                    {selectedSkills.size === allSkills.length ? 'Clear All' : 'Select All'}
+                  </button>
+                </div>
+                <div className="max-h-40 overflow-y-auto p-1">
+                  {filteredSkills.map(skill => (
+                    <label key={skill.name} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-secondary/50 cursor-pointer">
+                      <input type="checkbox" checked={selectedSkills.has(skill.name)} onChange={() => toggleSkill(skill.name)}
+                        className="w-3 h-3 rounded accent-foreground cursor-pointer" />
+                      <span className="text-[10px] text-foreground flex-1">{skill.name}</span>
+                      <span className="text-[8px] text-muted-foreground">{skill.source}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Conway Toggle */}
           <div className="border-t border-border pt-4">
             <label className="flex items-center gap-3 cursor-pointer">
               <input data-testid="agent-conway-toggle" type="checkbox" checked={includeConway} onChange={(e) => setIncludeConway(e.target.checked)}
@@ -160,14 +221,14 @@ export default function CreateAgentModal({ onClose, onCreated }) {
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Include Conway Terminal Tools</span>
                 <p className="text-[9px] text-muted-foreground mt-0.5">
                   {includeConway
-                    ? 'Agent will have access to 35 Conway tools: sandboxes, domains, payments, credits, inference.'
-                    : 'Conway tools will be removed from the genesis prompt. Agent will only use OpenClaw and custom skills.'}
+                    ? 'Agent will have Conway tools reference: sandboxes, domains, payments, credits, inference.'
+                    : 'Conway tools will be removed from the genesis prompt.'}
                 </p>
               </div>
             </label>
           </div>
 
-          {/* Telegram Bot — REQUIRED */}
+          {/* Telegram */}
           <div className="border-t border-border pt-4">
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-2">Telegram Bot *</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -182,10 +243,10 @@ export default function CreateAgentModal({ onClose, onCreated }) {
                   placeholder="123456789" className={`w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono ${!tgChatId.trim() && name.trim() ? 'border-red-400' : 'border-border'}`} />
               </div>
             </div>
-            <p className="text-[9px] text-muted-foreground mt-1">Each agent MUST have its own Telegram bot for isolated reporting. Create one via <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-foreground underline">@BotFather</a>.</p>
+            <p className="text-[9px] text-muted-foreground mt-1">Each agent MUST have its own Telegram bot. Create one via <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-foreground underline">@BotFather</a>.</p>
           </div>
 
-          {/* Creator Wallets */}
+          {/* Wallets */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Creator SOL Wallet</label>
@@ -207,17 +268,6 @@ export default function CreateAgentModal({ onClose, onCreated }) {
             <input data-testid="agent-revenue-share-input" type="range" min="0" max="100" step="5"
               value={revenueShare} onChange={(e) => setRevenueShare(Number(e.target.value))}
               className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-foreground" />
-            <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
-              <span>0% (agent keeps all)</span><span>100% (all to creator)</span>
-            </div>
-          </div>
-
-          {/* Info box */}
-          <div className="border border-border rounded-md p-3 bg-secondary/30">
-            <p className="text-[10px] text-muted-foreground leading-relaxed">
-              The agent is <strong>fully autonomous</strong>. It will install its own skills from ClawHub, set up OpenClaw for web browsing,
-              and configure its environment independently. The genesis prompt defines its mission — the agent handles everything else.
-            </p>
           </div>
 
           {error && <p data-testid="create-agent-error" className="text-xs text-red-600">{error}</p>}

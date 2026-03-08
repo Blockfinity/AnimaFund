@@ -27,6 +27,7 @@ class CreateAgentRequest(BaseModel):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     include_conway: bool = True  # Include Conway Terminal tools in genesis prompt
+    selected_skills: list = []  # Skills the agent should prioritize installing first
 
 
 @router.get("/skills/available")
@@ -234,6 +235,16 @@ async def create_agent(req: CreateAgentRequest):
         full_prompt += f"\n\n{sep}\nGOALS\n{sep}\n\n"
         for i, goal in enumerate(req.goals, 1):
             full_prompt += f"{i}. {goal}\n"
+
+    # Inject priority skills — these are skills the agent should discover and install FIRST
+    if req.selected_skills:
+        full_prompt += f"\n\n{sep}\nPRIORITY SKILLS — INSTALL THESE FIRST\n{sep}\n\n"
+        full_prompt += "Your creator has selected the following skills as your TOP PRIORITY.\n"
+        full_prompt += "Search for and install each one from ClawHub before doing anything else:\n\n"
+        for s in req.selected_skills:
+            full_prompt += f"- {s}\n"
+        full_prompt += "\nexec: clawhub search \"[skill-name]\"\nexec: clawhub install [skill-name]\n"
+        full_prompt += "\nAfter installing these, explore ClawHub for additional skills relevant to your goals.\n"
 
     # Write genesis prompt — this is the ONLY instruction the agent needs.
     # The agent is fully autonomous and will install its own tools, skills, and environment.
