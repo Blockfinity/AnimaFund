@@ -212,12 +212,20 @@ async def create_agent(req: CreateAgentRequest):
     full_prompt = full_prompt.replace("{{CREATOR_WALLET}}", req.creator_sol_wallet or "")
     full_prompt = full_prompt.replace("{{CREATOR_ETH_ADDRESS}}", req.creator_eth_wallet or "")
 
-    # Conditionally strip Conway Terminal tools section
+    # Conditionally strip Conway-specific tools section if agent doesn't want Conway
     if not req.include_conway:
         import re
+        # Remove the COMPLETE TOOLS REFERENCE section (Conway-specific tools)
         full_prompt = re.sub(
-            r'CONWAY TERMINAL \(MCP Server.*?\n(?=\n[A-Z]|\n={2,}|\Z)',
-            'CONWAY TERMINAL: Disabled for this agent.\n\n',
+            r'═+\nCOMPLETE TOOLS REFERENCE.*?═+\nANTI-STUCK',
+            '═' * 78 + '\nANTI-STUCK',
+            full_prompt,
+            flags=re.DOTALL,
+        )
+        # Remove the DEPLOYING REAL SERVICES section (relies on Conway sandboxes)
+        full_prompt = re.sub(
+            r'═+\nDEPLOYING REAL SERVICES.*?═+\nREVENUE',
+            '═' * 78 + '\nREVENUE',
             full_prompt,
             flags=re.DOTALL,
         )
@@ -418,13 +426,22 @@ async def start_agent_engine(agent_id: str):
     if not os.path.exists(os.path.join(automaton_dir, "auto-config.json")):
         raise HTTPException(400, "No auto-config found. Agent not properly set up.")
 
-    # Start engine with HOME set to agent's home dir so it reads $HOME/.automaton/
-    engine_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "start_engine.sh")
+    # Use the main engine start script
+    engine_script = "/app/scripts/start_engine.sh"
+    if not os.path.exists(engine_script):
+        raise HTTPException(500, "Engine start script not found at /app/scripts/start_engine.sh")
+
     log_out = os.path.join(agent_home, "engine.out.log")
     log_err = os.path.join(agent_home, "engine.err.log")
 
     env = os.environ.copy()
     env["HOME"] = agent_home
+
+    # Per-agent Telegram credentials (override any global ones)
+    if agent.get("telegram_bot_token"):
+        env["TELEGRAM_BOT_TOKEN"] = agent["telegram_bot_token"]
+    if agent.get("telegram_chat_id"):
+        env["TELEGRAM_CHAT_ID"] = agent["telegram_chat_id"]
 
     try:
         with open(log_out, "a") as fout, open(log_err, "a") as ferr:
@@ -433,7 +450,7 @@ async def start_agent_engine(agent_id: str):
                 env=env,
                 stdout=fout,
                 stderr=ferr,
-                cwd=os.path.join(os.path.dirname(__file__), ".."),
+                cwd="/app/automaton",
             )
         await col.update_one({"agent_id": agent_id}, {"$set": {"status": "running", "engine_pid": proc.pid}})
         return {"success": True, "pid": proc.pid, "home": agent_home}
