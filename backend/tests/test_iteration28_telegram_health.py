@@ -19,7 +19,7 @@ import os
 import time
 import uuid
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://ai-vc-platform-1.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://agent-dashboard-163.preview.emergentagent.com").rstrip("/")
 
 class TestHealthEndpoint:
     """Health check endpoint tests"""

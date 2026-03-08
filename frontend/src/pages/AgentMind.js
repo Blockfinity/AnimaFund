@@ -185,6 +185,9 @@ export default function AgentMind({ genesisState }) {
   const [selectedAgent, setSelectedAgent] = useState('all');
   const [engineState, setEngineState] = useState(null);
   const [loading, setLoading] = useState(true);
+  const hasEverLoaded = useRef(false); // Once loaded, never show loading spinner again
+  const cachedLogsRef = useRef([]); // Sticky: cache last known logs to prevent placeholder flash
+  const cachedFilteredRef = useRef([]); // Sticky: cache last known filtered turns
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -394,6 +397,12 @@ export default function AgentMind({ genesisState }) {
 
   const hasTurns = turns.length > 0;
 
+  // Sticky display: cache last known data so the feed never reverts to placeholder
+  if (filtered.length > 0) cachedFilteredRef.current = filtered;
+  if (logs.length > 0) cachedLogsRef.current = logs;
+  const displayFiltered = filtered.length > 0 ? filtered : cachedFilteredRef.current;
+  const displayLogs = logs.length > 0 ? logs : cachedLogsRef.current;
+
   return (
     <div data-testid="agent-mind-page" style={{ display: 'flex', gap: '12px', height: 'calc(100vh - 8rem)', fontFamily: 'Manrope, sans-serif' }}>
 
@@ -480,12 +489,12 @@ export default function AgentMind({ genesisState }) {
             onScroll={handleLogScroll}
             style={{ flex: 1, background: '#0a0a0f', borderRadius: '0 0 6px 6px', padding: '8px 14px', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#27272a #0a0a0f' }}>
             {/* Show turns if available, interleaved with key log events */}
-            {filtered.length > 0 ? filtered.map((turn, i) => (
+            {displayFiltered.length > 0 ? displayFiltered.map((turn, i) => (
               <TurnBlock key={turn.turn_id || i} turn={turn} index={i} />
-            )) : logs.length > 0 ? (
+            )) : displayLogs.length > 0 ? (
               /* Fallback: show categorized log entries as the live feed */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {logs.slice(-100).map((entry, i) => {
+                {displayLogs.slice(-100).map((entry, i) => {
                   const tag = getLogTag(entry);
                   const tagColors = {
                     ERROR: '#f87171', CRITICAL: '#fb923c', THINK: '#fbbf24', SLEEP: '#a78bfa',
