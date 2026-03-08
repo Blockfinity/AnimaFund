@@ -4,7 +4,7 @@
 Build a fully autonomous AI-to-AI Venture Capital fund platform ("Anima Fund"). A multi-agent platform where independent AI agents can be created, monitored, and managed from a single dashboard. Each agent has its own goals, skills, wallets, revenue model, and dedicated Telegram bot.
 
 ## Architecture
-- **Frontend**: React (port 3000) with Tailwind CSS + Shadcn/UI
+- **Frontend**: React (port 3000) with Tailwind CSS
 - **Backend**: FastAPI (port 8001) with MongoDB
 - **Database**: MongoDB (anima_fund)
 - **Engine**: Conway Research Automaton (external)
@@ -22,6 +22,13 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform ("Anima Fund"). 
 - Fund deletion safety (wallet protection)
 - Auto-scroll mechanism (non-intrusive, ref-based)
 
+## Critical Bug Fixes (March 8, 2026)
+- **UI Flickering/Data Loss**: Fixed aggressive state resets in AgentMind.js and FundHQ.js that wiped all panels (wallet, SOUL.md, engine status) on partial API responses
+- **SQLite Locking**: Added busy_timeout=5000 and WAL mode to engine_bridge.py to prevent read failures during engine writes
+- **Polling Race Conditions**: Replaced cascading adaptive polling with stable 8s interval; removed dependency on engine state changes that triggered re-renders
+- **Auto-scroll**: Simplified scroll handler by removing debounce-based approach that conflicted with React render cycles
+- **Wallet Persistence**: Added ref-based wallet address persistence so wallet panel never disappears even on transient API failures
+
 ## Key Endpoints
 - `GET /api/health` - Health check
 - `GET /api/agents` - List agents
@@ -33,11 +40,14 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform ("Anima Fund"). 
 - `GET /api/telegram/health` - Bot health dashboard
 - `GET /api/wallet/balance` - On-chain balance
 
-## Current State (March 8, 2026)
-- **Status**: Deployment-ready
+## Current State
+- **Status**: Deployment-ready, UI stable (verified across 16+ second monitoring)
 - **Active Agents**: 1 (Anima Fund - default)
-- **Test Data**: All test agents cleaned
-- **Testing**: E2E passed (iteration 31) - 30/30 backend, 16/16 frontend
+- **Testing**: E2E passed iteration 32 — 11/11 backend, all frontend stability tests
+
+## Wallet Note
+- On-chain check confirms $0 USDC on Base chain for wallet 0x700e6b8...
+- If $15 was funded, verify it was sent on Base chain (not Ethereum mainnet)
 
 ## Future Tasks (Backlog)
 - P1: Implement Real Smart Contracts (Solidity)
