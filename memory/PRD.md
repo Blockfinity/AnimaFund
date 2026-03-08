@@ -1,48 +1,45 @@
 # Anima Fund - PRD
 
 ## Problem Statement
-Fully autonomous AI-to-AI VC fund platform. Multi-agent system where each agent is a Conway Automaton that runs independently, installs its own tools, discovers its own skills, and operates without user intervention.
+Fully autonomous AI-to-AI VC fund platform built on Conway Automaton + OpenClaw + ClawHub. Multi-agent system where each agent is permissionless — installs its own tools, discovers skills, operates without user intervention.
 
 ## Architecture
-- **Frontend**: React (port 3000) — VIEWER only, reads from engine state.db
-- **Backend**: FastAPI (port 8001) — reads state, forwards logs to Telegram, manages agent metadata in MongoDB
-- **Database**: MongoDB (anima_fund) — agent metadata only, NOT agent state
-- **Engine**: Conway Automaton (external, fully autonomous per agent)
-- **Agent Runtime**: OpenClaw + Conway Terminal + ClawHub
+- **Frontend**: React (port 3000) — viewer/dashboard for agent data
+- **Backend**: FastAPI (port 8001) — reads engine state.db, forwards to Telegram, manages agent metadata in MongoDB
+- **Database**: MongoDB (anima_fund) — agent metadata only
+- **Engine**: Conway Automaton (external, fully autonomous)
+- **Agent Setup**: `curl -fsSL https://conway.tech/terminal.sh | sh` → installs Conway Terminal as MCP server in OpenClaw
 
 ## Core Principle
-The platform is a VIEWER. Conway agents are fully autonomous and permissionless. They:
-- Install their own tools (OpenClaw, ClawHub skills, MCP servers)
-- Modify their own SOUL.md
-- Create child agents
-- Manage their own environment
-We do NOT pre-install skills, copy constitutions, or configure anything for the agent.
+Platform = VIEWER. Conway agents are fully autonomous and permissionless.
+Agent creation produces ONLY genesis-prompt.md + auto-config.json. Zero pre-installed files.
+Selected skills go into genesis prompt as "PRIORITY SKILLS — INSTALL THESE FIRST" guidance for ClawHub.
 
-## What the Platform Does
-1. Creates agent directory with genesis-prompt.md + auto-config.json (ONLY these two files)
-2. Injects Telegram credentials and goals into the genesis prompt
-3. Reads engine state.db to display real-time data in the dashboard
-4. Forwards ALL engine actions/logs/turns to the agent's Telegram bot automatically
-5. Provides a UI to create, switch between, and monitor agents
-
-## Key Changes (March 8, 2026)
-- **Removed all skill pre-installation** — agents install their own skills
-- **Removed constitution copying** — Conway provides its own
-- **Genesis prompt restructured** — Phase 0 (bootstrap tools) → Goals (agent-specific)
-- **Telegram forwarding enhanced** — Backend monitors engine state.db every 8s and sends ALL turn details (thinking, tool calls, results, errors) to the agent's Telegram bot
-- **UI cleaned** — Removed skill selector from Create Agent modal, added info box about agent autonomy
+## Features Implemented
+- Multi-agent platform with isolated data directories
+- Real-time dashboard (Agent Mind, Fund HQ, Skills)
+- Per-agent Telegram bot with live verification
+- Background Telegram forwarding of ALL engine actions/turns/errors
+- 141 skills from 10 sources (reference only — agents install their own)
+- Create Agent modal with: Name, Welcome Message, Genesis Prompt (Load Template), Goals, Priority Skills selector, Conway toggle, Telegram, Wallets, Revenue share
+- Agent switching with proper view transitions
+- Wallet management with on-chain Base chain balance checks
+- UI stability: state never resets to empty on partial API responses
 
 ## Key Endpoints
-- `POST /api/agents/create` — Creates agent dir with genesis-prompt.md + auto-config.json only
-- `POST /api/agents/{id}/select` — Switch active agent
-- `GET /api/genesis/prompt-template` — Standard genesis prompt template
-- `GET /api/engine/live` — Engine state from state.db
-- `GET /api/live/turns` — Full turn data with tool calls
-- All other endpoints are read-only viewers of engine state
+- `POST /api/agents/create` — genesis-prompt.md + auto-config.json only
+- `POST /api/agents/{id}/select` — switch active agent
+- `DELETE /api/agents/{id}` — delete (safety checks)
+- `GET /api/genesis/status` — includes creator_eth_address, creator_wallet
+- `GET /api/genesis/prompt-template` — standard template with Conway install
+- `GET /api/skills/available` — 141 skills (reference catalog)
+- `GET /api/engine/live` — engine state from state.db
+- `GET /api/wallet/balance` — on-chain USDC/ETH
 
-## Active Agents
-1. **Anima Fund** (default)
-2. **Black Sheep** (clean creation, zero pre-installed files)
+## Testing Status
+- Iteration 33: 24/24 backend, 14/14 frontend — 100% pass
+- Deployment agent: passed (hardcoded ETH address fixed)
+- Clean state verified: only default Anima Fund agent
 
 ## Future Tasks
 - P1: Real Smart Contracts (Solidity)
