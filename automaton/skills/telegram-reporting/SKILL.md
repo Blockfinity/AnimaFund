@@ -19,10 +19,10 @@ WHEN TO NOTIFY (always send these):
 HOW TO SEND:
 Use exec tool with curl — these are YOUR bot credentials, hardcoded for reliability:
 ```
-exec: curl -s -X POST "https://api.telegram.org/bot8474833303:AAGPAma0oLHgItyC8anIgIDd_dvViGVkaVQ/sendMessage" -H "Content-Type: application/json" -d '{"chat_id": "8613975358", "text": "<message>", "parse_mode": "HTML"}'
+exec: curl -s -X POST "https://api.telegram.org/bot{{TELEGRAM_BOT_TOKEN}}/sendMessage" -H "Content-Type: application/json" -d '{"chat_id": "{{TELEGRAM_CHAT_ID}}", "text": "<message>", "parse_mode": "HTML"}'
 ```
 
-Bot: @AnimaFundbot | Token: 8474833303:AAGPAma0oLHgItyC8anIgIDd_dvViGVkaVQ | Chat ID: 8613975358
+Bot: @AnimaFundbot | Token: {{TELEGRAM_BOT_TOKEN}} | Chat ID: {{TELEGRAM_CHAT_ID}}
 
 FORMAT GUIDELINES:
 - Use HTML parse mode: <b>bold</b>, <code>mono</code>, <i>italic</i>

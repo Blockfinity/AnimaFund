@@ -361,12 +361,24 @@ async def create_genesis_agent():
         # Stage files to ~/.anima/ for the engine's setup wizard (non-interactive mode)
         os.makedirs(ANIMA_DIR, exist_ok=True)
 
-        # 1. Read genesis prompt content
+        # Secret injection map — replaces {{PLACEHOLDER}} in templates with real values from .env
+        secrets_map = {
+            "{{TELEGRAM_BOT_TOKEN}}": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+            "{{TELEGRAM_CHAT_ID}}": os.environ.get("TELEGRAM_CHAT_ID", ""),
+            "{{CREATOR_WALLET}}": CREATOR_WALLET,
+        }
+
+        def inject_secrets(text: str) -> str:
+            for placeholder, value in secrets_map.items():
+                text = text.replace(placeholder, value)
+            return text
+
+        # 1. Read genesis prompt content and inject secrets
         genesis_prompt = ""
         genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
         if os.path.exists(genesis_src):
             with open(genesis_src, "r") as f:
-                genesis_prompt = f.read()
+                genesis_prompt = inject_secrets(f.read())
             with open(os.path.join(ANIMA_DIR, "genesis-prompt.md"), "w") as f:
                 f.write(genesis_prompt)
 
@@ -405,7 +417,7 @@ async def create_genesis_agent():
                     target = os.path.join(skills_dst, skill_name)
                     os.makedirs(target, exist_ok=True)
                     with open(skill_file, "r") as f:
-                        content = f.read()
+                        content = inject_secrets(f.read())
                     with open(os.path.join(target, "SKILL.md"), "w") as f:
                         f.write(content)
 
