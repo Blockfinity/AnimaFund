@@ -13,6 +13,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
   const [revenueShare, setRevenueShare] = useState(50);
   const [tgBotToken, setTgBotToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
+  const [includeConway, setIncludeConway] = useState(true);
   const [allSkills, setAllSkills] = useState([]);
   const [selectedSkills, setSelectedSkills] = useState(new Set());
   const [skillSearch, setSkillSearch] = useState('');
@@ -97,6 +98,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
           revenue_share_percent: revenueShare,
           telegram_bot_token: tgBotToken.trim(),
           telegram_chat_id: tgChatId.trim(),
+          include_conway: includeConway,
           selected_skills: [...selectedSkills],
         }),
       });
@@ -158,6 +160,67 @@ export default function CreateAgentModal({ onClose, onCreated }) {
               rows={3} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground resize-y" />
           </div>
 
+          {/* Conway Prompt Toggle */}
+          <div className="border-t border-border pt-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input data-testid="agent-conway-toggle" type="checkbox" checked={includeConway} onChange={(e) => setIncludeConway(e.target.checked)}
+                className="w-4 h-4 rounded accent-foreground cursor-pointer" />
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Include Conway Terminal Tools</span>
+                <p className="text-[9px] text-muted-foreground mt-0.5">
+                  {includeConway
+                    ? 'Agent will have access to 35 Conway tools: sandboxes, domains, payments, credits, inference.'
+                    : 'Conway tools will be removed from the genesis prompt. Agent will only use OpenClaw and custom skills.'}
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Telegram Bot — REQUIRED */}
+          <div className="border-t border-border pt-4">
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-2">Telegram Bot *</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">Bot Token *</label>
+                <input data-testid="agent-tg-token-input" value={tgBotToken} onChange={(e) => setTgBotToken(e.target.value)}
+                  placeholder="123456:ABC-DEF..." className={`w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono ${!tgBotToken.trim() && name.trim() ? 'border-red-400' : 'border-border'}`} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">Chat ID *</label>
+                <input data-testid="agent-tg-chatid-input" value={tgChatId} onChange={(e) => setTgChatId(e.target.value)}
+                  placeholder="123456789" className={`w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono ${!tgChatId.trim() && name.trim() ? 'border-red-400' : 'border-border'}`} />
+              </div>
+            </div>
+            <p className="text-[9px] text-muted-foreground mt-1">Each agent MUST have its own Telegram bot for isolated reporting. Create one via <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-foreground underline">@BotFather</a>.</p>
+          </div>
+
+          {/* Creator Wallets */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Creator SOL Wallet</label>
+              <input data-testid="agent-sol-wallet-input" value={solWallet} onChange={(e) => setSolWallet(e.target.value)}
+                placeholder="Solana address..." className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono" />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Creator ETH Wallet</label>
+              <input data-testid="agent-eth-wallet-input" value={ethWallet} onChange={(e) => setEthWallet(e.target.value)}
+                placeholder="0x... ERC20 address..." className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono" />
+            </div>
+          </div>
+
+          {/* Revenue Share */}
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">
+              Revenue Share to Creator: <span className="text-foreground font-bold">{revenueShare}%</span>
+            </label>
+            <input data-testid="agent-revenue-share-input" type="range" min="0" max="100" step="5"
+              value={revenueShare} onChange={(e) => setRevenueShare(Number(e.target.value))}
+              className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-foreground" />
+            <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
+              <span>0% (agent keeps all)</span><span>100% (all to creator)</span>
+            </div>
+          </div>
+
           {/* Skill Selector */}
           <div className="border-t border-border pt-4">
             <div className="flex items-center justify-between mb-2">
@@ -202,51 +265,6 @@ export default function CreateAgentModal({ onClose, onCreated }) {
               ))}
               {filteredSkills.length === 0 && <div className="px-3 py-4 text-xs text-muted-foreground text-center">No skills match your search</div>}
             </div>
-          </div>
-
-          {/* Creator Wallets */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Creator SOL Wallet</label>
-              <input data-testid="agent-sol-wallet-input" value={solWallet} onChange={(e) => setSolWallet(e.target.value)}
-                placeholder="Solana address..." className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono" />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Creator ETH Wallet</label>
-              <input data-testid="agent-eth-wallet-input" value={ethWallet} onChange={(e) => setEthWallet(e.target.value)}
-                placeholder="0x... ERC20 address..." className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono" />
-            </div>
-          </div>
-
-          {/* Revenue Share */}
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">
-              Revenue Share to Creator: <span className="text-foreground font-bold">{revenueShare}%</span>
-            </label>
-            <input data-testid="agent-revenue-share-input" type="range" min="0" max="100" step="5"
-              value={revenueShare} onChange={(e) => setRevenueShare(Number(e.target.value))}
-              className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-foreground" />
-            <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
-              <span>0% (agent keeps all)</span><span>100% (all to creator)</span>
-            </div>
-          </div>
-
-          {/* Telegram Bot — REQUIRED */}
-          <div className="border-t border-border pt-4">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-2">Telegram Bot *</label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] text-muted-foreground block mb-1">Bot Token *</label>
-                <input data-testid="agent-tg-token-input" value={tgBotToken} onChange={(e) => setTgBotToken(e.target.value)}
-                  placeholder="123456:ABC-DEF..." className={`w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono ${!tgBotToken.trim() && name.trim() ? 'border-red-400' : 'border-border'}`} />
-              </div>
-              <div>
-                <label className="text-[10px] text-muted-foreground block mb-1">Chat ID *</label>
-                <input data-testid="agent-tg-chatid-input" value={tgChatId} onChange={(e) => setTgChatId(e.target.value)}
-                  placeholder="123456789" className={`w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono ${!tgChatId.trim() && name.trim() ? 'border-red-400' : 'border-border'}`} />
-              </div>
-            </div>
-            <p className="text-[9px] text-muted-foreground mt-1">Each agent MUST have its own Telegram bot for isolated reporting. Create one via <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-foreground underline">@BotFather</a>.</p>
           </div>
 
           {error && <p className="text-xs text-red-600">{error}</p>}

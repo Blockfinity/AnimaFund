@@ -26,6 +26,7 @@ class CreateAgentRequest(BaseModel):
     revenue_share_percent: int = 50
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    include_conway: bool = True  # Include Conway Terminal tools in genesis prompt
     selected_skills: list = []  # Empty = copy all skills
 
 
@@ -209,6 +210,17 @@ async def create_agent(req: CreateAgentRequest):
     full_prompt = full_prompt.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
     full_prompt = full_prompt.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
 
+    # Conditionally strip Conway Terminal tools section
+    if not req.include_conway:
+        import re
+        # Remove the CONWAY TERMINAL block from the prompt
+        full_prompt = re.sub(
+            r'CONWAY TERMINAL \(MCP Server.*?\n(?=\n[A-Z]|\n={2,}|\Z)',
+            'CONWAY TERMINAL: Disabled for this agent.\n\n',
+            full_prompt,
+            flags=re.DOTALL,
+        )
+
     sep = "=" * 75
     if req.creator_sol_wallet or req.creator_eth_wallet:
         full_prompt += f"\n\n{sep}\nCREATOR PAYMENT\n{sep}\n\n"
@@ -278,6 +290,7 @@ async def create_agent(req: CreateAgentRequest):
         "telegram_bot_token": tg_token,
         "telegram_chat_id": tg_chat,
         "telegram_configured": True,
+        "include_conway": req.include_conway,
         "status": "created",
         "is_default": False,
         "created_at": datetime.now(timezone.utc).isoformat(),

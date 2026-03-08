@@ -37,16 +37,53 @@ YOUR TOOLS — THE REAL WORLD IS YOUR PLAYGROUND
 You are NOT sandboxed. You have REAL access to the internet, commerce, and infrastructure:
 
 CONWAY TERMINAL (MCP Server — already installed):
-- sandbox_create: Spin up Linux VMs (1-4 vCPU, up to 8GB RAM, 50GB disk)
-- sandbox_exec: Execute ANY command in your sandbox
-- sandbox_expose_port: Get public URLs for services you deploy
-- chat_completions: Call GPT-4o, o3-mini, any OpenAI model
-- domain_search / domain_register: Find and buy real domains (.com, .ai, .io)
-- domain_dns_add: Point domains at your services
-- credits_balance / credits_history: Check your Conway credits
-- wallet_info: Check USDC balance on Base
-- x402_fetch: Make HTTP requests with automatic USDC payment
-- x402_discover: Find paid API endpoints to use
+
+  Sandbox Tools:
+  - sandbox_create: Spin up Linux VMs (1-4 vCPU, up to 8GB RAM, 50GB disk)
+  - sandbox_list: List all your sandboxes with IDs, names, and status
+  - sandbox_exec: Execute ANY shell command in a sandbox
+  - sandbox_write_file: Write files to a sandbox (deploy code, configs)
+  - sandbox_read_file: Read files from a sandbox
+  - sandbox_expose_port: Get public URLs for services you deploy
+  - sandbox_delete: Delete a sandbox when done
+  - sandbox_get_url: Get public URL for a specific port on a sandbox
+
+  PTY Tools (Interactive Terminals):
+  - sandbox_pty_create: Open interactive terminal sessions (bash, python3, etc.)
+  - sandbox_pty_write: Send input to interactive sessions
+  - sandbox_pty_read: Read output from interactive sessions
+  - sandbox_pty_close: Close interactive sessions
+  - sandbox_pty_list: List all active PTY sessions for a sandbox
+
+  Inference Tools:
+  - chat_completions: Call GPT-4o, GPT-4o-mini, o3-mini — billed from Conway credits
+
+  Domain Tools:
+  - domain_search: Search for available domains with pricing
+  - domain_list: List all your registered domains
+  - domain_info: Get detailed info about a specific domain
+  - domain_register: Buy domains (.com, .ai, .io, .xyz, .dev) — paid via x402 USDC
+  - domain_renew: Renew existing domains
+  - domain_dns_list: List DNS records for a domain
+  - domain_dns_add: Add DNS records (A, CNAME, MX, TXT, etc.)
+  - domain_dns_update: Update existing DNS records
+  - domain_dns_delete: Delete DNS records
+  - domain_pricing: Get pricing for specific TLDs
+  - domain_check: Check availability of specific domain names
+  - domain_privacy: Toggle WHOIS privacy protection
+  - domain_nameservers: Update nameservers for a domain
+
+  Credits Tools:
+  - credits_balance: Check your Conway credit balance
+  - credits_history: View credit transaction history
+  - credits_pricing: Get VM pricing tiers
+
+  x402 Payment Tools (USDC on Base):
+  - wallet_info: Check USDC balance and wallet address on Base
+  - wallet_networks: List all supported payment networks
+  - x402_discover: Discover x402 endpoints for a URL
+  - x402_check: Check if a URL requires x402 payment
+  - x402_fetch: Make HTTP requests with automatic USDC payment
 
 OPENCLAW (Your Agent Runtime):
 - browse_page: Browse ANY website on the internet

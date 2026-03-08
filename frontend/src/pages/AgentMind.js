@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Brain, Terminal, Wrench, DollarSign, AlertTriangle, Clock, Cpu, Eye, ChevronDown, ChevronRight, Search, Wallet, Copy } from 'lucide-react';
+import { Brain, Terminal, Wrench, DollarSign, AlertTriangle, Clock, Cpu, Eye, ChevronDown, ChevronRight, Search, Wallet, Copy, Zap } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -191,7 +191,7 @@ export default function AgentMind({ genesisState }) {
   const [soul, setSoul] = useState(null);
   const [stats, setStats] = useState(null);
   const [logs, setLogs] = useState([]);
-  const [activeTab, setActiveTab] = useState('logs'); // 'logs' or 'turns'
+  const [activeTab, setActiveTab] = useState('feed'); // 'feed', 'logs', or 'turns'
   const [copied, setCopied] = useState(false);
   const [balance, setBalance] = useState(null);
   const feedRef = useRef(null);
@@ -283,17 +283,21 @@ export default function AgentMind({ genesisState }) {
     return () => { if (timer) clearTimeout(timer); };
   }, [fetchData, engineState?.agent_state]);
 
-  // Auto-scroll: only when enabled AND new logs arrive AND user is idle
+  // Auto-scroll: only when enabled AND new data arrives AND user is idle
   const prevLogCount = useRef(0);
+  const prevTurnCount = useRef(0);
 
   useEffect(() => {
-    if (activeTab !== 'logs' || !logRef.current) return;
-    // Only scroll if new logs arrived and auto-scroll is on
-    if (logs.length > prevLogCount.current && autoScrollRef.current && !isUserScrolling.current) {
+    if (!autoScrollRef.current || isUserScrolling.current) return;
+    if (activeTab === 'logs' && logRef.current && logs.length > prevLogCount.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
+    if (activeTab === 'feed' && feedRef.current && (turns.length > prevTurnCount.current || logs.length > prevLogCount.current)) {
+      feedRef.current.scrollTop = 0; // Feed shows newest at top
+    }
     prevLogCount.current = logs.length;
-  }, [logs, activeTab]);
+    prevTurnCount.current = turns.length;
+  }, [logs, turns, activeTab]);
 
   // Sync ref with state for the AUTO button
   useEffect(() => { autoScrollRef.current = autoScroll; }, [autoScroll]);
@@ -391,6 +395,11 @@ export default function AgentMind({ genesisState }) {
 
             {/* Tab switcher */}
             <div style={{ display: 'flex', gap: '2px', background: '#18181b', borderRadius: '4px', padding: '2px' }}>
+              <button data-testid="tab-feed" onClick={() => setActiveTab('feed')}
+                style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '3px', border: 'none', cursor: 'pointer',
+                  background: activeTab === 'feed' ? '#27272a' : 'transparent', color: activeTab === 'feed' ? '#fff' : '#71717a' }}>
+                <Zap className="w-3 h-3" style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />LIVE FEED
+              </button>
               <button data-testid="tab-logs" onClick={() => setActiveTab('logs')}
                 style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '3px', border: 'none', cursor: 'pointer',
                   background: activeTab === 'logs' ? '#27272a' : 'transparent', color: activeTab === 'logs' ? '#fff' : '#71717a' }}>
@@ -414,7 +423,7 @@ export default function AgentMind({ genesisState }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {activeTab === 'turns' && (
+            {(activeTab === 'turns' || activeTab === 'feed') && (
               <>
                 <div style={{ position: 'relative' }}>
                   <Search className="w-3 h-3" style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#52525b' }} />
@@ -436,6 +445,7 @@ export default function AgentMind({ genesisState }) {
               autoScrollRef.current = next;
               isUserScrolling.current = false;
               if (next && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+              if (next && feedRef.current) feedRef.current.scrollTop = 0;
             }} data-testid="auto-scroll-toggle"
               style={{ fontSize: '9px', fontWeight: 700, padding: '3px 8px', borderRadius: '3px', border: 'none', cursor: 'pointer',
                 background: autoScroll ? '#34D399' : '#18181b', color: autoScroll ? '#fff' : '#71717a' }}>
@@ -445,7 +455,52 @@ export default function AgentMind({ genesisState }) {
         </div>
 
         {/* Content area */}
-        {activeTab === 'logs' ? (
+        {activeTab === 'feed' ? (
+          /* ═══ LIVE FEED TAB — Real-time agent mind activity ═══ */
+          <div ref={feedRef} data-testid="live-feed-panel"
+            onScroll={handleLogScroll}
+            style={{ flex: 1, background: '#0a0a0f', borderRadius: '0 0 6px 6px', padding: '8px 14px', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#27272a #0a0a0f' }}>
+            {/* Show turns if available, interleaved with key log events */}
+            {filtered.length > 0 ? filtered.map((turn, i) => (
+              <TurnBlock key={turn.turn_id || i} turn={turn} index={i} />
+            )) : logs.length > 0 ? (
+              /* Fallback: show categorized log entries as the live feed */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {logs.slice(-100).map((entry, i) => {
+                  const tag = getLogTag(entry);
+                  const tagColors = {
+                    ERROR: '#f87171', CRITICAL: '#fb923c', THINK: '#fbbf24', SLEEP: '#a78bfa',
+                    HEARTBEAT: '#60a5fa', WALLET: '#34D399', 'API KEY': '#34D399', SKILLS: '#34D399',
+                    STATE: '#818cf8', LOOP: '#fbbf24', INFO: '#71717a',
+                  };
+                  const isImportant = ['THINK', 'ERROR', 'CRITICAL', 'STATE', 'WALLET', 'SKILLS'].includes(tag);
+                  return (
+                    <div key={i} style={{
+                      padding: isImportant ? '6px 10px' : '2px 10px',
+                      background: isImportant ? '#18181b' : 'transparent',
+                      borderRadius: isImportant ? '4px' : '0',
+                      borderLeft: isImportant ? `2px solid ${tagColors[tag] || '#71717a'}` : 'none',
+                      display: 'flex', gap: '8px', alignItems: 'flex-start',
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', lineHeight: '20px',
+                    }}>
+                      <span style={{ color: '#3f3f46', minWidth: '55px', flexShrink: 0 }}>{formatTime(entry.timestamp)}</span>
+                      <span style={{ minWidth: '70px', flexShrink: 0, fontSize: '9px', fontWeight: 800, color: tagColors[tag] || '#71717a', padding: '1px 0' }}>[{tag}]</span>
+                      <span style={{ wordBreak: 'break-word', color: isImportant ? '#d4d4d8' : getLogColor(entry) }}>{entry.message}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ padding: '40px', textAlign: 'center' }}>
+                <Zap className="w-8 h-8" style={{ color: '#9B6BFF', margin: '0 auto 12px', opacity: 0.3 }} />
+                <p style={{ fontSize: '13px', color: '#71717a', fontWeight: 600 }}>Agent Mind — Live Feed</p>
+                <p style={{ fontSize: '11px', color: '#52525b', marginTop: '4px' }}>
+                  {engineState?.db_exists ? 'Waiting for agent activity...' : 'Start the engine to see the agent think in real-time.'}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'logs' ? (
           /* ═══ LIVE LOGS TAB ═══ */
           <div ref={logRef}
             onScroll={handleLogScroll}
