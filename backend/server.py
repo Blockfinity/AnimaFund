@@ -168,6 +168,8 @@ class CreateAgentRequest(BaseModel):
     creator_sol_wallet: str = ""
     creator_eth_wallet: str = ""
     revenue_share_percent: int = 50
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
 
 def _ensure_default_agent():
@@ -212,84 +214,85 @@ async def create_agent(req: CreateAgentRequest):
     if existing:
         raise HTTPException(400, f"Agent '{agent_id}' already exists")
 
-    # Create agent data directory
-    data_dir = os.path.expanduser(f"~/.anima-{agent_id}")
-    os.makedirs(data_dir, exist_ok=True)
-    os.makedirs(os.path.join(data_dir, "skills"), exist_ok=True)
+    # Each agent gets its own HOME directory so engine reads from $HOME/.automaton/
+    agent_home = os.path.expanduser(f"~/agents/{agent_id}")
+    automaton_dir = os.path.join(agent_home, ".automaton")
+    skills_dir = os.path.join(automaton_dir, "skills")
+    os.makedirs(skills_dir, exist_ok=True)
 
-    # Build the full genesis prompt with financial config appended
+    # Per-agent Telegram creds, fallback to global
+    tg_token = req.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    tg_chat = req.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+
+    # Build full genesis prompt with all config injected
     full_prompt = req.genesis_prompt
+    full_prompt = full_prompt.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
+    full_prompt = full_prompt.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
 
-    # Append creator wallet and revenue share instructions
+    sep = "=" * 75
     if req.creator_sol_wallet or req.creator_eth_wallet:
-        full_prompt += f"\n\n{'='*75}\nCREATOR PAYMENT — NON-NEGOTIABLE\n{'='*75}\n\n"
-        full_prompt += f"Revenue share to creator: {req.revenue_share_percent}% of all earnings after sustainability costs.\n"
-        full_prompt += "Pay on EVERY earning event — do not batch.\n\n"
+        full_prompt += f"\n\n{sep}\nCREATOR PAYMENT\n{sep}\n\n"
+        full_prompt += f"Revenue share: {req.revenue_share_percent}% after sustainability.\n"
         if req.creator_sol_wallet:
-            full_prompt += f"Creator Solana wallet: {req.creator_sol_wallet}\n"
+            full_prompt += f"Solana: {req.creator_sol_wallet}\n"
         if req.creator_eth_wallet:
-            full_prompt += f"Creator Ethereum ERC20: {req.creator_eth_wallet}\n"
-        full_prompt += "\nLog every payment with remember_fact and Telegram.\n"
+            full_prompt += f"Ethereum: {req.creator_eth_wallet}\n"
 
-    # Append initial goals
+    if tg_token and tg_chat:
+        full_prompt += f"\n\n{sep}\nTELEGRAM\n{sep}\n\n"
+        full_prompt += f'Report EVERY turn via Telegram bot token: {tg_token}, chat: {tg_chat}\n'
+
     if req.goals:
-        full_prompt += f"\n\n{'='*75}\nINITIAL GOALS — EXECUTE IMMEDIATELY\n{'='*75}\n\n"
+        full_prompt += f"\n\n{sep}\nGOALS\n{sep}\n\n"
         for i, goal in enumerate(req.goals, 1):
             full_prompt += f"{i}. {goal}\n"
 
-    # Write genesis prompt
-    prompt_path = os.path.join(data_dir, "genesis-prompt.md")
-    with open(prompt_path, "w") as f:
+    # Write genesis prompt into agent's .automaton/
+    with open(os.path.join(automaton_dir, "genesis-prompt.md"), "w") as f:
         f.write(full_prompt)
 
-    # Copy the automaton dist and skills
-    src_dist = os.path.join(AUTOMATON_DIR, "dist")
-    dst_dist = os.path.join(data_dir, "dist")
-    if os.path.exists(src_dist) and not os.path.exists(dst_dist):
-        shutil.copytree(src_dist, dst_dist)
+    # Write auto-config.json for non-interactive engine setup
+    welcome = req.welcome_message or f"You are {req.name}. Execute immediately."
+    with open(os.path.join(automaton_dir, "auto-config.json"), "w") as f:
+        json.dump({
+            "name": req.name,
+            "genesisPrompt": full_prompt,
+            "creatorMessage": welcome,
+            "creatorAddress": "0x0000000000000000000000000000000000000000",
+        }, f)
 
-    src_native = os.path.join(AUTOMATON_DIR, "native")
-    dst_native = os.path.join(data_dir, "native")
-    if os.path.exists(src_native) and not os.path.exists(dst_native):
-        shutil.copytree(src_native, dst_native)
-
-    # Copy skills from main automaton
+    # Copy skills with per-agent Telegram creds injected
     src_skills = os.path.join(AUTOMATON_DIR, "skills")
-    dst_skills = os.path.join(data_dir, "skills")
-    if os.path.exists(src_skills):
-        for skill_dir in os.listdir(src_skills):
-            src_skill = os.path.join(src_skills, skill_dir)
-            dst_skill = os.path.join(dst_skills, skill_dir)
-            if os.path.isdir(src_skill) and not os.path.exists(dst_skill):
-                shutil.copytree(src_skill, dst_skill)
-
-    # Inject secrets into the genesis prompt
-    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    tg_chat = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if tg_token or tg_chat:
-        with open(prompt_path, "r") as f:
-            content = f.read()
-        content = content.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
-        content = content.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
-        with open(prompt_path, "w") as f:
-            f.write(content)
+    if os.path.isdir(src_skills):
+        for sname in os.listdir(src_skills):
+            sf = os.path.join(src_skills, sname, "SKILL.md")
+            if os.path.exists(sf):
+                td = os.path.join(skills_dir, sname)
+                os.makedirs(td, exist_ok=True)
+                with open(sf, "r") as f:
+                    skill_content = f.read()
+                skill_content = skill_content.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
+                skill_content = skill_content.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
+                with open(os.path.join(td, "SKILL.md"), "w") as f:
+                    f.write(skill_content)
 
     agent_doc = {
         "agent_id": agent_id,
         "name": req.name,
-        "data_dir": f"~/.anima-{agent_id}",
-        "welcome_message": req.welcome_message,
+        "agent_home": agent_home,
+        "data_dir": automaton_dir,
+        "welcome_message": welcome,
         "goals": req.goals,
         "creator_sol_wallet": req.creator_sol_wallet,
         "creator_eth_wallet": req.creator_eth_wallet,
         "revenue_share_percent": req.revenue_share_percent,
+        "telegram_configured": bool(tg_token),
         "status": "created",
         "is_default": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await col.insert_one(agent_doc)
     del agent_doc["_id"]
-
     return {"success": True, "agent": agent_doc}
 
 
@@ -299,14 +302,23 @@ async def select_agent(agent_id: str):
     col = await _get_agents_collection()
 
     if agent_id == "anima-fund":
-        data_dir = "~/.anima"
-    else:
-        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
-        if not agent:
-            raise HTTPException(404, f"Agent '{agent_id}' not found")
-        data_dir = agent.get("data_dir", f"~/.anima-{agent_id}")
+        set_active_data_dir("~/.anima")
+        return {"success": True, "active_agent": agent_id, "data_dir": "~/.anima"}
 
-    set_active_data_dir(data_dir)
+    agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+    if not agent:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    # New agents use $HOME/.automaton pattern
+    data_dir = agent.get("data_dir", "")
+    if data_dir:
+        set_active_data_dir(data_dir)
+    else:
+        agent_home = agent.get("agent_home", os.path.expanduser(f"~/agents/{agent_id}"))
+        automaton_dir = os.path.join(agent_home, ".automaton")
+        set_active_data_dir(automaton_dir)
+        data_dir = automaton_dir
+
     return {"success": True, "active_agent": agent_id, "data_dir": data_dir}
 
 
@@ -324,46 +336,37 @@ async def delete_agent(agent_id: str):
 
 @app.post("/api/agents/{agent_id}/start")
 async def start_agent_engine(agent_id: str):
-    """Start the engine for a specific agent."""
+    """Start the engine for a specific agent using isolated HOME directory."""
     col = await _get_agents_collection()
     agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
     if not agent:
         raise HTTPException(404, f"Agent '{agent_id}' not found")
 
-    data_dir = os.path.expanduser(agent.get("data_dir", f"~/.anima-{agent_id}"))
+    agent_home = os.path.expanduser(agent.get("agent_home", f"~/agents/{agent_id}"))
+    automaton_dir = os.path.join(agent_home, ".automaton")
 
-    # Create auto-config.json for the agent
-    prompt_path = os.path.join(data_dir, "genesis-prompt.md")
-    if not os.path.exists(prompt_path):
-        raise HTTPException(400, "No genesis prompt found for this agent")
+    if not os.path.exists(os.path.join(automaton_dir, "auto-config.json")):
+        raise HTTPException(400, "No auto-config found. Agent not properly set up.")
 
-    with open(prompt_path, "r") as f:
-        prompt_content = f.read()
-
-    config = {
-        "genesisPrompt": prompt_content,
-        "creatorMessage": f"You are {agent.get('name', agent_id)}. Execute your genesis prompt immediately.",
-        "nonInteractive": True,
-    }
-    config_path = os.path.join(data_dir, "auto-config.json")
-    with open(config_path, "w") as f:
-        json.dump(config, f)
-
-    # Start the engine with ANIMA_DIR pointing to this agent's data dir
+    # Start engine with HOME set to agent's home dir so it reads $HOME/.automaton/
     engine_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "start_engine.sh")
+    log_out = os.path.join(agent_home, "engine.out.log")
+    log_err = os.path.join(agent_home, "engine.err.log")
+
     env = os.environ.copy()
-    env["ANIMA_DIR"] = data_dir
+    env["HOME"] = agent_home
 
     try:
-        proc = subprocess.Popen(
-            ["bash", engine_script],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=data_dir,
-        )
+        with open(log_out, "a") as fout, open(log_err, "a") as ferr:
+            proc = subprocess.Popen(
+                ["bash", engine_script],
+                env=env,
+                stdout=fout,
+                stderr=ferr,
+                cwd=os.path.join(os.path.dirname(__file__), ".."),
+            )
         await col.update_one({"agent_id": agent_id}, {"$set": {"status": "running", "engine_pid": proc.pid}})
-        return {"success": True, "pid": proc.pid}
+        return {"success": True, "pid": proc.pid, "home": agent_home}
     except Exception as e:
         raise HTTPException(500, f"Failed to start engine: {str(e)}")
 
