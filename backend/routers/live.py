@@ -18,6 +18,7 @@ from engine_bridge import (
     get_live_onchain_transactions, get_live_session_summaries,
     get_live_kv_store, get_live_wake_events, get_live_heartbeat_schedule,
     get_live_skills_full, get_live_models, get_live_tool_usage,
+    get_active_agent_id,
 )
 
 router = APIRouter(prefix="/api", tags=["live"])
@@ -25,7 +26,9 @@ router = APIRouter(prefix="/api", tags=["live"])
 
 @router.get("/engine/live")
 async def check_engine_live():
-    return is_engine_live()
+    data = is_engine_live()
+    data["agent_id"] = get_active_agent_id()
+    return data
 
 @router.get("/live/identity")
 async def live_identity():

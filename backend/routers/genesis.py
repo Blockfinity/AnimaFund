@@ -17,8 +17,9 @@ import aiohttp
 from config import AUTOMATON_DIR, ANIMA_DIR, CREATOR_WALLET, CREATOR_ETH_ADDRESS, ENGINE_PID_FILE, USDC_CONTRACT, BASE_RPC
 from engine_bridge import (
     is_engine_live, get_live_kv_store, get_live_identity,
-    get_active_data_dir,
+    get_active_data_dir, get_active_agent_id,
 )
+from database import get_db
 from telegram_notify import notify_engine_started
 
 
@@ -77,6 +78,7 @@ async def check_onchain_balance(wallet_address: str) -> dict:
 async def wallet_balance():
     """Real-time on-chain balance check for the CURRENTLY SELECTED agent."""
     active_dir = get_active_data_dir()
+    agent_id = get_active_agent_id()
     wallets = {}
 
     # Wallet from anima.json / agent config in the ACTIVE directory
@@ -104,6 +106,17 @@ async def wallet_balance():
     identity = get_live_identity()
     if identity and identity.get("address"):
         wallets["engine"] = identity["address"]
+
+    # For non-default agents, also check MongoDB for wallet address
+    if not wallets.get("config") and not wallets.get("engine") and agent_id != "anima-fund":
+        try:
+            col = get_db()["agents"]
+            agent_doc = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+            if agent_doc and agent_doc.get("creator_eth_wallet"):
+                # Show the creator ETH wallet as the agent's associated wallet
+                wallets["config"] = agent_doc["creator_eth_wallet"]
+        except Exception:
+            pass
 
     engine_wallet = wallets.get("engine")
     config_wallet = wallets.get("config")
@@ -154,8 +167,9 @@ async def wallet_balance():
 
 @router.get("/genesis/status")
 async def genesis_status():
-    """Check agent status — reads from the CURRENTLY SELECTED agent's directory."""
+    """Check agent status — reads from the CURRENTLY SELECTED agent's directory and MongoDB."""
     active_dir = get_active_data_dir()
+    agent_id = get_active_agent_id()
     engine = is_engine_live()
     config_exists = os.path.exists(os.path.join(active_dir, "anima.json"))
     wallet_file = os.path.join(active_dir, "wallet.json")
@@ -217,7 +231,28 @@ async def genesis_status():
 
     wallet_mismatch = bool(engine_wallet and wallet_address and engine_wallet != wallet_address)
 
+    # Per-agent creator wallets from MongoDB (not global config)
+    agent_creator_wallet = CREATOR_WALLET
+    agent_creator_eth = CREATOR_ETH_ADDRESS
+    agent_name = engine.get("fund_name")
+    agent_goals = []
+
+    col = get_db()["agents"]
+    try:
+        agent_doc = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+        if agent_doc:
+            if agent_doc.get("creator_sol_wallet"):
+                agent_creator_wallet = agent_doc["creator_sol_wallet"]
+            if agent_doc.get("creator_eth_wallet"):
+                agent_creator_eth = agent_doc["creator_eth_wallet"]
+            if not agent_name:
+                agent_name = agent_doc.get("name")
+            agent_goals = agent_doc.get("goals", [])
+    except Exception:
+        pass
+
     return {
+        "agent_id": agent_id,
         "wallet_address": wallet_address,
         "engine_wallet": engine_wallet,
         "wallet_mismatch": wallet_mismatch,
@@ -229,10 +264,11 @@ async def genesis_status():
         "engine_live": engine.get("live", False),
         "engine_running": engine_running,
         "engine_state": engine.get("agent_state"),
-        "fund_name": engine.get("fund_name"),
+        "fund_name": agent_name,
         "turn_count": engine.get("turn_count", 0),
-        "creator_wallet": CREATOR_WALLET,
-        "creator_eth_address": CREATOR_ETH_ADDRESS,
+        "creator_wallet": agent_creator_wallet,
+        "creator_eth_address": agent_creator_eth,
+        "goals": agent_goals,
         "stage": stage,
         "status": "running" if engine_running else ("created" if config_exists else "not_created"),
     }
@@ -461,32 +497,39 @@ async def engine_status():
 
 @router.get("/engine/logs")
 async def engine_logs(lines: int = Query(default=50, le=200)):
-    """Read engine stdout/stderr logs for the CURRENTLY SELECTED agent."""
+    """Read engine stdout/stderr logs for the CURRENTLY SELECTED agent.
+    Each agent has isolated log files — never show another agent's logs."""
     active_dir = get_active_data_dir()
+    agent_id = get_active_agent_id()
     result = {}
 
-    # Check both global logs and per-agent logs
-    global_logs = ("/var/log/automaton.out.log", "/var/log/automaton.err.log")
-    # For non-default agents, check their own log directory
-    agent_home = os.path.dirname(active_dir)  # ~/agents/{id}/ from ~/agents/{id}/.automaton
-    agent_logs = (os.path.join(agent_home, "engine.out.log"), os.path.join(agent_home, "engine.err.log"))
-
-    for log_set in [agent_logs, global_logs]:
-        stdout_path, stderr_path = log_set
-        if os.path.exists(stdout_path) or os.path.exists(stderr_path):
-            for name, path in [("stdout", stdout_path), ("stderr", stderr_path)]:
-                if os.path.exists(path):
-                    try:
-                        with open(path, "r") as f:
-                            all_lines = f.readlines()
-                            result[name] = "".join(all_lines[-lines:])
-                    except Exception as e:
-                        result[name] = f"Error reading: {e}"
-                else:
-                    result.setdefault(name, "")
-            break  # Use the first log set that exists
+    if agent_id == "anima-fund":
+        # Default agent uses global logs
+        log_paths = [
+            ("/var/log/automaton.out.log", "/var/log/automaton.err.log"),
+        ]
     else:
+        # Non-default agents: ONLY read their own per-agent logs, never global
+        agent_home = os.path.dirname(active_dir)  # ~/agents/{id}/ from ~/agents/{id}/.automaton
+        log_paths = [
+            (os.path.join(agent_home, "engine.out.log"), os.path.join(agent_home, "engine.err.log")),
+        ]
+
+    for stdout_path, stderr_path in log_paths:
+        for name, path in [("stdout", stdout_path), ("stderr", stderr_path)]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        all_lines = f.readlines()
+                        result[name] = "".join(all_lines[-lines:])
+                except Exception as e:
+                    result[name] = f"Error reading: {e}"
+            else:
+                result.setdefault(name, "")
+
+    if "stdout" not in result:
         result["stdout"] = ""
+    if "stderr" not in result:
         result["stderr"] = ""
 
     anima_files = []
@@ -495,6 +538,7 @@ async def engine_logs(lines: int = Query(default=50, le=200)):
             fp = os.path.join(active_dir, f)
             anima_files.append({"name": f, "is_dir": os.path.isdir(fp), "size": os.path.getsize(fp) if os.path.isfile(fp) else 0})
     result["anima_dir"] = anima_files
+    result["agent_id"] = agent_id
     return result
 
 

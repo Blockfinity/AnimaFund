@@ -349,7 +349,7 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'fundhq': return <FundHQ fundName={fundName} />;
-      case 'mind': return <AgentMind genesisState={genesisState} />;
+      case 'mind': return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'agents': return <Agents />;
       case 'skills': return <Skills />;
       case 'deals': return <DealFlow />;
@@ -358,8 +358,8 @@ function App() {
       case 'activity': return <Activity />;
       case 'memory': return <Memory />;
       case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} />;
-      case 'wallet': return <AgentMind genesisState={genesisState} showWalletView={true} />;
-      default: return <AgentMind genesisState={genesisState} />;
+      case 'wallet': return <AgentMind genesisState={genesisState} showWalletView={true} selectedAgent={selectedAgent} />;
+      default: return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
     }
   };
 

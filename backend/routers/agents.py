@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from config import AUTOMATON_DIR
-from engine_bridge import set_active_data_dir
+from engine_bridge import set_active_data_dir, set_active_agent_id
 
 router = APIRouter(prefix="/api", tags=["agents"])
 
@@ -293,6 +293,7 @@ async def select_agent(agent_id: str):
 
     if agent_id == "anima-fund":
         set_active_data_dir("~/.anima")
+        set_active_agent_id("anima-fund")
         return {"success": True, "active_agent": agent_id, "data_dir": "~/.anima"}
 
     agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
@@ -309,6 +310,7 @@ async def select_agent(agent_id: str):
         set_active_data_dir(automaton_dir)
         data_dir = automaton_dir
 
+    set_active_agent_id(agent_id)
     return {"success": True, "active_agent": agent_id, "data_dir": data_dir}
 
 

@@ -30,21 +30,30 @@ from datetime import datetime, timezone
 
 ANIMA_STATE_DB = os.path.expanduser("~/.anima/state.db")
 
-# Multi-agent support: the active data directory can be switched
+# Multi-agent support: the active data directory and agent ID can be switched
 # Persisted to file so it survives server restarts/hot-reloads
 _active_data_dir = os.path.expanduser("~/.anima")
+_active_agent_id = "anima-fund"
 _ACTIVE_AGENT_FILE = "/tmp/anima_active_agent_dir"
+_ACTIVE_AGENT_ID_FILE = "/tmp/anima_active_agent_id"
 
 
 def _load_persisted_dir():
-    """Load the persisted active data directory (survives server restarts)."""
-    global _active_data_dir, ANIMA_STATE_DB
+    """Load the persisted active data directory and agent ID (survives server restarts)."""
+    global _active_data_dir, _active_agent_id, ANIMA_STATE_DB
     try:
         with open(_ACTIVE_AGENT_FILE, "r") as f:
             d = f.read().strip()
             if d and os.path.isdir(d):
                 _active_data_dir = d
                 ANIMA_STATE_DB = os.path.join(d, "state.db")
+    except FileNotFoundError:
+        pass
+    try:
+        with open(_ACTIVE_AGENT_ID_FILE, "r") as f:
+            aid = f.read().strip()
+            if aid:
+                _active_agent_id = aid
     except FileNotFoundError:
         pass
 
@@ -64,6 +73,28 @@ def set_active_data_dir(data_dir: str):
             f.write(_active_data_dir)
     except Exception:
         pass
+
+
+def set_active_agent_id(agent_id: str):
+    """Track which agent is currently selected (for metadata lookups)."""
+    global _active_agent_id
+    _active_agent_id = agent_id
+    try:
+        with open(_ACTIVE_AGENT_ID_FILE, "w") as f:
+            f.write(agent_id)
+    except Exception:
+        pass
+    # Also write active_agent.txt for the Telegram monitor
+    try:
+        active_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "active_agent.txt")
+        with open(active_file, "w") as f:
+            f.write(agent_id)
+    except Exception:
+        pass
+
+
+def get_active_agent_id() -> str:
+    return _active_agent_id
 
 
 def get_active_data_dir() -> str:
@@ -1050,21 +1081,28 @@ def get_live_tool_usage() -> dict:
 
 
 def get_engine_logs(lines: int = 20) -> dict:
-    """Read engine stdout/stderr logs for the active agent."""
+    """Read engine stdout/stderr logs for the active agent.
+    Default agent reads global logs; other agents read per-agent logs only."""
     result = {"stdout": "", "stderr": ""}
-    agent_home = os.path.dirname(_active_data_dir)
-    # Check agent-specific logs first, then global
-    for log_dir in [agent_home, "/var/log"]:
-        stdout_path = os.path.join(log_dir, "engine.out.log" if log_dir != "/var/log" else "automaton.out.log")
-        stderr_path = os.path.join(log_dir, "engine.err.log" if log_dir != "/var/log" else "automaton.err.log")
-        if os.path.exists(stdout_path) or os.path.exists(stderr_path):
-            for name, path in [("stdout", stdout_path), ("stderr", stderr_path)]:
-                if os.path.exists(path):
-                    try:
-                        with open(path, "r") as f:
-                            all_lines = f.readlines()
-                            result[name] = "".join(all_lines[-lines:])
-                    except Exception:
-                        pass
-            break
+
+    if _active_agent_id == "anima-fund":
+        # Default agent uses global log files
+        log_dirs = ["/var/log"]
+        names = {"stdout": "automaton.out.log", "stderr": "automaton.err.log"}
+    else:
+        # Per-agent logs only
+        agent_home = os.path.dirname(_active_data_dir)
+        log_dirs = [agent_home]
+        names = {"stdout": "engine.out.log", "stderr": "engine.err.log"}
+
+    for log_dir in log_dirs:
+        for key, fname in names.items():
+            path = os.path.join(log_dir, fname)
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        all_lines = f.readlines()
+                        result[key] = "".join(all_lines[-lines:])
+                except Exception:
+                    pass
     return result

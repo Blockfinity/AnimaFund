@@ -179,15 +179,16 @@ function TurnBlock({ turn, index }) {
 }
 
 // ─── Main Component ───
-export default function AgentMind({ genesisState }) {
+export default function AgentMind({ genesisState, selectedAgent }) {
   const [turns, setTurns] = useState([]);
   const [agents, setAgents] = useState([]);
-  const [selectedAgent, setSelectedAgent] = useState('all');
+  const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
   const [engineState, setEngineState] = useState(null);
   const [loading, setLoading] = useState(true);
   const hasEverLoaded = useRef(false); // Once loaded, never show loading spinner again
   const cachedLogsRef = useRef([]); // Sticky: cache last known logs to prevent placeholder flash
   const cachedFilteredRef = useRef([]); // Sticky: cache last known filtered turns
+  const prevAgentRef = useRef(selectedAgent); // Track agent switches
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -201,6 +202,29 @@ export default function AgentMind({ genesisState }) {
   const logRef = useRef(null);
   // Track whether auto-scroll should run — ref avoids re-render loops
   const autoScrollRef = useRef(true);
+
+  // Reset ALL agent-specific state when switching agents
+  useEffect(() => {
+    if (prevAgentRef.current !== selectedAgent) {
+      prevAgentRef.current = selectedAgent;
+      // Clear all data caches — new agent = clean slate
+      setTurns([]);
+      setLogs([]);
+      setAgents([]);
+      setEngineState(null);
+      setSoul(null);
+      setStats(null);
+      setBalance(null);
+      setSelectedAgentFilter('all');
+      setFilter('all');
+      setSearch('');
+      setCopied(false);
+      cachedLogsRef.current = [];
+      cachedFilteredRef.current = [];
+      walletAddrRef.current = null;
+      setLoading(true);
+    }
+  }, [selectedAgent]);
 
   // Fetch real-time on-chain balance — with protective state management
   const walletAddrRef = useRef(null); // Persist wallet address across re-renders
@@ -367,11 +391,11 @@ export default function AgentMind({ genesisState }) {
 
   // Filter turns
   const filtered = turns.filter(t => {
-    if (selectedAgent !== 'all') {
+    if (selectedAgentFilter !== 'all') {
       const agentName = t.agent_name || '';
-      const selectedAgentObj = agents.find(a => a.id === selectedAgent);
+      const selectedAgentObj = agents.find(a => a.id === selectedAgentFilter);
       if (selectedAgentObj && agentName && !agentName.includes(selectedAgentObj.name)) return false;
-      if (selectedAgentObj && !agentName && selectedAgent !== 'founder') return false;
+      if (selectedAgentObj && !agentName && selectedAgentFilter !== 'founder') return false;
     }
     if (filter === 'thinking' && !t.thinking) return false;
     if (filter === 'tools' && (!t.tool_calls || t.tool_calls.length === 0)) return false;
@@ -443,7 +467,7 @@ export default function AgentMind({ genesisState }) {
 
             {/* Agent selector (only for turns tab) */}
             {activeTab === 'turns' && (
-              <select data-testid="agent-selector" value={selectedAgent} onChange={e => setSelectedAgent(e.target.value)}
+              <select data-testid="agent-selector" value={selectedAgentFilter} onChange={e => setSelectedAgentFilter(e.target.value)}
                 style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', color: '#d4d4d8', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', outline: 'none', maxWidth: '200px' }}>
                 <option value="all">All Agents ({agents.length})</option>
                 {agents.map(a => <option key={a.id} value={a.id}>{a.role || a.name}{a.status ? ` [${a.status}]` : ''}</option>)}
