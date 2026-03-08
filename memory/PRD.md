@@ -9,30 +9,35 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 - **Per-Agent Telegram**: Each agent MUST have its own Telegram bot for isolated reporting
 - **Financial Model**: Customizable creator revenue share with SOL/ETH wallets
 - **Dynamic Skills**: 141 skills from 9 sources (Anima, OpenClaw, ClawHub, Conway, etc.)
-- **Real-time Dashboard**: Fund HQ and Agent Mind views with agent selector
+- **Real-time Dashboard**: Fund HQ with Telegram Health panel, Agent Mind views
 
 ## Architecture
 ```
 /app
 ├── automaton/
-│   ├── skills/ (96 custom Anima skills — all enhanced, no skeletons)
+│   ├── skills/ (96 custom Anima skills — ALL enhanced, 0 skeletons)
 │   ├── genesis-prompt.md (master template, OpenClaw/ClawHub integrated)
 │   └── anima_constitution.md
 ├── backend/
 │   ├── routers/ (agents.py, dashboard.py, genesis.py, telegram.py, live.py)
-│   ├── server.py, engine_bridge.py, telegram_notify.py (agent-aware)
+│   ├── server.py (agent-aware log monitor → Telegram pipeline)
+│   ├── engine_bridge.py, telegram_notify.py (agent-aware)
 │   └── config.py, database.py
 └── frontend/src/
     ├── App.js, components/ (CreateAgentModal.js, Header.js)
-    └── pages/ (AgentMind.jsx, Skills.js, etc.)
+    └── pages/ (AgentMind.js, FundHQ.js [Telegram Health], Skills.js, etc.)
 ```
 
-## Completed Features
+## Completed Features (All Tested)
 - Full agent isolation (wallet, logs, status per-agent)
 - Real-world integration (OpenClaw, ClawHub, native Telegram)
 - Per-agent Telegram bot isolation (REQUIRED for new agents)
+- Telegram Health Dashboard in FundHQ sidebar (bot_alive, bot_username, last_message)
+- Agent-aware log monitoring → each agent's Telegram
+- Telegram notification logging to MongoDB (telegram_logs collection)
 - Telegram security (tokens stored in MongoDB, never exposed in API)
-- 96/96 custom skills enhanced (was 27 healthy, 69 skeletons)
+- Wallet-protected agent deletion (can't delete agents with wallet.json)
+- 96/96 custom skills enhanced (was 27 healthy, 69 skeletons → all fixed)
 - 141 total skills from 9 sources
 - Backend refactoring into modular FastAPI routers
 - Security hardening (constitution, prompt security)
@@ -41,18 +46,25 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 ## Key API Endpoints
 - `GET /api/agents` — List agents (telegram_bot_token sanitized)
 - `POST /api/agents/create` — Create agent (telegram REQUIRED)
-- `POST /api/agents/select/{id}` — Set active agent
-- `GET /api/skills/available` — 141 skills from all sources
+- `DELETE /api/agents/{id}` — Delete agent (blocked if wallet exists)
+- `GET /api/telegram/health` — Telegram health for ALL agents (dashboard)
 - `GET /api/telegram/status?agent_id=X` — Per-agent Telegram status
 - `POST /api/telegram/test/{id}` — Test send to agent's Telegram
+- `POST /api/telegram/log` — Log notification events
+- `GET /api/skills/available` — 141 skills from all sources
+
+## Production Safety
+- Default Anima Fund agent cannot be deleted
+- Agents with wallet.json cannot be deleted (fund protection)
+- Genesis reset preserves wallet.json
+- All Telegram tokens stored securely, never in API responses
+- Agent-aware monitoring sends notifications to correct agent's bot
 
 ## Live Agents (Production)
-- **Anima Fund**: Default agent, uses env vars for Telegram
+- **Anima Fund**: Default agent, @AnimaFundbot, uses env vars
 - **Black Sheep**: Separate agent (must have own Telegram bot)
 
 ## Upcoming Tasks
-1. Review live agents (Anima Fund, Black Sheep) — verify own Telegram bots in production
-2. Verify agents performing outside sandbox in production
-3. Real smart contracts for trustless fee/revenue splits
-4. Android device control integration
-5. Self-hosted infrastructure migration
+1. Real smart contracts for trustless fee/revenue splits
+2. Android device control integration
+3. Self-hosted infrastructure migration
