@@ -1,51 +1,107 @@
-# Anima Fund - PRD
+# Anima Fund — Product Requirements Document
 
-## Problem Statement
-Fully autonomous AI-to-AI VC fund platform. Multi-agent system where each agent is sovereign — installs its own tools, discovers skills, operates freely on the live internet with no restrictions.
+## Original Problem Statement
+Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform where new, independent AI agents can be created and managed from a single UI. Each agent must have its own goals, skills, wallets, and revenue model, operating autonomously on the live internet via the Conway Research ecosystem.
 
-## Architecture
-- **Frontend**: React (port 3000) — dashboard for agent monitoring
-- **Backend**: FastAPI (port 8001) — reads engine state.db, manages agent metadata in MongoDB
-- **Database**: MongoDB (anima_fund) — agent metadata only
-- **Engine**: Conway Automaton (`/app/scripts/start_engine.sh` → `/app/automaton/dist/bundle.mjs`)
-- **Agent Home**: Per-agent at `~/agents/{id}/` with `HOME` env var set
+## Core Architecture
+```
+/app
+├── automaton/              # Conway engine bundle + genesis prompt template
+│   ├── dist/bundle.mjs     # Pre-compiled engine
+│   ├── genesis-prompt.md   # LEAN template (~5.8KB, ~100 lines)
+│   └── skills/             # 100+ skill definitions
+├── backend/
+│   ├── server.py           # FastAPI main app
+│   ├── engine_bridge.py    # Reads agent data from SQLite state.db
+│   ├── config.py           # Shared constants
+│   ├── database.py         # MongoDB connection
+│   └── routers/
+│       ├── agents.py       # Agent CRUD, bootstrap, engine start
+│       ├── genesis.py      # Status, logs, wallet balance, prompt template
+│       └── live.py         # Live agent data (turns, soul, identity)
+├── frontend/src/
+│   ├── App.js              # Router, polling (stable useCallback with viewRef)
+│   ├── pages/
+│   │   ├── AgentMind.js    # Real-time agent monitoring (stable polling)
+│   │   ├── FundHQ.js       # Fund overview
+│   │   ├── Agents.js       # Agent list
+│   │   └── Skills.js       # Skills browser (141 skills)
+│   └── components/
+│       └── CreateAgentModal.js  # Agent creation with Telegram verification
+└── scripts/
+    ├── start_engine.sh     # Engine starter (runs bootstrap first)
+    └── bootstrap_agent.sh  # Pre-installs Conway Terminal + OpenClaw
+```
 
-## Genesis Prompt v6 (Feb 2026 — from full docs.conway.tech scrape)
-Comprehensive 21K char template covering ALL Conway capabilities:
-- **Hard-gated Phase 0**: Blocks goals/code/building until OpenClaw + Conway verified
-- **curl fallback**: python3 urllib for all downloads (curl often missing)
-- **Sandbox workflow**: sandbox_create → sandbox_expose_port = public URLs (NOT expose_port = localhost)
-- **Custom subdomains**: https://{name}.life.conway.tech
-- **Full deploy flow**: sandbox → expose port → register domain → CNAME
-- **All inference models**: GPT-5.2, Claude Opus 4.6, Gemini 3 Pro/Flash, Kimi K2.5, Qwen3
-- **Domain management**: search, register, DNS CRUD, WHOIS privacy, nameservers
-- **PTY sessions**: Interactive terminals for REPLs, vim, shells
-- **Sandbox specs**: 1-4 vCPU, 512-8192 MB RAM, 1-50 GB disk, 2 regions
-- **Revenue freedom**: Trade, services, data, infrastructure, social — building is last resort
-- **Complete isolation**: Zero traceability, identity firewall, clean deployments
-- **Financial discipline**: Balance checks, ROI evaluation, search-before-build
-- **SOUL.md condensation**: After Phase 0, condense to <2000 chars (save context)
-- **Goal orchestrator rules**: No create_goal before Phase 0, single active goal, work with orchestrator
-- **Problem-solving protocol**: Never say "I can't" — search ClawHub/MCPs/npm/PyPI/GitHub for tools
-- **Continuous self-upgrade**: Every 10 turns search for new capabilities
-- **Broad tool discovery**: ClawHub, MCP registries (mcp.so, smithery.ai, GitHub), npm, PyPI, x402
+## What's Been Implemented
 
-## Multi-Agent Isolation
-- Per-agent data directory, log files, creator wallets (from MongoDB)
-- Active agent ID tracked with file persistence
-- Engine start passes per-agent HOME + Telegram env vars
+### Agent Creation & Isolation
+- Full agent isolation: each agent gets own HOME directory, data dir, logs
+- auto-config.json with proper creator address (was hardcoded to zero)
+- Pre-bootstrap script installs Conway Terminal + configures OpenClaw before engine starts
+- Per-agent Telegram credentials (required for creation)
 
-## Key Fixes Applied
-- Engine start path: `/app/scripts/start_engine.sh` (was broken — wrong relative path)
-- Per-agent Telegram env vars on engine start
-- `include_conway` regex updated for new prompt format
-- `expose_port` vs `sandbox_expose_port` clearly documented in prompt
+### Genesis Prompt (Completely Rewritten)
+- Reduced from 490 lines (~25KB) to ~100 lines (~5.8KB)
+- Agent starts with tools ALREADY INSTALLED (no Phase 0 bootstrap needed in prompt)
+- Lean SOUL.md: agent condensed from massive document to focused identity
+- Clear 3-step startup: Telegram → Verify Tools → Condense SOUL.md
+- Complete tools reference kept but concise
+- Revenue strategies, financial discipline, security rules all present but compact
 
-## Testing Status
-- Iteration 36: 25/25 backend, 11/11 frontend — 100% pass
-- All endpoints verified: health, genesis/status, engine/live, engine/logs, agents, skills, wallet
+### UI Stability (Critical Bug Fixed)
+- Fixed useCallback dependency: `checkStatus` now uses `[]` with `viewRef` (was `[view]`)
+- Fixed log comparison: content-based (prevLast === newLast) instead of count-only
+- Fixed turns/agents comparison to detect actual data changes
+- Balance fetch resets on agent switch via `selectedAgent` dependency
+- Polling interval stable at 8 seconds, never re-created
 
-## Future Tasks
-- P1: Real Smart Contracts (Solidity)
-- P2: Android Device Control
-- P2: Self-Hosted Infrastructure
+### Live Feed Enhancement
+- Enhanced log parser: recognizes Conway engine format timestamps
+- New log tags: TOOL, ORCH, SANDBOX, NETWORK, FINANCE, TURN (was only 8 tags, now 14)
+- Tag colors updated for all new categories
+- Important entries highlighted with left border
+
+### Skills & Models
+- Updated model names: GPT-5.2, Claude Opus 4.6, Gemini 3, Kimi K2.5, Qwen3
+- 141 skills available across Anima, Conway, OpenClaw, ClawHub sources
+
+## Key API Endpoints
+- `POST /api/agents/create` — Create agent with bootstrap
+- `POST /api/agents/{id}/start` — Start engine with pre-bootstrap
+- `POST /api/agents/{id}/select` — Switch active agent
+- `GET /api/genesis/status` — Agent status, wallet, engine state
+- `GET /api/engine/logs` — Agent-specific logs
+- `GET /api/wallet/balance` — Live on-chain balance
+- `GET /api/live/turns` — Live turn data from engine
+- `GET /api/live/soul` — SOUL.md content
+- `GET /api/skills/available` — All 141 skills
+- `GET /api/genesis/prompt-template` — Lean genesis prompt
+
+## DB Schema (MongoDB)
+- **agents** collection: agent_id, name, agent_home, data_dir, telegram_bot_token, telegram_chat_id, creator_sol_wallet, creator_eth_wallet, status, engine_pid
+
+## 3rd Party Integrations
+- Conway Research: Terminal, Cloud, Compute, Domains (via MCP)
+- OpenClaw: Browser automation, agent network, skills
+- ClawHub: Skill marketplace
+- Telegram Bot API: Real-time agent reporting
+
+## P0 (Completed)
+- [x] UI flashing/instability fix
+- [x] Genesis prompt rewrite (lean, effective)
+- [x] Auto-config creator address fix
+- [x] Agent bootstrap script (Conway Terminal pre-install)
+- [x] Live Feed enhancement (better log parsing, new tags)
+- [x] Model names update
+
+## P1 (Next)
+- [ ] Verify agent bootstrap works end-to-end with live Conway Terminal install
+- [ ] Test agent creation flow with real Telegram credentials
+- [ ] Monitor agent behavior with new lean genesis prompt
+
+## P2 (Backlog)
+- [ ] Implement real smart contracts (replace instruction-based financial logic)
+- [ ] Android device control integration
+- [ ] Self-hosted infrastructure migration
+- [ ] React Query/SWR migration for polling (would eliminate all polling bugs permanently)
