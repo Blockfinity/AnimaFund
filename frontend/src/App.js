@@ -3,6 +3,7 @@ import { Toaster, toast } from 'sonner';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import EngineConsole from './components/EngineConsole';
+import CreateAgentModal from './components/CreateAgentModal';
 import AgentMind from './pages/AgentMind';
 import FundHQ from './pages/FundHQ';
 import Agents from './pages/Agents';
@@ -27,6 +28,40 @@ function App() {
   const [identity, setIdentity] = useState(null);
   const [engineState, setEngineState] = useState(null);
   const creatingRef = useRef(false);
+
+  // Multi-agent state
+  const [agentList, setAgentList] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState('anima-fund');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Fetch agent list
+  const fetchAgents = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/agents`);
+      const data = await res.json();
+      setAgentList(data.agents || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchAgents(); }, [fetchAgents]);
+
+  const handleSelectAgent = async (agentId) => {
+    try {
+      const res = await fetch(`${API}/api/agents/${agentId}/select`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setSelectedAgent(agentId);
+        toast.success(`Switched to ${agentId}`);
+        checkStatus(); // Refresh all data for the new agent
+      }
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const handleAgentCreated = (agent) => {
+    setAgentList(prev => [...prev, agent]);
+    setShowCreateModal(false);
+    toast.success(`Agent "${agent.name}" created`);
+  };
 
   const checkStatus = useCallback(async () => {
     try {
@@ -238,7 +273,7 @@ function App() {
       case 'activity': return <Activity />;
       case 'memory': return <Memory />;
       case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} />;
-      case 'wallet': setView('genesis'); return null;
+      case 'wallet': return <AgentMind genesisState={genesisState} showWalletView={true} />;
       default: return <AgentMind genesisState={genesisState} />;
     }
   };
@@ -248,9 +283,10 @@ function App() {
       <Toaster position="top-right" richColors />
       <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} fundName={fundName} />
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-200 ${sidebarOpen ? 'ml-60' : 'ml-16'}`}>
-        <Header overview={engineState} currentPage={currentPage} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+        <Header overview={engineState} currentPage={currentPage} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} agentList={agentList} selectedAgent={selectedAgent} onSelectAgent={handleSelectAgent} onCreateAgent={() => setShowCreateModal(true)} />
         <main className="flex-1 overflow-y-auto p-6">{renderPage()}</main>
       </div>
+      {showCreateModal && <CreateAgentModal onClose={() => setShowCreateModal(false)} onCreated={handleAgentCreated} />}
     </div>
   );
 }

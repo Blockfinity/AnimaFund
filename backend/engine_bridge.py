@@ -30,6 +30,20 @@ from datetime import datetime, timezone
 
 ANIMA_STATE_DB = os.path.expanduser("~/.anima/state.db")
 
+# Multi-agent support: the active data directory can be switched
+_active_data_dir = os.path.expanduser("~/.anima")
+
+
+def set_active_data_dir(data_dir: str):
+    """Switch the active agent data directory for all subsequent queries."""
+    global _active_data_dir, ANIMA_STATE_DB
+    _active_data_dir = os.path.expanduser(data_dir)
+    ANIMA_STATE_DB = os.path.join(_active_data_dir, "state.db")
+
+
+def get_active_data_dir() -> str:
+    return _active_data_dir
+
 
 def get_engine_db() -> Optional[sqlite3.Connection]:
     """Get a read-only connection to the live engine database."""

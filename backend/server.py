@@ -42,6 +42,7 @@ from engine_bridge import (
     get_live_onchain_transactions, get_live_session_summaries,
     get_live_kv_store, get_live_wake_events, get_live_heartbeat_schedule,
     get_live_skills_full, get_live_models, get_live_tool_usage,
+    set_active_data_dir, get_active_data_dir,
 )
 from telegram_notify import (
     send_telegram, notify_engine_started, notify_state_change,
@@ -153,6 +154,218 @@ async def health():
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+# ═══════════════════════════════════════════════════════════
+# MULTI-AGENT MANAGEMENT
+# ═══════════════════════════════════════════════════════════
+
+class CreateAgentRequest(BaseModel):
+    name: str
+    genesis_prompt: str
+    welcome_message: str = ""
+    goals: list = []
+    creator_sol_wallet: str = ""
+    creator_eth_wallet: str = ""
+    revenue_share_percent: int = 50
+
+
+def _ensure_default_agent():
+    """Ensure the default Anima Fund agent exists in MongoDB."""
+    import asyncio
+    # This is called during startup — handled separately
+
+
+async def _get_agents_collection():
+    return db["agents"]
+
+
+@app.get("/api/agents")
+async def list_agents():
+    """List all registered agents."""
+    col = await _get_agents_collection()
+    agents = await col.find({}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    if not agents:
+        # Auto-register the default Anima Fund agent
+        default = {
+            "agent_id": "anima-fund",
+            "name": "Anima Fund",
+            "data_dir": "~/.anima",
+            "status": "running",
+            "is_default": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await col.insert_one(default)
+        del default["_id"]
+        agents = [default]
+    return {"agents": agents}
+
+
+@app.post("/api/agents/create")
+async def create_agent(req: CreateAgentRequest):
+    """Create a new agent with its own data directory, genesis prompt, goals, and financial config."""
+    col = await _get_agents_collection()
+    agent_id = req.name.lower().replace(" ", "-").replace("_", "-")
+
+    # Check if agent already exists
+    existing = await col.find_one({"agent_id": agent_id})
+    if existing:
+        raise HTTPException(400, f"Agent '{agent_id}' already exists")
+
+    # Create agent data directory
+    data_dir = os.path.expanduser(f"~/.anima-{agent_id}")
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "skills"), exist_ok=True)
+
+    # Build the full genesis prompt with financial config appended
+    full_prompt = req.genesis_prompt
+
+    # Append creator wallet and revenue share instructions
+    if req.creator_sol_wallet or req.creator_eth_wallet:
+        full_prompt += f"\n\n{'='*75}\nCREATOR PAYMENT — NON-NEGOTIABLE\n{'='*75}\n\n"
+        full_prompt += f"Revenue share to creator: {req.revenue_share_percent}% of all earnings after sustainability costs.\n"
+        full_prompt += "Pay on EVERY earning event — do not batch.\n\n"
+        if req.creator_sol_wallet:
+            full_prompt += f"Creator Solana wallet: {req.creator_sol_wallet}\n"
+        if req.creator_eth_wallet:
+            full_prompt += f"Creator Ethereum ERC20: {req.creator_eth_wallet}\n"
+        full_prompt += "\nLog every payment with remember_fact and Telegram.\n"
+
+    # Append initial goals
+    if req.goals:
+        full_prompt += f"\n\n{'='*75}\nINITIAL GOALS — EXECUTE IMMEDIATELY\n{'='*75}\n\n"
+        for i, goal in enumerate(req.goals, 1):
+            full_prompt += f"{i}. {goal}\n"
+
+    # Write genesis prompt
+    prompt_path = os.path.join(data_dir, "genesis-prompt.md")
+    with open(prompt_path, "w") as f:
+        f.write(full_prompt)
+
+    # Copy the automaton dist and skills
+    src_dist = os.path.join(AUTOMATON_DIR, "dist")
+    dst_dist = os.path.join(data_dir, "dist")
+    if os.path.exists(src_dist) and not os.path.exists(dst_dist):
+        shutil.copytree(src_dist, dst_dist)
+
+    src_native = os.path.join(AUTOMATON_DIR, "native")
+    dst_native = os.path.join(data_dir, "native")
+    if os.path.exists(src_native) and not os.path.exists(dst_native):
+        shutil.copytree(src_native, dst_native)
+
+    # Copy skills from main automaton
+    src_skills = os.path.join(AUTOMATON_DIR, "skills")
+    dst_skills = os.path.join(data_dir, "skills")
+    if os.path.exists(src_skills):
+        for skill_dir in os.listdir(src_skills):
+            src_skill = os.path.join(src_skills, skill_dir)
+            dst_skill = os.path.join(dst_skills, skill_dir)
+            if os.path.isdir(src_skill) and not os.path.exists(dst_skill):
+                shutil.copytree(src_skill, dst_skill)
+
+    # Inject secrets into the genesis prompt
+    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    tg_chat = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if tg_token or tg_chat:
+        with open(prompt_path, "r") as f:
+            content = f.read()
+        content = content.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
+        content = content.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
+        with open(prompt_path, "w") as f:
+            f.write(content)
+
+    agent_doc = {
+        "agent_id": agent_id,
+        "name": req.name,
+        "data_dir": f"~/.anima-{agent_id}",
+        "welcome_message": req.welcome_message,
+        "goals": req.goals,
+        "creator_sol_wallet": req.creator_sol_wallet,
+        "creator_eth_wallet": req.creator_eth_wallet,
+        "revenue_share_percent": req.revenue_share_percent,
+        "status": "created",
+        "is_default": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await col.insert_one(agent_doc)
+    del agent_doc["_id"]
+
+    return {"success": True, "agent": agent_doc}
+
+
+@app.post("/api/agents/{agent_id}/select")
+async def select_agent(agent_id: str):
+    """Switch the dashboard to view a different agent's data."""
+    col = await _get_agents_collection()
+
+    if agent_id == "anima-fund":
+        data_dir = "~/.anima"
+    else:
+        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+        if not agent:
+            raise HTTPException(404, f"Agent '{agent_id}' not found")
+        data_dir = agent.get("data_dir", f"~/.anima-{agent_id}")
+
+    set_active_data_dir(data_dir)
+    return {"success": True, "active_agent": agent_id, "data_dir": data_dir}
+
+
+@app.delete("/api/agents/{agent_id}")
+async def delete_agent(agent_id: str):
+    """Delete a non-default agent."""
+    if agent_id == "anima-fund":
+        raise HTTPException(400, "Cannot delete the default agent")
+    col = await _get_agents_collection()
+    result = await col.delete_one({"agent_id": agent_id})
+    if result.deleted_count == 0:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+    return {"success": True}
+
+
+@app.post("/api/agents/{agent_id}/start")
+async def start_agent_engine(agent_id: str):
+    """Start the engine for a specific agent."""
+    col = await _get_agents_collection()
+    agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+    if not agent:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    data_dir = os.path.expanduser(agent.get("data_dir", f"~/.anima-{agent_id}"))
+
+    # Create auto-config.json for the agent
+    prompt_path = os.path.join(data_dir, "genesis-prompt.md")
+    if not os.path.exists(prompt_path):
+        raise HTTPException(400, "No genesis prompt found for this agent")
+
+    with open(prompt_path, "r") as f:
+        prompt_content = f.read()
+
+    config = {
+        "genesisPrompt": prompt_content,
+        "creatorMessage": f"You are {agent.get('name', agent_id)}. Execute your genesis prompt immediately.",
+        "nonInteractive": True,
+    }
+    config_path = os.path.join(data_dir, "auto-config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f)
+
+    # Start the engine with ANIMA_DIR pointing to this agent's data dir
+    engine_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "start_engine.sh")
+    env = os.environ.copy()
+    env["ANIMA_DIR"] = data_dir
+
+    try:
+        proc = subprocess.Popen(
+            ["bash", engine_script],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=data_dir,
+        )
+        await col.update_one({"agent_id": agent_id}, {"$set": {"status": "running", "engine_pid": proc.pid}})
+        return {"success": True, "pid": proc.pid}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to start engine: {str(e)}")
 
 
 # ═══════════════════════════════════════════════════════════
