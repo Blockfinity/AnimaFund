@@ -336,12 +336,15 @@ export default function AgentMind({ genesisState }) {
   const walletAddr = genesisState?.wallet_address || walletAddrRef.current;
   const qrCode = genesisState?.qr_code;
 
-  // Keep the ref updated when we get a valid wallet
+  // Keep the ref updated — clear when agent switches (genesisState becomes null)
   useEffect(() => {
     if (genesisState?.wallet_address) {
       walletAddrRef.current = genesisState.wallet_address;
+    } else if (genesisState === null) {
+      // Agent switched — clear stale wallet ref
+      walletAddrRef.current = null;
     }
-  }, [genesisState?.wallet_address]);
+  }, [genesisState]);
 
   const copyWallet = () => {
     if (walletAddr) {

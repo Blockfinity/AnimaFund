@@ -48,6 +48,13 @@ function App() {
   const handleSelectAgent = async (agentId) => {
     try {
       const res = await fetch(`${API}/api/agents/${agentId}/select`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || `Failed to switch to agent: ${res.status}`);
+        // Re-fetch agent list in case the agent was deleted
+        fetchAgents();
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setSelectedAgent(agentId);
@@ -58,15 +65,16 @@ function App() {
         setEngineStarted(false);
         creatingRef.current = false;
         setCreating(false);
-        toast.success(`Switched to ${agentId}`);
-        // Re-fetch everything for the new agent
-        checkStatus();
+        // Force view back to loading so checkStatus can determine the correct view
+        setView('loading');
+        toast.success(`Switched to ${data.active_agent || agentId}`);
       }
     } catch (e) { toast.error(e.message); }
   };
 
   const handleAgentCreated = async (agent) => {
-    setAgentList(prev => [...prev, agent]);
+    // Re-fetch the full agent list from backend to ensure consistency
+    await fetchAgents();
     setShowCreateModal(false);
     toast.success(`Agent "${agent.name}" created`);
     // Auto-select the new agent
@@ -167,6 +175,8 @@ function App() {
   const isRunning = genesisState?.engine_running || false;
   const isLive = genesisState?.engine_live || engineState?.live || false;
   const fundName = identity?.name || genesisState?.fund_name || null;
+  // Resolve the selected agent's name for display
+  const selectedAgentName = (agentList || []).find(a => a.agent_id === selectedAgent)?.name || fundName || 'ANIMA FUND';
   const dbExists = engineState?.db_exists || false;
   const agentState = genesisState?.engine_state || engineState?.agent_state || '';
   const isSleeping = agentState === 'sleeping';
@@ -187,13 +197,37 @@ function App() {
     return (
       <div style={{ minHeight: '100vh', background: '#09090b', fontFamily: 'Manrope, sans-serif' }}>
         <Toaster position="top-right" richColors />
+
+        {/* Agent switcher bar — always visible even on genesis screen */}
+        {agentList.length > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 20px 0' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {agentList.map(a => (
+                <button
+                  key={a.agent_id}
+                  data-testid={`genesis-agent-switch-${a.agent_id}`}
+                  onClick={() => handleSelectAgent(a.agent_id)}
+                  style={{
+                    padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                    background: a.agent_id === selectedAgent ? '#fff' : '#18181b',
+                    color: a.agent_id === selectedAgent ? '#09090b' : '#a1a1aa',
+                    border: `1px solid ${a.agent_id === selectedAgent ? '#fff' : '#27272a'}`,
+                  }}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ maxWidth: '580px', margin: '0 auto', padding: '40px 20px' }}>
           {/* Logo */}
           <div style={{ textAlign: 'center', marginBottom: '32px' }}>
             <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#18181b', border: '2px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             </div>
-            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#fff', margin: '0 0 4px' }}>{fundName || 'ANIMA FUND'}</h1>
+            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#fff', margin: '0 0 4px' }}>{selectedAgentName}</h1>
             <p style={{ fontSize: '12px', color: '#71717a', margin: 0 }}>Autonomous AI-to-AI Venture Capital Fund</p>
           </div>
 
