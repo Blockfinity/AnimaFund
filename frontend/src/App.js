@@ -289,6 +289,7 @@ function App() {
       case 'activity': return <Activity />;
       case 'memory': return <Memory />;
       case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} />;
+      case 'wallet': return <AgentMind genesisState={genesisState} showWalletView={true} />;
       default: return <AgentMind genesisState={genesisState} />;
     }
   };

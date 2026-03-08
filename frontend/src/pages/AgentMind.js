@@ -196,6 +196,10 @@ export default function AgentMind({ genesisState }) {
   const [balance, setBalance] = useState(null);
   const feedRef = useRef(null);
   const logRef = useRef(null);
+  // Track whether auto-scroll should run — ref avoids re-render loops
+  const autoScrollRef = useRef(true);
+  const isUserScrolling = useRef(false);
+  const scrollDebounce = useRef(null);
 
   // Fetch real-time on-chain balance
   useEffect(() => {
@@ -279,20 +283,49 @@ export default function AgentMind({ genesisState }) {
     return () => { if (timer) clearTimeout(timer); };
   }, [fetchData, engineState?.agent_state]);
 
-  // Auto-scroll logs — only when autoScroll is ON, user hasn't scrolled up, AND new data arrives
-  const userScrolledUp = useRef(false);
-  const prevLogLengthRef = useRef(0);
+  // Auto-scroll: only when enabled AND new logs arrive AND user is idle
+  const prevLogCount = useRef(0);
 
   useEffect(() => {
-    // Only auto-scroll if: autoScroll is on, we're on the logs tab, and new logs arrived
-    if (autoScroll && activeTab === 'logs' && logRef.current && logs.length > prevLogLengthRef.current && !userScrolledUp.current) {
+    if (activeTab !== 'logs' || !logRef.current) return;
+    // Only scroll if new logs arrived and auto-scroll is on
+    if (logs.length > prevLogCount.current && autoScrollRef.current && !isUserScrolling.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-    prevLogLengthRef.current = logs.length;
-  }, [logs, autoScroll, activeTab]);
+    prevLogCount.current = logs.length;
+  }, [logs, activeTab]);
 
-  // Don't auto-scroll turns feed — let user read at their own pace
-  // Removed the forced scrollTop = 0 that was snapping the view
+  // Sync ref with state for the AUTO button
+  useEffect(() => { autoScrollRef.current = autoScroll; }, [autoScroll]);
+
+  // Scroll handler: detect user intent without causing re-render loops
+  const handleLogScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    const distFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    // Clear any pending debounce
+    if (scrollDebounce.current) clearTimeout(scrollDebounce.current);
+
+    // Mark user as actively scrolling
+    isUserScrolling.current = true;
+
+    // Debounce: after user stops scrolling for 300ms, check position
+    scrollDebounce.current = setTimeout(() => {
+      isUserScrolling.current = false;
+      const el = logRef.current;
+      if (!el) return;
+      const currentDist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // Only re-enable auto-scroll if user scrolled to very bottom (< 30px)
+      if (currentDist < 30) {
+        autoScrollRef.current = true;
+        setAutoScroll(true);
+      } else {
+        // User is reading above — disable auto-scroll
+        autoScrollRef.current = false;
+        setAutoScroll(false);
+      }
+    }, 300);
+  };
 
   const walletAddr = genesisState?.wallet_address;
   const qrCode = genesisState?.qr_code;
@@ -400,7 +433,8 @@ export default function AgentMind({ genesisState }) {
             <button onClick={() => {
               const next = !autoScroll;
               setAutoScroll(next);
-              userScrolledUp.current = !next;
+              autoScrollRef.current = next;
+              isUserScrolling.current = false;
               if (next && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
             }} data-testid="auto-scroll-toggle"
               style={{ fontSize: '9px', fontWeight: 700, padding: '3px 8px', borderRadius: '3px', border: 'none', cursor: 'pointer',
@@ -414,12 +448,7 @@ export default function AgentMind({ genesisState }) {
         {activeTab === 'logs' ? (
           /* ═══ LIVE LOGS TAB ═══ */
           <div ref={logRef}
-            onScroll={(e) => {
-              const { scrollTop, scrollHeight, clientHeight } = e.target;
-              const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-              userScrolledUp.current = !isAtBottom;
-              if (isAtBottom !== autoScroll) setAutoScroll(isAtBottom);
-            }}
+            onScroll={handleLogScroll}
             style={{ flex: 1, background: '#0a0a0f', borderRadius: '0 0 6px 6px', padding: '8px 0', overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', lineHeight: '20px' }}>
             {logs.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center' }}>
