@@ -227,9 +227,12 @@ export default function FundHQ({ fundName }) {
       if (!engineRes.ok) return; // Keep previous state
       const engine = await engineRes.json();
 
-      // Only update engine state if valid — never downgrade
+      // Only update engine state if data changed
       setEngineState(prev => {
         if (prev && prev.db_exists && !engine.db_exists) return prev;
+        if (prev && prev.agent_state === engine.agent_state &&
+            prev.turn_count === engine.turn_count &&
+            prev.live === engine.live) return prev;
         return engine;
       });
 

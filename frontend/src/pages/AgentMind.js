@@ -227,17 +227,19 @@ export default function AgentMind({ genesisState }) {
         fetch(`${API}/api/engine/live`),
         fetch(`${API}/api/engine/logs?lines=100`),
       ]);
-      if (!engineRes.ok || !logsRes.ok) return; // Keep previous state on failed requests
+      if (!engineRes.ok || !logsRes.ok) return;
       const engine = await engineRes.json();
       const logsData = await logsRes.json();
 
-      // Only update engine state if we got valid data — NEVER downgrade
+      // Only update engine state if data actually changed
       setEngineState(prev => {
         if (prev && prev.db_exists && !engine.db_exists) return prev;
+        if (prev && prev.agent_state === engine.agent_state &&
+            prev.turn_count === engine.turn_count &&
+            prev.live === engine.live) return prev;
         return engine;
       });
 
-      // Parse logs — only update if we got content
       const rawLines = (logsData.stdout || '').split('\n');
       const parsed = rawLines.map(parseLogLine).filter(Boolean);
       const errLines = (logsData.stderr || '').split('\n');
@@ -248,7 +250,10 @@ export default function AgentMind({ genesisState }) {
       }).filter(Boolean);
       const newLogs = [...parsed, ...parsedErrors];
       if (newLogs.length > 0) {
-        setLogs(newLogs);
+        setLogs(prev => {
+          if (prev.length === newLogs.length) return prev; // Skip if same count
+          return newLogs;
+        });
       }
 
       if (engine.live || engine.db_exists) {
@@ -263,24 +268,27 @@ export default function AgentMind({ genesisState }) {
             id: a.agent_id, name: a.name, role: a.role, status: a.status, wallet: a.wallet_address, sandbox: a.sandbox_id,
           }));
           liveAgents.unshift({ id: 'founder', name: engine.fund_name || 'Founder AI', role: 'Founder AI', status: engine.agent_state, wallet: '', sandbox: '' });
-          setAgents(liveAgents);
+          setAgents(prev => {
+            if (prev.length === liveAgents.length) return prev;
+            return liveAgents;
+          });
           const newTurns = turnsData.turns || [];
-          // Only update turns if we got data — don't wipe existing turns
-          if (newTurns.length > 0 || turns.length === 0) {
-            setTurns(newTurns);
-          }
+          setTurns(prev => {
+            if (prev.length === newTurns.length && newTurns.length === 0) return prev;
+            if (newTurns.length > 0) return newTurns;
+            return prev;
+          });
           if (soulData.content) {
-            setSoul(soulData.content);
+            setSoul(prev => prev === soulData.content ? prev : soulData.content);
           }
-          setStats({ total_turns: turnsData.total || 0, source: 'engine', agent_state: engine.agent_state, turn_count: engine.turn_count });
-        } catch {
-          // Keep previous agent data on sub-fetch failure
-        }
+          setStats(prev => {
+            const next = { total_turns: turnsData.total || 0, source: 'engine', agent_state: engine.agent_state, turn_count: engine.turn_count };
+            if (prev && prev.total_turns === next.total_turns && prev.agent_state === next.agent_state) return prev;
+            return next;
+          });
+        } catch { /* keep previous data */ }
       }
-      // REMOVED: No longer reset state to empty when engine is offline
-      // If the engine goes offline, we keep showing the last known data
     } catch (e) {
-      // On network error, keep all previous state — don't blank the screen
       console.error('AgentMind fetch error:', e);
     }
     finally { setLoading(false); }

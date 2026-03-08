@@ -84,23 +84,29 @@ function App() {
   const checkStatus = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/genesis/status`);
-      if (!res.ok) return; // Don't update state on failed requests
+      if (!res.ok) return;
       const data = await res.json();
 
-      // CRITICAL: Never replace valid wallet data with empty data
+      // Only update state if data actually changed — prevents unnecessary re-renders
       setGenesisState(prev => {
         if (prev && prev.wallet_address && !data.wallet_address) {
-          return { ...data, wallet_address: prev.wallet_address, qr_code: prev.qr_code, wallet_exists: prev.wallet_exists };
+          return prev; // Never lose wallet data
+        }
+        // Skip update if nothing meaningful changed
+        if (prev && prev.wallet_address === data.wallet_address &&
+            prev.engine_live === data.engine_live &&
+            prev.engine_running === data.engine_running &&
+            prev.status === data.status &&
+            prev.turn_count === data.turn_count) {
+          return prev;
         }
         return data;
       });
 
-      // Once engine is detected as running or wallet exists, lock it in permanently
       if (data.engine_running || data.wallet_address || data.config_exists) {
         setEngineStarted(true);
       }
 
-      // Fetch live data if engine is known to have started
       if (data.engine_running || data.engine_live || data.wallet_address || data.config_exists) {
         try {
           const [idRes, engRes] = await Promise.all([
@@ -109,17 +115,24 @@ function App() {
           ]);
           if (idRes.ok) {
             const idData = await idRes.json();
-            if (idData && (idData.name || idData.address)) setIdentity(idData);
+            if (idData && (idData.name || idData.address)) {
+              setIdentity(prev => {
+                if (prev && prev.name === idData.name && prev.address === idData.address) return prev;
+                return idData;
+              });
+            }
           }
           if (engRes.ok) {
             const engData = await engRes.json();
-            // Only update engine state if we got valid data
             setEngineState(prev => {
               if (prev && prev.db_exists && !engData.db_exists) return prev;
+              if (prev && prev.agent_state === engData.agent_state &&
+                  prev.turn_count === engData.turn_count &&
+                  prev.live === engData.live) return prev;
               return engData;
             });
           }
-        } catch { /* ignore live data fetch errors — keep previous state */ }
+        } catch { /* keep previous state */ }
       }
 
       if (view === 'loading') {
@@ -131,7 +144,6 @@ function App() {
         }
       }
     } catch (e) {
-      // On network error, DON'T reset any state — keep showing last known good data
       console.error('Status poll failed:', e);
       if (view === 'loading') setView('genesis');
     }
