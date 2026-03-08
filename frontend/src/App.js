@@ -128,7 +128,7 @@ function App() {
               <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', padding: '16px', marginBottom: '16px', fontSize: '12px', color: '#a1a1aa', lineHeight: 1.7 }}>
                 <p style={{ margin: '0 0 8px' }}>This creates and launches the founder AI — a sovereign agent that builds and operates a VC fund from scratch.</p>
                 <div style={{ marginTop: '10px', fontSize: '11px', color: '#FFB347' }}>The agent will generate its own wallet, provision its API key, and begin operating.</div>
-                <div style={{ marginTop: '4px', fontSize: '10px', color: '#60EE79' }}>50% of all revenue goes to creator on Solana</div>
+                <div style={{ marginTop: '4px', fontSize: '10px', color: '#60EE79' }}>50% of all profit (fees, carry, revenue after sustainability) to creator on Solana</div>
               </div>
               <button data-testid="create-genesis-btn" onClick={handleCreate} disabled={creating}
                 style={{ width: '100%', padding: '14px', borderRadius: '8px', border: 'none', background: creating ? '#52525b' : '#fff', color: '#09090b', fontSize: '14px', fontWeight: 800, cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.6 : 1 }}>
@@ -187,7 +187,7 @@ function App() {
 
               {/* Creator wallet */}
               <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
-                <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>CREATOR WALLET (50% revenue)</div>
+                <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>CREATOR WALLET (50% net revenue)</div>
                 <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#FFB347', wordBreak: 'break-all' }}>{genesisState?.creator_wallet}</div>
               </div>
 
