@@ -250,8 +250,6 @@ export default function AgentMind({ genesisState }) {
         setTurns(newTurns);
         setSoul(soulData.content || null);
         setStats({ total_turns: turnsData.total || 0, source: 'engine', agent_state: engine.agent_state, turn_count: engine.turn_count });
-        // Auto-switch to turns tab when turns become available
-        if (newTurns.length > 0 && activeTab === 'logs') setActiveTab('turns');
       } else {
         setAgents([]);
         setTurns([]);
@@ -263,40 +261,38 @@ export default function AgentMind({ genesisState }) {
   }, [activeTab]);
 
   // Adaptive polling: fast when running, slow when sleeping
-  const pollIntervalRef = useRef(5000);
   useEffect(() => {
     fetchData();
-    const tick = () => {
-      fetchData().then(() => {
-        // Slow down polling when sleeping/idle/critical to reduce dashboard thrashing
-        const state = engineState?.agent_state;
-        if (state === 'sleeping' || state === 'critical' || state === 'idle') {
-          pollIntervalRef.current = 10000; // 10s when sleeping
-        } else if (state === 'running' || state === 'waking') {
-          pollIntervalRef.current = 3000; // 3s when active
-        } else {
-          pollIntervalRef.current = 5000; // 5s default
-        }
-      });
+    const getInterval = () => {
+      const state = engineState?.agent_state;
+      if (state === 'sleeping' || state === 'critical' || state === 'idle') return 10000;
+      if (state === 'running' || state === 'waking') return 3000;
+      return 5000;
     };
-    const i = setInterval(tick, pollIntervalRef.current);
-    return () => clearInterval(i);
+    let timer = null;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        fetchData().then(schedule);
+      }, getInterval());
+    };
+    schedule();
+    return () => { if (timer) clearTimeout(timer); };
   }, [fetchData, engineState?.agent_state]);
 
-  // Auto-scroll logs — only when user hasn't scrolled up
+  // Auto-scroll logs — only when autoScroll is ON and user hasn't manually scrolled up
   const userScrolledUp = useRef(false);
+  const prevLogLengthRef = useRef(0);
 
   useEffect(() => {
-    if (!userScrolledUp.current && logRef.current) {
+    // Only auto-scroll when NEW logs arrive and autoScroll is enabled
+    if (autoScroll && logRef.current && logs.length > prevLogLengthRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [logs]);
+    prevLogLengthRef.current = logs.length;
+  }, [logs, autoScroll]);
 
-  useEffect(() => {
-    if (!userScrolledUp.current && feedRef.current && activeTab === 'turns') {
-      feedRef.current.scrollTop = 0;
-    }
-  }, [turns, activeTab]);
+  // Don't auto-scroll turns feed — let user read at their own pace
+  // Removed the forced scrollTop = 0 that was snapping the view
 
   const walletAddr = genesisState?.wallet_address;
   const qrCode = genesisState?.qr_code;
@@ -420,11 +416,11 @@ export default function AgentMind({ genesisState }) {
           <div ref={logRef}
             onScroll={(e) => {
               const { scrollTop, scrollHeight, clientHeight } = e.target;
-              const isAtBottom = scrollHeight - scrollTop - clientHeight < 60;
+              const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
               userScrolledUp.current = !isAtBottom;
-              setAutoScroll(isAtBottom);
+              if (isAtBottom !== autoScroll) setAutoScroll(isAtBottom);
             }}
-            style={{ flex: 1, background: '#0a0a0f', borderRadius: '0 0 6px 6px', padding: '8px 0', overflowY: 'auto', overflowAnchor: 'none', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', lineHeight: '20px' }}>
+            style={{ flex: 1, background: '#0a0a0f', borderRadius: '0 0 6px 6px', padding: '8px 0', overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', lineHeight: '20px' }}>
             {logs.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center' }}>
                 <Terminal className="w-8 h-8" style={{ color: '#27272a', margin: '0 auto 12px' }} />

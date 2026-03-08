@@ -139,15 +139,22 @@ export default function CreateAgentModal({ onClose, onCreated }) {
             </div>
             <div className="max-h-40 overflow-y-auto border border-border rounded-md divide-y divide-border">
               {filteredSkills.map(s => (
-                <label key={s.name} className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-secondary/30 cursor-pointer text-xs">
+                <div key={s.name} onClick={() => toggleSkill(s.name)}
+                  className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-secondary/30 cursor-pointer text-xs select-none"
+                  data-testid={`skill-item-${s.name}`}>
                   <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${selectedSkills.has(s.name) ? 'bg-foreground border-foreground' : 'border-border'}`}>
                     {selectedSkills.has(s.name) && <Check className="w-3 h-3 text-background" />}
                   </div>
                   <div className="min-w-0">
                     <span className="font-medium text-foreground">{s.name}</span>
+                    {s.source && s.source !== 'anima' && (
+                      <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${s.source === 'conway' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                        {s.source === 'conway' ? 'CONWAY' : 'TOOL'}
+                      </span>
+                    )}
                     {s.description && <span className="text-muted-foreground ml-1.5 truncate">— {s.description}</span>}
                   </div>
-                </label>
+                </div>
               ))}
               {filteredSkills.length === 0 && <div className="px-3 py-4 text-xs text-muted-foreground text-center">No skills match your search</div>}
             </div>

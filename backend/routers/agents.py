@@ -31,9 +31,14 @@ class CreateAgentRequest(BaseModel):
 
 @router.get("/skills/available")
 async def list_available_skills():
-    """List all skills available in the automaton skills directory for the agent creator."""
-    skills_dir = os.path.join(AUTOMATON_DIR, "skills")
+    """List all skills: our custom skills + Conway platform tools + OpenClaw."""
+    from engine_bridge import get_live_skills_full, get_live_installed_tools, get_live_models
+
     skills = []
+    seen = set()
+
+    # 1. Our custom skills from automaton/skills/
+    skills_dir = os.path.join(AUTOMATON_DIR, "skills")
     if os.path.isdir(skills_dir):
         for name in sorted(os.listdir(skills_dir)):
             skill_file = os.path.join(skills_dir, name, "SKILL.md")
@@ -44,7 +49,32 @@ async def list_available_skills():
                         if line.startswith("description:"):
                             desc = line.split(":", 1)[1].strip()
                             break
-                skills.append({"name": name, "description": desc})
+                skills.append({"name": name, "description": desc, "source": "anima"})
+                seen.add(name)
+
+    # 2. Conway platform built-in tools from the live engine
+    try:
+        engine_skills = get_live_skills_full()
+        for sk in engine_skills:
+            sname = sk.get("name") or sk.get("skill_name", "")
+            if sname and sname not in seen:
+                skills.append({"name": sname, "description": sk.get("description", ""), "source": "conway"})
+                seen.add(sname)
+    except Exception:
+        pass
+
+    # 3. Installed tools (MCPs, npm packages, etc.)
+    try:
+        tools = get_live_installed_tools()
+        for tool in tools:
+            tname = tool.get("name") or tool.get("tool_name", "")
+            if tname and tname not in seen:
+                skills.append({"name": tname, "description": tool.get("description", "Built-in tool"), "source": "tool"})
+                seen.add(tname)
+    except Exception:
+        pass
+
+    skills.sort(key=lambda s: s["name"])
     return {"skills": skills, "total": len(skills)}
 
 

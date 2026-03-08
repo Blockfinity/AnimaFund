@@ -264,8 +264,6 @@ async def create_genesis_agent():
             with open(identity_path, "r") as f:
                 identity_backup = f.read()
 
-        state_db_path = os.path.join(ANIMA_DIR, "state.db")
-
         secrets_map = {
             "{{TELEGRAM_BOT_TOKEN}}": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
             "{{TELEGRAM_CHAT_ID}}": os.environ.get("TELEGRAM_CHAT_ID", ""),
