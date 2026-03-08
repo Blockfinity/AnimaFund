@@ -4,11 +4,18 @@ import { Zap, Search, Filter, Clock, TrendingUp, Users, Cpu, Globe, Wrench, Shie
 const API = process.env.REACT_APP_BACKEND_URL;
 
 const SOURCE_META = {
-  anima:   { label: 'Anima Fund', color: '#9B6BFF', bg: '#9B6BFF18' },
-  mcp:     { label: 'MCP Server', color: '#34D399', bg: '#34D39918' },
-  openclaw:{ label: 'OpenClaw', color: '#FFB347', bg: '#FFB34718' },
-  installed:{ label: 'Installed', color: '#5B9CFF', bg: '#5B9CFF18' },
-  builtin: { label: 'Built-in', color: '#71717a', bg: '#71717a18' },
+  anima:          { label: 'Anima Fund', color: '#9B6BFF', bg: '#9B6BFF18' },
+  'conway-cloud': { label: 'Conway Cloud', color: '#3B82F6', bg: '#3B82F618' },
+  'conway-compute':{ label: 'Conway Compute', color: '#6366F1', bg: '#6366F118' },
+  'conway-domains':{ label: 'Conway Domains', color: '#0EA5E9', bg: '#0EA5E918' },
+  'conway-x402':  { label: 'Conway x402', color: '#14B8A6', bg: '#14B8A618' },
+  'conway-credits':{ label: 'Conway Credits', color: '#22C55E', bg: '#22C55E18' },
+  openclaw:       { label: 'OpenClaw', color: '#F59E0B', bg: '#F59E0B18' },
+  clawhub:        { label: 'ClawHub', color: '#EF4444', bg: '#EF444418' },
+  mcp:            { label: 'MCP Server', color: '#34D399', bg: '#34D39918' },
+  engine:         { label: 'Engine', color: '#71717a', bg: '#71717a18' },
+  installed:      { label: 'Installed', color: '#5B9CFF', bg: '#5B9CFF18' },
+  builtin:        { label: 'Built-in', color: '#71717a', bg: '#71717a18' },
 };
 
 const CATEGORY_META = {
@@ -54,11 +61,37 @@ export default function Skills() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/live/skills-full`);
-      const data = await res.json();
-      setSkills(data.skills || []);
-      setModels(data.models || []);
-      setToolUsage(data.tool_usage || {});
+      // Fetch from both endpoints — live engine skills + available marketplace skills
+      const [liveRes, availRes] = await Promise.all([
+        fetch(`${API}/api/live/skills-full`),
+        fetch(`${API}/api/skills/available`),
+      ]);
+      const liveData = await liveRes.json();
+      const availData = await availRes.json();
+
+      // Merge: use available skills (has source info) as base, enrich with live engine data
+      const availSkills = availData.skills || [];
+      const liveSkills = liveData.skills || [];
+      const seen = new Set();
+      const merged = [];
+
+      // Available skills first (have source + installed info)
+      for (const s of availSkills) {
+        seen.add(s.name);
+        merged.push(s);
+      }
+      // Add any live engine skills not already in the list
+      for (const s of liveSkills) {
+        const name = s.name || s.skill_name;
+        if (name && !seen.has(name)) {
+          seen.add(name);
+          merged.push({ ...s, name, source: s.source || 'engine', installed: true });
+        }
+      }
+
+      setSkills(merged);
+      setModels(liveData.models || []);
+      setToolUsage(liveData.tool_usage || {});
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -200,10 +233,13 @@ export default function Skills() {
                         <button onClick={() => setExpandedSkill(isExpanded ? null : skill.name)}
                           className="flex items-center gap-3 w-full text-left px-4 py-2.5 hover:bg-secondary/20 transition-colors">
                           {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
-                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${skill.enabled ? 'bg-success' : 'bg-muted'}`} />
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${skill.installed !== false ? 'bg-success' : 'bg-amber-400'}`} />
                           <span className="text-xs font-semibold text-foreground min-w-[180px] font-mono">{skill.name}</span>
                           <span className="text-[10px] text-muted-foreground flex-1 truncate">{skill.description}</span>
                           <div className="flex items-center gap-2 flex-shrink-0">
+                            {skill.installed === false && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-amber-500/10 text-amber-400">INSTALL</span>
+                            )}
                             {skill.use_count > 0 && (
                               <span className="text-[9px] font-mono font-bold text-foreground bg-secondary px-1.5 py-0.5 rounded-sm">{skill.use_count}x</span>
                             )}
@@ -217,7 +253,7 @@ export default function Skills() {
                           <div className="px-4 py-3 bg-secondary/10 border-t border-border/50">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[10px]">
                               <Detail label="Source" value={srcMeta.label} />
-                              <Detail label="Status" value={skill.enabled ? 'Enabled' : 'Disabled'} />
+                              <Detail label="Status" value={skill.installed !== false ? 'Installed' : 'Available (clawhub install)'} />
                               <Detail label="Auto-activate" value={skill.auto_activate ? 'Yes' : 'No'} />
                               <Detail label="Installed" value={skill.installed_at ? timeAgo(skill.installed_at) : 'Built-in'} />
                               <Detail label="Usage Count" value={skill.use_count} />

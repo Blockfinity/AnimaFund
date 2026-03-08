@@ -145,14 +145,23 @@ export default function CreateAgentModal({ onClose, onCreated }) {
                   <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${selectedSkills.has(s.name) ? 'bg-foreground border-foreground' : 'border-border'}`}>
                     {selectedSkills.has(s.name) && <Check className="w-3 h-3 text-background" />}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex items-center gap-1.5 flex-1">
                     <span className="font-medium text-foreground">{s.name}</span>
                     {s.source && s.source !== 'anima' && (
-                      <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${s.source === 'conway' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                        {s.source === 'conway' ? 'CONWAY' : 'TOOL'}
+                      <span className={`text-[8px] px-1 py-0.5 rounded-sm font-bold flex-shrink-0 ${
+                        s.source.startsWith('conway') ? 'bg-blue-500/15 text-blue-400' :
+                        s.source === 'openclaw' ? 'bg-purple-500/15 text-purple-400' :
+                        s.source === 'clawhub' ? 'bg-amber-500/15 text-amber-400' :
+                        s.source === 'mcp' ? 'bg-cyan-500/15 text-cyan-400' :
+                        'bg-emerald-500/15 text-emerald-400'
+                      }`}>
+                        {s.source.startsWith('conway') ? s.source.replace('conway-', '').toUpperCase() :
+                         s.source.toUpperCase()}
                       </span>
                     )}
-                    {s.description && <span className="text-muted-foreground ml-1.5 truncate">— {s.description}</span>}
+                    {s.installed === false && (
+                      <span className="text-[8px] px-1 py-0.5 rounded-sm font-bold bg-zinc-500/15 text-zinc-400 flex-shrink-0">MARKETPLACE</span>
+                    )}
                   </div>
                 </div>
               ))}

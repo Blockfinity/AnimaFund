@@ -31,8 +31,8 @@ class CreateAgentRequest(BaseModel):
 
 @router.get("/skills/available")
 async def list_available_skills():
-    """List all skills: our custom skills + Conway platform tools + OpenClaw."""
-    from engine_bridge import get_live_skills_full, get_live_installed_tools, get_live_models
+    """List all skills: our custom Anima skills + Conway Terminal tools + ClawHub top skills + OpenClaw built-in tools."""
+    from engine_bridge import get_live_skills_full, get_live_installed_tools
 
     skills = []
     seen = set()
@@ -49,32 +49,100 @@ async def list_available_skills():
                         if line.startswith("description:"):
                             desc = line.split(":", 1)[1].strip()
                             break
-                skills.append({"name": name, "description": desc, "source": "anima"})
+                skills.append({"name": name, "description": desc, "source": "anima", "installed": True})
                 seen.add(name)
 
-    # 2. Conway platform built-in tools from the live engine
+    # 2. Conway Terminal MCP tools (always available)
+    conway_tools = [
+        {"name": "sandbox_create", "description": "Spin up Linux VMs (1-4 vCPU, 8GB RAM, 50GB disk)", "source": "conway-cloud"},
+        {"name": "sandbox_exec", "description": "Execute shell commands in cloud sandboxes", "source": "conway-cloud"},
+        {"name": "sandbox_expose_port", "description": "Get public URLs for deployed services", "source": "conway-cloud"},
+        {"name": "sandbox_write_file", "description": "Write files to cloud sandboxes", "source": "conway-cloud"},
+        {"name": "sandbox_read_file", "description": "Read files from cloud sandboxes", "source": "conway-cloud"},
+        {"name": "sandbox_pty_create", "description": "Interactive terminal sessions (REPLs, editors)", "source": "conway-cloud"},
+        {"name": "chat_completions", "description": "Run frontier models (GPT-4o, o3-mini, Claude, Kimi)", "source": "conway-compute"},
+        {"name": "domain_search", "description": "Search for available domain names with pricing", "source": "conway-domains"},
+        {"name": "domain_register", "description": "Register real domains (.com, .ai, .io) with USDC", "source": "conway-domains"},
+        {"name": "domain_dns_add", "description": "Manage DNS records for registered domains", "source": "conway-domains"},
+        {"name": "wallet_info", "description": "Check x402 wallet USDC balance on Base", "source": "conway-x402"},
+        {"name": "x402_fetch", "description": "HTTP requests with automatic USDC payment", "source": "conway-x402"},
+        {"name": "x402_discover", "description": "Discover paid API endpoints", "source": "conway-x402"},
+        {"name": "credits_balance", "description": "Check Conway credit balance", "source": "conway-credits"},
+        {"name": "credits_pricing", "description": "Get VM and compute pricing tiers", "source": "conway-credits"},
+    ]
+    for tool in conway_tools:
+        if tool["name"] not in seen:
+            tool["installed"] = True
+            skills.append(tool)
+            seen.add(tool["name"])
+
+    # 3. OpenClaw built-in tools
+    openclaw_tools = [
+        {"name": "browse_page", "description": "Browse any website — extract data, interact with forms", "source": "openclaw"},
+        {"name": "browser", "description": "Full Chrome DevTools — navigate, click, type, screenshots", "source": "openclaw"},
+        {"name": "discover_agents", "description": "Scan ERC-8004 registry for other AI agents", "source": "openclaw"},
+        {"name": "send_message", "description": "Send messages to other agents via social relay", "source": "openclaw"},
+        {"name": "check_social_inbox", "description": "Check incoming messages from other agents", "source": "openclaw"},
+        {"name": "spawn_child", "description": "Create child agents for parallel execution", "source": "openclaw"},
+        {"name": "create_goal", "description": "Set and track objectives with the orchestrator", "source": "openclaw"},
+        {"name": "create_skill", "description": "Build reusable skill packages", "source": "openclaw"},
+        {"name": "install_mcp_server", "description": "Add external MCP servers for new capabilities", "source": "openclaw"},
+        {"name": "update_soul", "description": "Self-modify SOUL.md identity and strategy", "source": "openclaw"},
+        {"name": "remember_fact", "description": "Store facts in persistent memory", "source": "openclaw"},
+        {"name": "recall_facts", "description": "Retrieve stored facts from memory", "source": "openclaw"},
+    ]
+    for tool in openclaw_tools:
+        if tool["name"] not in seen:
+            tool["installed"] = True
+            skills.append(tool)
+            seen.add(tool["name"])
+
+    # 4. ClawHub marketplace top skills (available for installation)
+    clawhub_skills = [
+        {"name": "web-browsing", "description": "Browse sites, extract data, interact with forms (180k+ installs)", "source": "clawhub"},
+        {"name": "telegram-integration", "description": "Telegram bots, groups, messaging automation (145k+ installs)", "source": "clawhub"},
+        {"name": "email-management", "description": "Draft, send, categorize emails automatically (120k+ installs)", "source": "clawhub"},
+        {"name": "github", "description": "Full GitHub integration — repos, PRs, issues, actions", "source": "clawhub"},
+        {"name": "docker-essentials", "description": "Container management, deployment, orchestration", "source": "clawhub"},
+        {"name": "capability-evolver", "description": "Self-improvement and capability evolution for agents", "source": "clawhub"},
+        {"name": "debug-pro", "description": "Advanced debugging and error analysis", "source": "clawhub"},
+        {"name": "slack-integration", "description": "Slack workspace automation and messaging", "source": "clawhub"},
+        {"name": "notion-integration", "description": "Notion workspace management and content creation", "source": "clawhub"},
+        {"name": "calendar-management", "description": "Google Calendar and scheduling automation", "source": "clawhub"},
+        {"name": "data-analysis", "description": "Statistical analysis, visualization, reporting", "source": "clawhub"},
+        {"name": "api-builder", "description": "Build and deploy REST APIs automatically", "source": "clawhub"},
+        {"name": "smart-home", "description": "IoT and smart home device control", "source": "clawhub"},
+        {"name": "social-media", "description": "Cross-platform social media management", "source": "clawhub"},
+        {"name": "file-management", "description": "Advanced file organization and processing", "source": "clawhub"},
+    ]
+    for skill in clawhub_skills:
+        if skill["name"] not in seen:
+            skill["installed"] = False  # Available for install from marketplace
+            skills.append(skill)
+            seen.add(skill["name"])
+
+    # 5. Engine-discovered skills (from live state.db)
     try:
         engine_skills = get_live_skills_full()
         for sk in engine_skills:
             sname = sk.get("name") or sk.get("skill_name", "")
             if sname and sname not in seen:
-                skills.append({"name": sname, "description": sk.get("description", ""), "source": "conway"})
+                skills.append({"name": sname, "description": sk.get("description", ""), "source": "engine", "installed": True})
                 seen.add(sname)
     except Exception:
         pass
 
-    # 3. Installed tools (MCPs, npm packages, etc.)
     try:
         tools = get_live_installed_tools()
         for tool in tools:
             tname = tool.get("name") or tool.get("tool_name", "")
             if tname and tname not in seen:
-                skills.append({"name": tname, "description": tool.get("description", "Built-in tool"), "source": "tool"})
+                skills.append({"name": tname, "description": tool.get("description", "Installed tool"), "source": "mcp", "installed": True})
                 seen.add(tname)
     except Exception:
         pass
 
-    skills.sort(key=lambda s: s["name"])
+    skills.sort(key=lambda s: (0 if s.get("installed") else 1, s["name"]))
     return {"skills": skills, "total": len(skills)}
 
 
