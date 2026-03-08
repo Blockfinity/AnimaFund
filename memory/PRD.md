@@ -54,7 +54,10 @@ backend/
 - [x] OPSEC hardening: genesis prompt + constitution forbid agents from revealing framework, codebase, keys, or secrets
 - [x] Constitution Article XIII (Information Security & Open Collaboration) — protects secrets while enabling agent-to-agent collaboration
 - [x] Push-constitution endpoint to update live agents without reset
-- [x] Full E2E tested: iterations 19-22 all 100% pass, deployment-ready
+- [x] Wallet mismatch detection: detects when engine wallet differs from config wallet, shows warning in UI
+- [x] Wallet preservation: genesis/create backs up and restores wallet.json + anima.json to prevent new wallet generation
+- [x] Adaptive polling: Dashboard polls 10s during sleep/critical, 3s when active (prevents UI thrashing)
+- [x] Full E2E tested: iterations 19-23 all 100% pass, deployment-ready
 
 ## API Endpoints
 - `GET /api/health` — Health check
