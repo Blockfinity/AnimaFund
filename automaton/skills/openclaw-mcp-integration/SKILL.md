@@ -63,8 +63,12 @@ def check_deal(data: dict):
     return {"result": "pass/fail", "score": 85}
 EOF
 exec: cd ~/my-mcp-server && pip install fastapi uvicorn && uvicorn main:app --port 8787 &
-exec: openclaw "Add MCP server at http://localhost:8787"
+exec: openclaw "Add MCP server running on port 8787"
 ```
+
+NOTE: MCP servers should be deployed to Conway Cloud sandboxes using sandbox_create
+and sandbox_expose_port for public URLs. Do NOT use localhost — use the public URL
+returned by sandbox_expose_port instead.
 
 ## USAGE WITH FUND OPERATIONS
 - Use MCP for automated deal flow research
