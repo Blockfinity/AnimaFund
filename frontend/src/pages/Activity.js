@@ -40,7 +40,7 @@ export default function Activity() {
       if ((act.activities || []).length > 0 && tab === 'heartbeat') setTab('tools');
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [tab]);
+  }, []);
 
   useEffect(() => { fetchData(); const i = setInterval(fetchData, 8000); return () => clearInterval(i); }, [fetchData]);
 

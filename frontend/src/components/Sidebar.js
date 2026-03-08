@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Brain, Building2, Users, GitPullRequest, Briefcase,
   DollarSign, Activity, Database, Settings,
-  ChevronLeft, ChevronRight, Zap, Wallet
+  ChevronLeft, ChevronRight, Zap
 } from 'lucide-react';
 
 const navItems = [
@@ -16,7 +16,6 @@ const navItems = [
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'memory', label: 'Memory', icon: Database },
   { id: 'config', label: 'Configuration', icon: Settings },
-  { id: 'wallet', label: 'Wallet & Logs', icon: Wallet },
 ];
 
 export default function Sidebar({ currentPage, setCurrentPage, isOpen, onToggle, fundName }) {

@@ -258,7 +258,7 @@ export default function AgentMind({ genesisState }) {
       }
     } catch (e) { console.error('AgentMind fetch error:', e); }
     finally { setLoading(false); }
-  }, [activeTab]);
+  }, []);
 
   // Adaptive polling: fast when running, slow when sleeping
   useEffect(() => {
@@ -279,17 +279,17 @@ export default function AgentMind({ genesisState }) {
     return () => { if (timer) clearTimeout(timer); };
   }, [fetchData, engineState?.agent_state]);
 
-  // Auto-scroll logs — only when autoScroll is ON and user hasn't manually scrolled up
+  // Auto-scroll logs — only when autoScroll is ON, user hasn't scrolled up, AND new data arrives
   const userScrolledUp = useRef(false);
   const prevLogLengthRef = useRef(0);
 
   useEffect(() => {
-    // Only auto-scroll when NEW logs arrive and autoScroll is enabled
-    if (autoScroll && logRef.current && logs.length > prevLogLengthRef.current) {
+    // Only auto-scroll if: autoScroll is on, we're on the logs tab, and new logs arrived
+    if (autoScroll && activeTab === 'logs' && logRef.current && logs.length > prevLogLengthRef.current && !userScrolledUp.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
     prevLogLengthRef.current = logs.length;
-  }, [logs, autoScroll]);
+  }, [logs, autoScroll, activeTab]);
 
   // Don't auto-scroll turns feed — let user read at their own pace
   // Removed the forced scrollTop = 0 that was snapping the view

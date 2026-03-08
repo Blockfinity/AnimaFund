@@ -341,6 +341,70 @@ async def delete_agent(agent_id: str):
     return {"success": True}
 
 
+class UpdateTelegramRequest(BaseModel):
+    telegram_bot_token: str
+    telegram_chat_id: str
+
+
+@router.put("/agents/{agent_id}/telegram")
+async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
+    """Update (or add) Telegram bot config for an existing agent. Verifies the bot token first."""
+    col = get_db()["agents"]
+    agent = await col.find_one({"agent_id": agent_id})
+    if not agent:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    token = req.telegram_bot_token.strip()
+    chat_id = req.telegram_chat_id.strip()
+    if not token or not chat_id:
+        raise HTTPException(400, "Both telegram_bot_token and telegram_chat_id are required")
+
+    # Verify the bot token is valid
+    import aiohttp
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"https://api.telegram.org/bot{token}/getMe", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                data = await resp.json()
+                if not data.get("ok"):
+                    raise HTTPException(400, f"Invalid Telegram bot token: {data.get('description', 'unknown error')}")
+                bot_username = data.get("result", {}).get("username", "")
+    except aiohttp.ClientError as e:
+        raise HTTPException(500, f"Could not verify Telegram bot: {str(e)}")
+
+    # Update the agent's Telegram config
+    await col.update_one(
+        {"agent_id": agent_id},
+        {"$set": {
+            "telegram_bot_token": token,
+            "telegram_chat_id": chat_id,
+            "telegram_configured": True,
+        }},
+    )
+
+    # Also update the genesis-prompt.md in the agent's directory
+    agent_home = os.path.expanduser(agent.get("agent_home", f"~/agents/{agent_id}"))
+    genesis_path = os.path.join(agent_home, ".automaton", "genesis-prompt.md")
+    if os.path.exists(genesis_path):
+        try:
+            with open(genesis_path, "r") as f:
+                content = f.read()
+            # Replace any existing token/chat placeholders
+            import re
+            content = re.sub(r'bot\d+:[A-Za-z0-9_-]+', f'bot{token}', content, count=1)
+            with open(genesis_path, "w") as f:
+                f.write(content)
+        except Exception:
+            pass  # Non-critical — the DB is the source of truth
+
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "bot_username": f"@{bot_username}",
+        "message": f"Telegram config updated. Bot: @{bot_username}",
+    }
+
+
+
 @router.post("/agents/{agent_id}/start")
 async def start_agent_engine(agent_id: str):
     """Start the engine for a specific agent using isolated HOME directory."""

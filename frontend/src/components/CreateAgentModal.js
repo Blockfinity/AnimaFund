@@ -48,7 +48,41 @@ export default function CreateAgentModal({ onClose, onCreated }) {
     if (!tgBotToken.trim() || !tgChatId.trim()) { setError('Telegram Bot Token and Chat ID are required for each agent'); return; }
     setLoading(true);
     setError('');
-    setStatus('Creating agent configuration...');
+    setStatus('Verifying Telegram bot connection...');
+
+    // Step 1: Verify Telegram bot is reachable
+    try {
+      const verifyRes = await fetch(`https://api.telegram.org/bot${tgBotToken.trim()}/getMe`);
+      const verifyData = await verifyRes.json();
+      if (!verifyData.ok) {
+        setError(`Telegram bot verification failed: ${verifyData.description || 'Invalid token'}. Get a valid token from @BotFather.`);
+        setLoading(false); setStatus(''); return;
+      }
+      setStatus(`Bot verified: @${verifyData.result.username}. Testing chat delivery...`);
+    } catch {
+      setError('Could not connect to Telegram API. Check your bot token.');
+      setLoading(false); setStatus(''); return;
+    }
+
+    // Step 2: Verify chat ID by sending a test message
+    try {
+      const chatRes = await fetch(`https://api.telegram.org/bot${tgBotToken.trim()}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: tgChatId.trim(), text: `Agent "${name.trim()}" is being created on Anima Fund. Telegram connection verified.` }),
+      });
+      const chatData = await chatRes.json();
+      if (!chatData.ok) {
+        setError(`Telegram chat verification failed: ${chatData.description || 'Invalid chat ID'}. Start the bot first and verify the Chat ID.`);
+        setLoading(false); setStatus(''); return;
+      }
+      setStatus('Telegram verified! Creating agent...');
+    } catch {
+      setError('Could not send test message. Check your Chat ID.');
+      setLoading(false); setStatus(''); return;
+    }
+
+    // Step 3: Create the agent
     try {
       const res = await fetch(`${API}/api/agents/create`, {
         method: 'POST',
