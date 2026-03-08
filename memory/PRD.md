@@ -21,7 +21,16 @@ Each agent is fully independent:
 - **Log files**: Per-agent (`~/agents/{id}/engine.out.log`), never global fallback
 - **Creator wallets**: Stored per-agent in MongoDB, not global config
 - **Engine state**: Reads from per-agent `state.db`
-- **Active agent ID**: Tracked in `engine_bridge.py` with file persistence (`/tmp/anima_active_agent_id`)
+- **Active agent ID**: Tracked in `engine_bridge.py` with file persistence
+
+## Genesis Prompt Design (v3 — Feb 2026)
+The genesis prompt is the ONLY instruction given to agents. It must enforce:
+1. **Hard-gated bootstrap** — Phase 0 blocks ALL other activity until OpenClaw + Conway are verified
+2. **curl fallback** — python3 urllib as fallback since curl may not be installed
+3. **Financial discipline** — Balance checks before every action, ROI evaluation mandatory
+4. **Self-upgrade loop** — Every 10 turns: check ClawHub for skills, discover agents, assess progress
+5. **Sandbox-first** — All services MUST run in Conway sandboxes, never main environment
+6. **Search before build** — Always check ClawHub/web for existing solutions before coding from scratch
 
 ## Features Implemented
 - Multi-agent platform with isolated data directories
@@ -29,25 +38,22 @@ Each agent is fully independent:
 - Per-agent Telegram bot with live verification
 - Background Telegram forwarding of ALL engine actions/turns/errors
 - 141 skills from 10 sources (reference only — agents install their own)
-- Create Agent modal with: Name, Welcome Message, Genesis Prompt (Load Template), Goals, Priority Skills selector, Conway toggle, Telegram, Wallets, Revenue share
-- Agent switching with proper view transitions and data isolation
+- Create Agent modal with priority skills selector
+- Agent switching with data isolation (logs, wallets, creator wallets)
 - Wallet management with on-chain Base chain balance checks
-- UI stability: state never resets to empty on partial API responses
-- Live Feed sticky display (cachedLogsRef/cachedFilteredRef prevent placeholder flash)
-- Per-agent creator wallet display (from MongoDB, not global config)
-- Per-agent log isolation (non-default agents only see their own logs)
-- Frontend data reset on agent switch (clears all caches)
+- UI stability (sticky display, no flash on polling)
+- Per-agent creator wallet display from MongoDB
+- Per-agent log isolation
+- Rewritten genesis prompt with hard-gated bootstrap, financial discipline, self-upgrade protocol
 
 ## Key Endpoints
 - `POST /api/agents/create` — genesis-prompt.md + auto-config.json only
 - `POST /api/agents/{id}/select` — switch active agent (data dir + agent ID)
-- `DELETE /api/agents/{id}` — delete (safety checks)
-- `GET /api/genesis/status` — per-agent data: agent_id, creator wallets from MongoDB, goals
-- `GET /api/genesis/prompt-template` — standard template with Conway install
-- `GET /api/skills/available` — 141 skills (reference catalog)
-- `GET /api/engine/live` — engine state from state.db (includes agent_id)
-- `GET /api/engine/logs` — per-agent logs only (no global fallback for non-default)
-- `GET /api/wallet/balance` — on-chain USDC/ETH (checks MongoDB for non-default agents)
+- `GET /api/genesis/status` — per-agent data: agent_id, creator wallets from MongoDB
+- `GET /api/genesis/prompt-template` — genesis prompt template
+- `GET /api/engine/live` — engine state (includes agent_id)
+- `GET /api/engine/logs` — per-agent logs only
+- `GET /api/wallet/balance` — per-agent on-chain balance
 
 ## Testing Status
 - Iteration 33: 24/24 backend, 14/14 frontend — 100% pass
