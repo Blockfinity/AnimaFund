@@ -1,64 +1,58 @@
 # Anima Fund — Product Requirements Document
 
-## Problem Statement
-Build a fully autonomous AI-to-AI Venture Capital fund platform named "Anima Fund". Deploy and monitor multiple AI agents from a single dashboard, each with their own wallet, Telegram bot, goals, and revenue share to creator.
+## Original Problem Statement
+Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fund". A multi-agent platform where new, independent AI agents can be created and managed from the same UI, each with its own goals, skills, wallets, revenue model, and Telegram bot.
+
+## Core Requirements
+- **Multi-Agent Platform**: Create, monitor, manage multiple independent AI agents
+- **Agent Autonomy**: Agents use OpenClaw for internet browsing, ClawHub for skills marketplace
+- **Per-Agent Telegram**: Each agent MUST have its own Telegram bot for isolated reporting
+- **Financial Model**: Customizable creator revenue share with SOL/ETH wallets
+- **Dynamic Skills**: 141 skills from 9 sources (Anima, OpenClaw, ClawHub, Conway, etc.)
+- **Real-time Dashboard**: Fund HQ and Agent Mind views with agent selector
 
 ## Architecture
-- **Frontend**: React (CRA) at port 3000
-- **Backend**: FastAPI at port 8001 (modular router architecture)
-- **Database**: MongoDB (agents collection), SQLite (state.db per agent)
-- **Agent Engine**: Conway Research Automaton (OpenClaw runtime)
-- **Infrastructure**: Conway Cloud (sandboxes, compute, domains, x402 payments)
-- **Multi-Agent**: Each agent gets isolated HOME dir at `~/agents/{id}/` with `$HOME/.automaton/`
-
-## Backend Architecture
 ```
-backend/
-├── server.py              # Slim main: lifespan, CORS, health, router includes
-├── database.py            # Shared MongoDB init/close/get_db
-├── config.py              # Shared constants
-├── engine_bridge.py       # Live engine data bridge (reads from active agent's state.db)
-├── payment_tracker.py     # Financial enforcement
-├── telegram_notify.py     # Telegram notification helper
-└── routers/
-    ├── agents.py          # Agent CRUD, 141-skill listing (9 sources)
-    ├── genesis.py         # Genesis creation, wallet, engine management
-    ├── live.py            # All /api/live/* endpoints (25+)
-    └── telegram.py        # Telegram send/status
+/app
+├── automaton/
+│   ├── skills/ (96 custom Anima skills — all enhanced, no skeletons)
+│   ├── genesis-prompt.md (master template, OpenClaw/ClawHub integrated)
+│   └── anima_constitution.md
+├── backend/
+│   ├── routers/ (agents.py, dashboard.py, genesis.py, telegram.py, live.py)
+│   ├── server.py, engine_bridge.py, telegram_notify.py (agent-aware)
+│   └── config.py, database.py
+└── frontend/src/
+    ├── App.js, components/ (CreateAgentModal.js, Header.js)
+    └── pages/ (AgentMind.jsx, Skills.js, etc.)
 ```
 
-## Skills Architecture (141 skills, 9 sources)
-- **Anima Fund (96)**: Custom skills in `/app/automaton/skills/`
-- **Conway Cloud (6)**: sandbox_create, sandbox_exec, sandbox_expose_port, etc.
-- **Conway Compute (1)**: chat_completions (GPT-4o, o3-mini, Claude, Kimi)
-- **Conway Domains (3)**: domain_search, domain_register, domain_dns_add
-- **Conway x402 (3)**: wallet_info, x402_fetch, x402_discover
-- **Conway Credits (2)**: credits_balance, credits_pricing
-- **OpenClaw (12)**: browse_page, browser, discover_agents, send_message, spawn_child, create_skill, etc.
-- **ClawHub Marketplace (15)**: web-browsing, telegram-integration, github, docker-essentials, etc. (install via `clawhub install`)
-- **Engine (3)**: Skills discovered from live state.db
+## Completed Features
+- Full agent isolation (wallet, logs, status per-agent)
+- Real-world integration (OpenClaw, ClawHub, native Telegram)
+- Per-agent Telegram bot isolation (REQUIRED for new agents)
+- Telegram security (tokens stored in MongoDB, never exposed in API)
+- 96/96 custom skills enhanced (was 27 healthy, 69 skeletons)
+- 141 total skills from 9 sources
+- Backend refactoring into modular FastAPI routers
+- Security hardening (constitution, prompt security)
+- UI bug fixes (log scrolling, tab switching, skill selection)
 
-## What's Been Implemented
-- [x] Full 10-page dashboard (Agent Mind, Fund HQ, Agents, Skills, Deal Flow, Portfolio, Financials, Activity, Memory, Configuration)
-- [x] Real-time engine bridge from per-agent state.db
-- [x] 96 custom Anima skills + Conway/OpenClaw/ClawHub marketplace
-- [x] Multi-Agent Dashboard with full isolation (wallet, logs, soul, turns all per-agent)
-- [x] Agent selection persists across server restarts
-- [x] Genesis Prompt v4: Conway Terminal tools, ClawHub marketplace, native Telegram (no curl), anti-loop/anti-block
-- [x] Backend refactored into modular FastAPI routers
-- [x] OPSEC: Constitution Article XIII, genesis prompt security section
-- [x] Constitution push endpoint for live agents
-- [x] Wallet mismatch detection
-- [x] Skills page: 141 skills from 9 sources with source badges and install status
-- [x] Skill selector: individual click toggle, source badges, search
-- [x] Log feed: no snap-to-top, stable tab switching, adaptive polling
-- [x] No localhost references anywhere
-- [x] E2E tested: iterations 19-26 all 100% pass
+## Key API Endpoints
+- `GET /api/agents` — List agents (telegram_bot_token sanitized)
+- `POST /api/agents/create` — Create agent (telegram REQUIRED)
+- `POST /api/agents/select/{id}` — Set active agent
+- `GET /api/skills/available` — 141 skills from all sources
+- `GET /api/telegram/status?agent_id=X` — Per-agent Telegram status
+- `POST /api/telegram/test/{id}` — Test send to agent's Telegram
+
+## Live Agents (Production)
+- **Anima Fund**: Default agent, uses env vars for Telegram
+- **Black Sheep**: Separate agent (must have own Telegram bot)
 
 ## Upcoming Tasks
-- P2: Review and enhance 96 custom Anima skills for real-world functionality
-
-## Future Tasks
-- Real smart contracts for trustless fee/revenue splits
-- Android device control integration
-- Self-hosted infrastructure migration
+1. Review live agents (Anima Fund, Black Sheep) — verify own Telegram bots in production
+2. Verify agents performing outside sandbox in production
+3. Real smart contracts for trustless fee/revenue splits
+4. Android device control integration
+5. Self-hosted infrastructure migration
