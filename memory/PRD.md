@@ -1,40 +1,45 @@
-# Anima Fund — Product Requirements Document
+# Anima Fund - PRD
 
-## Original Problem Statement
-Build a fully autonomous AI-to-AI VC fund platform. Multi-agent platform where new AI agents can be created/managed from one UI, each with own goals, skills, wallets, revenue model, and Telegram bot.
+## Problem Statement
+Build a fully autonomous AI-to-AI Venture Capital fund platform ("Anima Fund"). A multi-agent platform where independent AI agents can be created, monitored, and managed from a single dashboard. Each agent has its own goals, skills, wallets, revenue model, and dedicated Telegram bot.
 
 ## Architecture
-```
-/app
-├── automaton/
-│   ├── skills/ (96 custom — ALL enhanced)
-│   ├── genesis-prompt.md (35 Conway tools, OpenClaw, ClawHub)
-│   └── anima_constitution.md
-├── backend/routers/ (agents, dashboard, genesis, telegram, live)
-├── backend/ (server, engine_bridge, telegram_notify, config, database)
-└── frontend/src/ (App, pages/AgentMind+FundHQ+Skills, components/CreateAgentModal)
-```
+- **Frontend**: React (port 3000) with Tailwind CSS + Shadcn/UI
+- **Backend**: FastAPI (port 8001) with MongoDB
+- **Database**: MongoDB (anima_fund)
+- **Engine**: Conway Research Automaton (external)
+- **Integrations**: Telegram Bot API, Base blockchain (USDC), OpenClaw, ClawHub
 
-## Completed Features
-- **Agent Mind**: 3 tabs — LIVE FEED (default), LOGS, TURNS — with search/filter
-- **Auto-scroll**: Ref-based, debounced (300ms), respects user scrolling
-- **Per-agent Telegram isolation**: Required for new agents, verified via API
-- **Conway toggle**: Checkbox in Create Agent to include/exclude 35 Conway tools
-- **Telegram Health Dashboard**: FundHQ sidebar, shows bot alive/down/none per agent
-- **Agent-aware monitoring**: Logs/state → each agent's Telegram
-- **Wallet protection**: Can't delete agents with wallet.json
-- **96/96 skills enhanced**, 141 total from 9 sources
-- **35 Conway Terminal tools** documented (sandbox, PTY, domain, credits, x402, inference)
-- **PUT endpoint**: Update existing agents' Telegram config
-- **Security**: No localhost, no exposed secrets, tokens never in API responses
+## Core Features (All Implemented)
+- Multi-agent platform with isolated data directories
+- Real-time dashboard (Agent Mind, Fund HQ)
+- Per-agent Telegram bot configuration with live verification
+- 141 skills from 9 sources (Anima, Conway, OpenClaw, ClawHub, MCP, Engine)
+- Conway tools integration (optional per agent)
+- Wallet management with on-chain balance checks
+- Agent creation modal with Telegram verification
+- Telegram Health Dashboard
+- Fund deletion safety (wallet protection)
+- Auto-scroll mechanism (non-intrusive, ref-based)
 
-## Key API Endpoints
-- POST /api/agents/create (telegram required, include_conway toggle)
-- PUT /api/agents/{id}/telegram (update existing agent's bot)
-- GET /api/telegram/health (dashboard)
-- GET /api/skills/available (141 skills)
+## Key Endpoints
+- `GET /api/health` - Health check
+- `GET /api/agents` - List agents
+- `POST /api/agents/create` - Create agent (requires Telegram creds)
+- `DELETE /api/agents/{agent_id}` - Delete agent (with safety checks)
+- `PUT /api/agents/{agent_id}/telegram` - Update Telegram config
+- `GET /api/genesis/status` - Genesis agent status
+- `GET /api/skills/available` - All skills (141)
+- `GET /api/telegram/health` - Bot health dashboard
+- `GET /api/wallet/balance` - On-chain balance
 
-## Upcoming Tasks
-1. Real smart contracts for trustless fee/revenue splits
-2. Android device control integration
-3. Self-hosted infrastructure migration
+## Current State (March 8, 2026)
+- **Status**: Deployment-ready
+- **Active Agents**: 1 (Anima Fund - default)
+- **Test Data**: All test agents cleaned
+- **Testing**: E2E passed (iteration 31) - 30/30 backend, 16/16 frontend
+
+## Future Tasks (Backlog)
+- P1: Implement Real Smart Contracts (Solidity)
+- P2: Android Device Control Integration
+- P2: Self-Hosted Infrastructure Migration
