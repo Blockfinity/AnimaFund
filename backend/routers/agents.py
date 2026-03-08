@@ -159,12 +159,26 @@ async def list_agents():
             "data_dir": "~/.anima",
             "status": "running",
             "is_default": True,
+            "telegram_configured": True,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await col.insert_one(default)
         del default["_id"]
         agents = [default]
-    return {"agents": agents}
+
+    # Sanitize: never expose telegram_bot_token in the list response
+    sanitized = []
+    for agent in agents:
+        a = {k: v for k, v in agent.items() if k != "telegram_bot_token"}
+        # For the default agent, check env vars for Telegram config
+        if agent.get("is_default"):
+            a["telegram_configured"] = bool(
+                os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")
+            )
+        elif "telegram_configured" not in a:
+            a["telegram_configured"] = bool(agent.get("telegram_bot_token") and agent.get("telegram_chat_id"))
+        sanitized.append(a)
+    return {"agents": sanitized}
 
 
 @router.post("/agents/create")
@@ -184,9 +198,11 @@ async def create_agent(req: CreateAgentRequest):
     skills_dir = os.path.join(automaton_dir, "skills")
     os.makedirs(skills_dir, exist_ok=True)
 
-    # Per-agent Telegram creds, fallback to global
-    tg_token = req.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    tg_chat = req.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+    # Per-agent Telegram creds — REQUIRED for new agents (no global fallback)
+    tg_token = req.telegram_bot_token.strip() if req.telegram_bot_token else ""
+    tg_chat = req.telegram_chat_id.strip() if req.telegram_chat_id else ""
+    if not tg_token or not tg_chat:
+        raise HTTPException(400, "Telegram Bot Token and Chat ID are required. Each agent must have its own Telegram bot for reporting.")
 
     # Build full genesis prompt with all config injected
     full_prompt = req.genesis_prompt
@@ -259,14 +275,18 @@ async def create_agent(req: CreateAgentRequest):
         "creator_sol_wallet": req.creator_sol_wallet,
         "creator_eth_wallet": req.creator_eth_wallet,
         "revenue_share_percent": req.revenue_share_percent,
-        "telegram_configured": bool(tg_token),
+        "telegram_bot_token": tg_token,
+        "telegram_chat_id": tg_chat,
+        "telegram_configured": True,
         "status": "created",
         "is_default": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await col.insert_one(agent_doc)
     del agent_doc["_id"]
-    return {"success": True, "agent": agent_doc}
+    # Don't expose token in response
+    safe_doc = {k: v for k, v in agent_doc.items() if k != "telegram_bot_token"}
+    return {"success": True, "agent": safe_doc}
 
 
 @router.post("/agents/{agent_id}/select")

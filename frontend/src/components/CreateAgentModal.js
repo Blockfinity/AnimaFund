@@ -45,6 +45,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
 
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) { setError('Name and genesis prompt are required'); return; }
+    if (!tgBotToken.trim() || !tgChatId.trim()) { setError('Telegram Bot Token and Chat ID are required for each agent'); return; }
     setLoading(true);
     setError('');
     setStatus('Creating agent configuration...');
@@ -196,22 +197,22 @@ export default function CreateAgentModal({ onClose, onCreated }) {
             </div>
           </div>
 
-          {/* Telegram Bot */}
+          {/* Telegram Bot — REQUIRED */}
           <div className="border-t border-border pt-4">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-2">Telegram Bot (optional)</label>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-2">Telegram Bot *</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] text-muted-foreground block mb-1">Bot Token</label>
+                <label className="text-[10px] text-muted-foreground block mb-1">Bot Token *</label>
                 <input data-testid="agent-tg-token-input" value={tgBotToken} onChange={(e) => setTgBotToken(e.target.value)}
-                  placeholder="123456:ABC-DEF..." className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono" />
+                  placeholder="123456:ABC-DEF..." className={`w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono ${!tgBotToken.trim() && name.trim() ? 'border-red-400' : 'border-border'}`} />
               </div>
               <div>
-                <label className="text-[10px] text-muted-foreground block mb-1">Chat ID</label>
+                <label className="text-[10px] text-muted-foreground block mb-1">Chat ID *</label>
                 <input data-testid="agent-tg-chatid-input" value={tgChatId} onChange={(e) => setTgChatId(e.target.value)}
-                  placeholder="123456789" className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono" />
+                  placeholder="123456789" className={`w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono ${!tgChatId.trim() && name.trim() ? 'border-red-400' : 'border-border'}`} />
               </div>
             </div>
-            <p className="text-[9px] text-muted-foreground mt-1">Leave blank to use the default bot. Each agent can have its own bot.</p>
+            <p className="text-[9px] text-muted-foreground mt-1">Each agent MUST have its own Telegram bot for isolated reporting. Create one via <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-foreground underline">@BotFather</a>.</p>
           </div>
 
           {error && <p className="text-xs text-red-600">{error}</p>}
@@ -220,7 +221,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
         <div className="flex justify-end gap-3 px-5 py-4 border-t border-border flex-shrink-0">
           <button onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
           <button data-testid="create-agent-submit" onClick={handleCreate}
-            disabled={loading || !name.trim() || !prompt.trim()}
+            disabled={loading || !name.trim() || !prompt.trim() || !tgBotToken.trim() || !tgChatId.trim()}
             className="px-4 py-2 text-sm bg-foreground text-background rounded-md hover:bg-foreground/90 transition-colors disabled:opacity-50">
             {loading ? 'Creating & Starting...' : 'Create & Start Agent'}
           </button>

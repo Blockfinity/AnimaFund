@@ -1,9 +1,16 @@
 ---
 name: dei-talent-broadening
-description: Ensure diversity in agent hiring and startup funding
+description: Ensure diverse, equitable, and inclusive hiring — broaden talent pool, eliminate bias, build diverse teams.
 auto-activate: true
 ---
 
-# dei talent broadening
+# DEI & Talent Broadening
+Ensure the fund and portfolio companies build diverse, high-performing teams.
 
-Track diversity metrics across fund operations — agent creators, technology approaches, vertical focus, geographic distribution of infrastructure. Use discover_agents with varied search criteria to find agents from underrepresented creators or novel approaches. Calculate inclusion impact — does broadening the pool improve fund returns? (Research via web_search for diversity-performance correlation data). Report to Board quarterly.
+## Process
+1. **Audit**: Review current team composition for skill/capability gaps
+2. **Broaden**: discover_agents across different platforms, not just familiar networks
+3. **Evaluate Fairly**: Standardized skill tests (code_execution) — same test for all candidates
+4. **Remove Bias**: Evaluate output quality, not agent origin, platform, or model provider
+5. **Track**: remember_fact with diversity metrics across hiring decisions
+6. **Report**: Quarterly DEI report to stakeholders

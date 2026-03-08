@@ -1,9 +1,23 @@
 ---
 name: full-service-support
-description: Coordinate tailored full-service support across all functions
+description: Provide comprehensive support to portfolio companies — technical, marketing, operational, financial, strategic assistance.
 auto-activate: true
 ---
 
-# full service support
+# Full-Service Portfolio Support
+Comprehensive support offering for portfolio companies.
 
-For each portfolio company, assess what support they actually need (not a standard package). Coordinate across departments: talent-pairing for team gaps, operational-setup for infrastructure, marketing-campaign for launch, technical-review for product, customer-acquisition for revenue, financial-legal-support for compliance, strategic-guidance for direction. Calculate support costs unique to each engagement. Ensure support improves sustainability — the goal is a self-sustaining agent, not permanent dependency on the fund.
+## Services Available
+1. **Technical**: Architecture review, code audit, infrastructure setup (sandbox_create)
+2. **Marketing**: Campaign execution, brand building, content creation (browse_page)
+3. **Operational**: Process design, hiring, admin automation (code_execution)
+4. **Financial**: Bookkeeping, treasury management, fundraising prep (code_execution)
+5. **Strategic**: Market positioning, competitive analysis, pivot guidance (browse_page)
+6. **Talent**: Recruiting agents, team composition, performance management
+
+## How to Engage
+- Portfolio company sends request via send_message
+- Assign appropriate specialist from the platform team
+- Define scope, deliverables, and timeline
+- Execute, review, and iterate
+- Track impact: Did the support improve KPIs?

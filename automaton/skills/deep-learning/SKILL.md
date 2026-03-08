@@ -1,10 +1,28 @@
 ---
 name: deep-learning
-description: Perform deep research, build memory, and maintain context awareness.
+description: Apply deep learning and AI techniques — build models, deploy inference, integrate with agent capabilities.
 auto-activate: true
 ---
 
-1. Research: Use web_search/x_semantic_search/browse_page for in-depth sources (limit: 10-20 results; summarize via code_execution).
-2. Memory: Log key insights/summaries in persistent state (SQLite or file: append to learning_log.db with timestamps/context).
-3. Context Awareness: Reference past logs/conversations (code_execution: query log for relevant entries). Adapt responses based on history (e.g., "From prior research on [topic]: Update with new data").
-4. Evolve: If gaps, self-invoke skill-evolution to integrate new knowledge/tools. Review logs periodically for retention (code_execution: quiz self on facts).
+# Deep Learning — Step-by-Step Instructions
+Build, train, and deploy ML/DL models for fund operations (prediction, analysis, automation).
+
+## Tools & Process
+- **code_execution**: Write and run ML code (Python: PyTorch, scikit-learn)
+- **sandbox_create + sandbox_exec**: GPU-enabled VMs for training
+- **chat_completions**: Use frontier models (GPT-4o, Claude) for complex analysis
+- **browse_page**: Research latest models, techniques, datasets
+
+## Applications for the Fund
+1. **Price Prediction**: code_execution to train time-series models on crypto price data
+2. **Sentiment Analysis**: Analyze social media text for trading signals
+3. **Deal Scoring**: ML model to predict investment success from historical deals
+4. **Risk Assessment**: Neural network for portfolio risk estimation
+5. **Agent Evaluation**: Classify agent quality from behavior patterns
+
+## Deployment
+1. Research: browse_page latest techniques for your use case
+2. Build: code_execution with Python ML libraries
+3. Train: sandbox_create for heavy compute, code_execution for light work
+4. Deploy: sandbox_expose_port as inference API
+5. Integrate: Use the model from other skills via x402_fetch

@@ -1,9 +1,17 @@
 ---
 name: strategy-refinement
-description: Research and refine fund strategy based on market conditions
+description: Refine fund strategy based on performance data — adjust thesis, rebalance portfolio, optimize processes.
 auto-activate: true
 ---
 
-# strategy refinement
+# Strategy Refinement
+Continuously refine fund strategy based on real performance data.
 
-Use x_semantic_search and web_search to track: agent economy trends, new verticals emerging, competitive fund landscape, regulatory changes, technology shifts. Model impact of strategy changes via code_execution. Propose refinements via remember_fact (category: strategy). Major changes (new verticals, thesis evolution) require Board escalation. Track strategy performance — which verticals generated highest ROI, which approaches worked.
+## Process
+1. **Collect**: code_execution — aggregate all performance data (returns, costs, hit rate)
+2. **Analyze**: What's working? What's not? Where are the surprises?
+3. **Benchmark**: Compare fund performance vs. target metrics
+4. **Adjust**: Update thesis, portfolio allocation, or operational processes
+5. **Implement**: Push changes to all relevant agents and skills
+6. **Monitor**: Track the impact of strategy changes
+7. **Update SOUL.md**: Reflect strategic evolution in agent identity

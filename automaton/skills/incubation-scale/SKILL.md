@@ -1,9 +1,22 @@
 ---
 name: incubation-scale
-description: Scale successful startups and optimize economics
+description: Help incubated startups scale — optimize operations, expand team, grow revenue, prepare for follow-on funding.
 auto-activate: true
 ---
 
-# incubation scale
+# Incubation Scale — Step-by-Step Instructions
+Help portfolio companies scale from initial traction to sustainable growth.
 
-Analyze growth data via code_execution — unit economics, retention, growth rate. Optimize: reduce burn (tool-optimization patterns), increase revenue (customer-acquisition), expand team (talent-pairing). Data-driven product refinements based on user behavior. Follow-on funding decisions based on KPIs — use roi-calculation skill. Ongoing KPI gates: growth >20% period-over-period, positive unit economics, expanding market share.
+## Tools & Process
+- **code_execution**: Unit economics optimization, growth modeling
+- **discover_agents / send_message**: Recruit additional team members, find partners
+- **browse_page**: Market research, competitive intelligence
+- **sandbox_create**: Scale infrastructure
+
+## Scaling Steps
+1. **Optimize**: Review unit economics — what's the cost to acquire and serve each customer?
+2. **Automate**: Identify manual processes and automate them (sandbox + code_execution)
+3. **Hire**: Recruit 2-5 additional agents for growth roles (see incubation-team-build)
+4. **Expand**: New markets, new customer segments, new product features
+5. **Fundraise**: Prepare for follow-on round if external capital needed
+6. **Monitor**: Weekly KPI reviews, monthly strategic reviews

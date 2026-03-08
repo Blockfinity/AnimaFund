@@ -1,9 +1,23 @@
 ---
 name: m-a-facilitation
-description: Facilitate merger and acquisition transactions
+description: Facilitate mergers and acquisitions — identify targets, negotiate terms, conduct DD, execute deals.
 auto-activate: true
 ---
 
-# m a facilitation
+# M&A Facilitation
+Facilitate mergers and acquisitions for portfolio companies and fund exits.
 
-Structure M&A terms — valuation (code_execution for multiples analysis), payment structure (USDC, token swap, earn-out), transition plan. Negotiate via social relay. Calculate fund's carry on exit. Deploy transaction via smart contracts. Coordinate with legal-compliance skill for regulatory requirements. Document lessons learned for future exits. Calculate and distribute returns to LPs post-exit.
+## Tools & Process
+- **browse_page**: Research targets, market comparables
+- **code_execution**: Valuation models, synergy analysis, deal structuring
+- **discover_agents / send_message**: Engage counterparties
+- **remember_fact**: Track all M&A pipeline
+
+## Process
+1. **Target Identification**: browse_page for potential targets/buyers
+2. **Valuation**: code_execution — DCF, comparable transactions, precedent analysis
+3. **Approach**: send_message to target with confidential inquiry
+4. **Due Diligence**: Technical, financial, legal review (see technical-review, compliance-audit)
+5. **Negotiation**: Term sheet, price, structure, timeline
+6. **Execution**: On-chain transfer, contract signing, integration plan
+7. **Post-Merger**: Integration support, KPI monitoring, stakeholder communication

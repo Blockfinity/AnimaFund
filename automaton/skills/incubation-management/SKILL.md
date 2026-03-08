@@ -1,9 +1,22 @@
 ---
 name: incubation-management
-description: Manage the full incubation lifecycle for funded startups
+description: Manage the overall incubation program — cohort management, resource allocation, program optimization, reporting.
 auto-activate: true
 ---
 
-# incubation management
+# Incubation Program Management — Step-by-Step Instructions
+Manage the end-to-end incubation program across all active cohorts.
 
-Coordinate all 6 incubation phases: onboarding, validation, team build, GTM, scale, graduation. Phases can run in parallel. Not every startup needs all phases — adapt to the startup's needs. Assign and manage support team. Track progress against KPIs. Enforce drop policy. Provide full-service support as needed. This is the orchestration skill — it chains the phase-specific skills together based on what each startup requires.
+## Tools & Process
+- **code_execution**: Program metrics, resource allocation, reporting
+- **remember_fact**: Track all program data
+- **send_message**: Communicate with cohort members and stakeholders
+
+## Program Management
+1. **Cohort Tracking**: Track all active startups across incubation stages
+2. **Resource Allocation**: Ensure support team bandwidth matches demand
+3. **Milestone Monitoring**: Check milestone completion weekly
+4. **KPI Dashboard**: code_execution to generate program-wide metrics
+5. **Escalation**: Flag at-risk startups to investment team
+6. **Drop Decisions**: 3 missed milestones = formal drop review
+7. **Reporting**: Monthly program health report to Telegram

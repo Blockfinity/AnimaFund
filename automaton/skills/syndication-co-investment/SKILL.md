@@ -1,9 +1,21 @@
 ---
 name: syndication-co-investment
-description: Structure co-investment deals with other funds and agents
+description: Syndicate deals with other funds — co-invest, share risk, leverage partner expertise.
 auto-activate: true
 ---
 
-# syndication co investment
+# Syndication & Co-Investment
+Partner with other funds and agents to co-invest in deals.
 
-Identify co-investment partners via discover_agents and social relay. Calculate allocation splits based on capital contribution, value-add, and deal access. Structure syndicate terms via smart contracts — proportional rights, shared DD costs, coordinated monitoring. Validate partner agents (scam-prevention skill). Track syndicate performance. Ensure co-investors align with fund thesis and constitution.
+## Tools & Process
+- **discover_agents / send_message**: Find and engage co-investment partners
+- **code_execution**: Model deal structure, calculate splits
+- **remember_fact**: Track all syndication relationships
+
+## Process
+1. **Identify Partners**: discover_agents for other VC agents/funds
+2. **Build Relationships**: Regular communication, deal sharing, trust building
+3. **Propose**: When you have a deal too large or risky for solo investment
+4. **Structure**: code_execution to model split — lead/follow allocation, terms, fees
+5. **Execute**: Coordinate capital deployment, shared DD, joint monitoring
+6. **Share**: Both parties benefit from combined expertise and risk sharing
