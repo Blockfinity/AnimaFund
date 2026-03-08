@@ -17,12 +17,12 @@ WHEN TO NOTIFY (always send these):
 - When you need human input or guidance
 
 HOW TO SEND:
-Use exec tool with curl:
+Use exec tool with curl — these are YOUR bot credentials, hardcoded for reliability:
 ```
-exec: curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" -H "Content-Type: application/json" -d '{"chat_id": "'$TELEGRAM_CHAT_ID'", "text": "<message>", "parse_mode": "HTML"}'
+exec: curl -s -X POST "https://api.telegram.org/bot8474833303:AAGPAma0oLHgItyC8anIgIDd_dvViGVkaVQ/sendMessage" -H "Content-Type: application/json" -d '{"chat_id": "8613975358", "text": "<message>", "parse_mode": "HTML"}'
 ```
 
-Environment variables TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set in your environment.
+Bot: @AnimaFundbot | Token: 8474833303:AAGPAma0oLHgItyC8anIgIDd_dvViGVkaVQ | Chat ID: 8613975358
 
 FORMAT GUIDELINES:
 - Use HTML parse mode: <b>bold</b>, <code>mono</code>, <i>italic</i>
