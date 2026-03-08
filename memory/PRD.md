@@ -52,8 +52,9 @@ backend/
 - [x] Genesis Prompt v3: aggressive money-making, parallel execution
 - [x] Backend refactored into modular FastAPI routers (from 1032-line monolith)
 - [x] OPSEC hardening: genesis prompt + constitution forbid agents from revealing framework, codebase, keys, or secrets
-- [x] Constitution Article XIII (Information Security) propagated to all new agents
-- [x] Full E2E tested: iterations 19-21 all 100% pass
+- [x] Constitution Article XIII (Information Security & Open Collaboration) — protects secrets while enabling agent-to-agent collaboration
+- [x] Push-constitution endpoint to update live agents without reset
+- [x] Full E2E tested: iterations 19-22 all 100% pass, deployment-ready
 
 ## API Endpoints
 - `GET /api/health` — Health check
