@@ -25,6 +25,7 @@ Selected skills go into genesis prompt as "PRIORITY SKILLS — INSTALL THESE FIR
 - Agent switching with proper view transitions
 - Wallet management with on-chain Base chain balance checks
 - UI stability: state never resets to empty on partial API responses
+- **Live Feed sticky display fix**: cachedLogsRef/cachedFilteredRef prevent placeholder flash during polling (Feb 2026)
 
 ## Key Endpoints
 - `POST /api/agents/create` — genesis-prompt.md + auto-config.json only
@@ -38,6 +39,7 @@ Selected skills go into genesis prompt as "PRIORITY SKILLS — INSTALL THESE FIR
 
 ## Testing Status
 - Iteration 33: 24/24 backend, 14/14 frontend — 100% pass
+- Iteration 34: 7/7 frontend — 100% pass (Live Feed flash fix verified)
 - Deployment agent: passed (hardcoded ETH address fixed)
 - Clean state verified: only default Anima Fund agent
 
