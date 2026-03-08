@@ -156,6 +156,26 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/api/skills/available")
+async def list_available_skills():
+    """List all skills available in the automaton skills directory for the agent creator."""
+    skills_dir = os.path.join(AUTOMATON_DIR, "skills")
+    skills = []
+    if os.path.isdir(skills_dir):
+        for name in sorted(os.listdir(skills_dir)):
+            skill_file = os.path.join(skills_dir, name, "SKILL.md")
+            if os.path.exists(skill_file):
+                desc = ""
+                with open(skill_file, "r") as f:
+                    for line in f:
+                        if line.startswith("description:"):
+                            desc = line.split(":", 1)[1].strip()
+                            break
+                skills.append({"name": name, "description": desc})
+    return {"skills": skills, "total": len(skills)}
+
+
+
 # ═══════════════════════════════════════════════════════════
 # MULTI-AGENT MANAGEMENT
 # ═══════════════════════════════════════════════════════════
@@ -170,6 +190,7 @@ class CreateAgentRequest(BaseModel):
     revenue_share_percent: int = 50
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    selected_skills: list = []  # Empty = copy all skills
 
 
 def _ensure_default_agent():
@@ -261,10 +282,13 @@ async def create_agent(req: CreateAgentRequest):
             "creatorAddress": "0x0000000000000000000000000000000000000000",
         }, f)
 
-    # Copy skills with per-agent Telegram creds injected
+    # Copy skills — only selected, or all if none specified
     src_skills = os.path.join(AUTOMATON_DIR, "skills")
     if os.path.isdir(src_skills):
+        selected = set(req.selected_skills) if req.selected_skills else None
         for sname in os.listdir(src_skills):
+            if selected and sname not in selected:
+                continue
             sf = os.path.join(src_skills, sname, "SKILL.md")
             if os.path.exists(sf):
                 td = os.path.join(skills_dir, sname)

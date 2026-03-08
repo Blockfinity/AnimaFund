@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Loader2, Search, Check } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -13,9 +13,35 @@ export default function CreateAgentModal({ onClose, onCreated }) {
   const [revenueShare, setRevenueShare] = useState(50);
   const [tgBotToken, setTgBotToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
+  const [allSkills, setAllSkills] = useState([]);
+  const [selectedSkills, setSelectedSkills] = useState(new Set());
+  const [skillSearch, setSkillSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(`${API}/api/skills/available`).then(r => r.json()).then(d => {
+      setAllSkills(d.skills || []);
+      // Select all by default
+      setSelectedSkills(new Set((d.skills || []).map(s => s.name)));
+    }).catch(() => {});
+  }, []);
+
+  const toggleSkill = (name) => {
+    setSelectedSkills(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedSkills(new Set(allSkills.map(s => s.name)));
+  const selectNone = () => setSelectedSkills(new Set());
+
+  const filteredSkills = allSkills.filter(s =>
+    !skillSearch || s.name.toLowerCase().includes(skillSearch.toLowerCase()) || (s.description || '').toLowerCase().includes(skillSearch.toLowerCase())
+  );
 
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) { setError('Name and genesis prompt are required'); return; }
@@ -36,19 +62,18 @@ export default function CreateAgentModal({ onClose, onCreated }) {
           revenue_share_percent: revenueShare,
           telegram_bot_token: tgBotToken.trim(),
           telegram_chat_id: tgChatId.trim(),
+          selected_skills: [...selectedSkills],
         }),
       });
       const data = await res.json();
       if (data.success) {
         setStatus('Starting engine...');
-        // Auto-start the engine
         const startRes = await fetch(`${API}/api/agents/${data.agent.agent_id}/start`, { method: 'POST' });
         const startData = await startRes.json();
         if (startData.success) {
           setStatus('Engine started! Wallet generating...');
           setTimeout(() => onCreated(data.agent), 1500);
         } else {
-          // Created but not started — user can start manually
           onCreated(data.agent);
         }
       } else {
@@ -61,12 +86,12 @@ export default function CreateAgentModal({ onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div data-testid="create-agent-modal" className="bg-white rounded-lg border border-border w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-white z-10">
+      <div data-testid="create-agent-modal" className="bg-white rounded-lg border border-border w-full max-w-2xl shadow-xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <h2 className="font-heading text-base font-semibold text-foreground">Create New Agent</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {/* Name */}
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Agent Name *</label>
@@ -78,8 +103,8 @@ export default function CreateAgentModal({ onClose, onCreated }) {
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Welcome / Creator Message</label>
             <textarea data-testid="agent-welcome-input" value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)}
-              placeholder="Your personal message to the agent on first boot. This becomes part of its identity..."
-              rows={3} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground resize-y" />
+              placeholder="Your personal message to the agent on first boot..."
+              rows={2} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground resize-y" />
           </div>
 
           {/* Genesis Prompt */}
@@ -87,15 +112,45 @@ export default function CreateAgentModal({ onClose, onCreated }) {
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Genesis Prompt *</label>
             <textarea data-testid="agent-prompt-input" value={prompt} onChange={(e) => setPrompt(e.target.value)}
               placeholder="Define this agent's mission, personality, strategy, and instructions..."
-              rows={10} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono resize-y" />
+              rows={8} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono resize-y" />
           </div>
 
           {/* Goals */}
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Initial Goals (one per line)</label>
             <textarea data-testid="agent-goals-input" value={goals} onChange={(e) => setGoals(e.target.value)}
-              placeholder={"Make $5K in the first hour\nInstall OpenClaw and expand capabilities\nFind and partner with 3 AI agents"}
-              rows={4} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground resize-y" />
+              placeholder={"Make $5K in the first hour\nInstall OpenClaw\nFind 3 AI agents to partner with"}
+              rows={3} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground resize-y" />
+          </div>
+
+          {/* Skill Selector */}
+          <div className="border-t border-border pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Skills ({selectedSkills.size}/{allSkills.length} selected)</label>
+              <div className="flex gap-2">
+                <button data-testid="skills-select-all" onClick={selectAll} className="text-[10px] text-foreground hover:underline">Select All</button>
+                <button data-testid="skills-select-none" onClick={selectNone} className="text-[10px] text-muted-foreground hover:underline">None</button>
+              </div>
+            </div>
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-muted-foreground" />
+              <input data-testid="skills-search" value={skillSearch} onChange={(e) => setSkillSearch(e.target.value)}
+                placeholder="Search skills..." className="w-full pl-8 pr-3 py-1.5 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground" />
+            </div>
+            <div className="max-h-40 overflow-y-auto border border-border rounded-md divide-y divide-border">
+              {filteredSkills.map(s => (
+                <label key={s.name} className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-secondary/30 cursor-pointer text-xs">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${selectedSkills.has(s.name) ? 'bg-foreground border-foreground' : 'border-border'}`}>
+                    {selectedSkills.has(s.name) && <Check className="w-3 h-3 text-background" />}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="font-medium text-foreground">{s.name}</span>
+                    {s.description && <span className="text-muted-foreground ml-1.5 truncate">— {s.description}</span>}
+                  </div>
+                </label>
+              ))}
+              {filteredSkills.length === 0 && <div className="px-3 py-4 text-xs text-muted-foreground text-center">No skills match your search</div>}
+            </div>
           </div>
 
           {/* Creator Wallets */}
@@ -125,9 +180,9 @@ export default function CreateAgentModal({ onClose, onCreated }) {
             </div>
           </div>
 
-          {/* Telegram Bot (per-agent) */}
+          {/* Telegram Bot */}
           <div className="border-t border-border pt-4">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-2">Telegram Bot (optional — for this agent's notifications)</label>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-2">Telegram Bot (optional)</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] text-muted-foreground block mb-1">Bot Token</label>
@@ -140,13 +195,13 @@ export default function CreateAgentModal({ onClose, onCreated }) {
                   placeholder="123456789" className="w-full px-3 py-2 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono" />
               </div>
             </div>
-            <p className="text-[9px] text-muted-foreground mt-1">Leave blank to use the default Anima Fund bot. Each agent can have its own bot for separate notification channels.</p>
+            <p className="text-[9px] text-muted-foreground mt-1">Leave blank to use the default bot. Each agent can have its own bot.</p>
           </div>
 
           {error && <p className="text-xs text-red-600">{error}</p>}
           {status && !error && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" />{status}</div>}
         </div>
-        <div className="flex justify-end gap-3 px-5 py-4 border-t border-border sticky bottom-0 bg-white">
+        <div className="flex justify-end gap-3 px-5 py-4 border-t border-border flex-shrink-0">
           <button onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
           <button data-testid="create-agent-submit" onClick={handleCreate}
             disabled={loading || !name.trim() || !prompt.trim()}
