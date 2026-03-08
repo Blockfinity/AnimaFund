@@ -15,7 +15,7 @@ import requests
 import os
 import uuid
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://agent-dashboard-163.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://autonomous-vc.preview.emergentagent.com').rstrip('/')
 
 
 class TestHealthAndSkills:
