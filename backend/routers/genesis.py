@@ -16,7 +16,7 @@ import aiohttp
 
 from config import AUTOMATON_DIR, ANIMA_DIR, CREATOR_WALLET, ENGINE_PID_FILE, USDC_CONTRACT, BASE_RPC
 from engine_bridge import (
-    is_engine_live, get_live_kv_store,
+    is_engine_live, get_live_kv_store, get_live_identity,
 )
 from telegram_notify import notify_engine_started
 
@@ -74,20 +74,40 @@ async def check_onchain_balance(wallet_address: str) -> dict:
 
 @router.get("/wallet/balance")
 async def wallet_balance():
-    """Real-time on-chain balance check — queries Base chain directly."""
-    wallet_address = None
+    """Real-time on-chain balance check — queries Base chain directly.
+    Checks BOTH anima.json wallet and live engine identity wallet in case they differ."""
+    wallets = {}
+
+    # Wallet from anima.json (config wallet)
     config_path = os.path.join(ANIMA_DIR, "anima.json")
     if os.path.exists(config_path):
         try:
             with open(config_path, "r") as f:
-                wallet_address = json.load(f).get("walletAddress")
+                wallets["config"] = json.load(f).get("walletAddress")
         except Exception:
             pass
 
-    if not wallet_address:
+    # Wallet from live engine identity (may differ after re-genesis)
+    identity = get_live_identity()
+    if identity and identity.get("address"):
+        wallets["engine"] = identity["address"]
+
+    # Primary wallet = engine wallet if available, else config wallet
+    engine_wallet = wallets.get("engine")
+    config_wallet = wallets.get("config")
+    primary_wallet = engine_wallet or config_wallet
+    wallet_mismatch = bool(engine_wallet and config_wallet and engine_wallet != config_wallet)
+
+    if not primary_wallet:
         return {"usdc": 0, "eth": 0, "credits": None, "wallet": None, "error": "No wallet found"}
 
-    onchain = await check_onchain_balance(wallet_address)
+    # Check balance on the PRIMARY wallet (engine wallet)
+    onchain = await check_onchain_balance(primary_wallet)
+
+    # Also check config wallet if there's a mismatch (funds may be on old wallet)
+    config_balance = None
+    if wallet_mismatch:
+        config_balance = await check_onchain_balance(config_wallet)
 
     kv = get_live_kv_store()
     credits_data = next((i["value"] for i in kv if i["key"] == "last_credit_check"), None)
@@ -103,14 +123,24 @@ async def wallet_balance():
             credits_cents = (balance_data or {}).get("creditsCents", 0) if isinstance(balance_data, dict) else 0
         tier = credits_data.get("tier", "unknown")
 
-    return {
-        "wallet": wallet_address,
+    result = {
+        "wallet": primary_wallet,
         "usdc": onchain["usdc"],
         "eth": onchain["eth"],
         "credits_cents": credits_cents,
         "tier": tier,
         "onchain_error": onchain["error"],
+        "wallet_mismatch": wallet_mismatch,
     }
+
+    # Include old wallet info if there's a mismatch so user can see funds on both
+    if wallet_mismatch:
+        result["config_wallet"] = config_wallet
+        result["engine_wallet"] = engine_wallet
+        result["config_wallet_usdc"] = config_balance["usdc"] if config_balance else 0
+        result["config_wallet_eth"] = config_balance["eth"] if config_balance else 0
+
+    return result
 
 
 @router.get("/genesis/status")
@@ -169,8 +199,18 @@ async def genesis_status():
         except Exception:
             pass
 
+    # Also check engine live identity wallet (may differ after re-genesis)
+    engine_wallet = None
+    identity = get_live_identity()
+    if identity and identity.get("address"):
+        engine_wallet = identity["address"]
+
+    wallet_mismatch = bool(engine_wallet and wallet_address and engine_wallet != wallet_address)
+
     return {
         "wallet_address": wallet_address,
+        "engine_wallet": engine_wallet,
+        "wallet_mismatch": wallet_mismatch,
         "qr_code": qr_b64,
         "config_exists": config_exists,
         "wallet_exists": wallet_exists,
@@ -189,7 +229,8 @@ async def genesis_status():
 
 @router.post("/genesis/create")
 async def create_genesis_agent():
-    """Stage config files and start the Automaton engine as a background process."""
+    """Stage config files and start the Automaton engine as a background process.
+    IMPORTANT: Preserves existing wallet.json and anima.json to prevent wallet loss."""
     try:
         if is_engine_process_running():
             return {"success": True, "message": "Engine already running"}
@@ -199,6 +240,21 @@ async def create_genesis_agent():
             return {"success": False, "error": "Engine not built. dist/bundle.mjs missing."}
 
         os.makedirs(ANIMA_DIR, exist_ok=True)
+
+        # CRITICAL: Backup existing wallet and identity before staging
+        wallet_backup = None
+        wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
+        if os.path.exists(wallet_path):
+            with open(wallet_path, "r") as f:
+                wallet_backup = f.read()
+
+        identity_backup = None
+        identity_path = os.path.join(ANIMA_DIR, "anima.json")
+        if os.path.exists(identity_path):
+            with open(identity_path, "r") as f:
+                identity_backup = f.read()
+
+        state_db_path = os.path.join(ANIMA_DIR, "state.db")
 
         secrets_map = {
             "{{TELEGRAM_BOT_TOKEN}}": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
@@ -263,6 +319,14 @@ async def create_genesis_agent():
             os.symlink(ANIMA_DIR, automaton_dir)
         else:
             os.symlink(ANIMA_DIR, automaton_dir)
+
+        # CRITICAL: Restore wallet and identity AFTER staging to prevent new wallet generation
+        if wallet_backup:
+            with open(wallet_path, "w") as f:
+                f.write(wallet_backup)
+        if identity_backup:
+            with open(identity_path, "w") as f:
+                f.write(identity_backup)
 
         log_out = open("/var/log/automaton.out.log", "a")
         log_err = open("/var/log/automaton.err.log", "a")

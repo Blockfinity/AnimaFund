@@ -207,7 +207,8 @@ export default function AgentMind({ genesisState }) {
       } catch {}
     };
     fetchBalance();
-    const bi = setInterval(fetchBalance, 5000);
+    // Poll less aggressively — 10s instead of 5s to reduce dashboard load
+    const bi = setInterval(fetchBalance, 10000);
     return () => clearInterval(bi);
   }, []);
 
@@ -261,7 +262,26 @@ export default function AgentMind({ genesisState }) {
     finally { setLoading(false); }
   }, [activeTab]);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 3000); return () => clearInterval(i); }, [fetchData]);
+  // Adaptive polling: fast when running, slow when sleeping
+  const pollIntervalRef = useRef(5000);
+  useEffect(() => {
+    fetchData();
+    const tick = () => {
+      fetchData().then(() => {
+        // Slow down polling when sleeping/idle/critical to reduce dashboard thrashing
+        const state = engineState?.agent_state;
+        if (state === 'sleeping' || state === 'critical' || state === 'idle') {
+          pollIntervalRef.current = 10000; // 10s when sleeping
+        } else if (state === 'running' || state === 'waking') {
+          pollIntervalRef.current = 3000; // 3s when active
+        } else {
+          pollIntervalRef.current = 5000; // 5s default
+        }
+      });
+    };
+    const i = setInterval(tick, pollIntervalRef.current);
+    return () => clearInterval(i);
+  }, [fetchData, engineState?.agent_state]);
 
   // Auto-scroll logs — only when user hasn't scrolled up
   const userScrolledUp = useRef(false);
@@ -515,6 +535,25 @@ export default function AgentMind({ genesisState }) {
                     </div>
                   )}
                 </div>
+
+                {/* Wallet mismatch warning */}
+                {balance.wallet_mismatch && (
+                  <div data-testid="wallet-mismatch-warning" style={{ marginTop: '8px', padding: '6px', background: '#1a0a0a', border: '1px solid #7f1d1d', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: '#f87171', marginBottom: '4px' }}>
+                      <AlertTriangle className="w-3 h-3" style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                      WALLET MISMATCH DETECTED
+                    </div>
+                    <div style={{ fontSize: '8px', color: '#a1a1aa', lineHeight: 1.5 }}>
+                      Engine wallet differs from config wallet. Funds may be on the old wallet.
+                    </div>
+                    <div style={{ marginTop: '4px', fontSize: '8px', fontFamily: 'JetBrains Mono, monospace' }}>
+                      <div style={{ color: '#71717a' }}>Engine: <span style={{ color: '#d4d4d8' }}>{balance.engine_wallet?.slice(0, 10)}...{balance.engine_wallet?.slice(-6)}</span></div>
+                      <div style={{ color: '#71717a' }}>Config: <span style={{ color: '#d4d4d8' }}>{balance.config_wallet?.slice(0, 10)}...{balance.config_wallet?.slice(-6)}</span>
+                        {balance.config_wallet_usdc > 0 && <span style={{ color: '#34D399', fontWeight: 700 }}> (${balance.config_wallet_usdc.toFixed(2)} USDC)</span>}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
