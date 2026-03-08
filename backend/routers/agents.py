@@ -193,10 +193,16 @@ async def create_agent(req: CreateAgentRequest):
     if existing:
         raise HTTPException(400, f"Agent '{agent_id}' already exists")
 
-    # Each agent gets its own HOME directory so engine reads from $HOME/.automaton/
+    # Each agent gets its own HOME directory so engine reads from $HOME/.anima/
+    # The engine's getAutomatonDir() returns $HOME/.anima
+    # We create .anima as main dir, .automaton as symlink for compatibility
     agent_home = os.path.expanduser(f"~/agents/{agent_id}")
-    automaton_dir = os.path.join(agent_home, ".automaton")
-    os.makedirs(automaton_dir, exist_ok=True)
+    anima_dir = os.path.join(agent_home, ".anima")
+    automaton_link = os.path.join(agent_home, ".automaton")
+    os.makedirs(anima_dir, exist_ok=True)
+    if not os.path.exists(automaton_link):
+        os.symlink(".anima", automaton_link)
+    automaton_dir = anima_dir  # Use .anima as the actual data directory
 
     # Per-agent Telegram creds — REQUIRED for new agents (no global fallback)
     tg_token = req.telegram_bot_token.strip() if req.telegram_bot_token else ""
@@ -289,7 +295,7 @@ async def create_agent(req: CreateAgentRequest):
         "agent_id": agent_id,
         "name": req.name,
         "agent_home": agent_home,
-        "data_dir": automaton_dir,
+        "data_dir": anima_dir,
         "welcome_message": welcome,
         "goals": req.goals,
         "creator_sol_wallet": req.creator_sol_wallet,

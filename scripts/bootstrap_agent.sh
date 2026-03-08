@@ -2,7 +2,7 @@
 # ═══════════════════════════════════════════════════════════════════
 # Anima Fund — Agent Environment Bootstrap
 # Pre-installs Conway Terminal, provisions API key, configures
-# OpenClaw, and verifies all tools BEFORE the engine starts.
+# OpenClaw, and copies credentials to engine directory (.anima/).
 # Each agent gets its own fully isolated environment.
 #
 # Usage: HOME=/path/to/agent/home bash bootstrap_agent.sh
@@ -11,7 +11,7 @@
 set -e
 
 AGENT_HOME="${HOME}"
-AUTOMATON_DIR="${AGENT_HOME}/.automaton"
+ANIMA_DIR="${AGENT_HOME}/.anima"
 CONWAY_DIR="${AGENT_HOME}/.conway"
 OPENCLAW_DIR="${AGENT_HOME}/.openclaw"
 
@@ -20,21 +20,25 @@ echo "  AGENT BOOTSTRAP — ${AGENT_HOME}"
 echo "══════════════════════════════════════════════════════"
 
 # ─── Step 1: Ensure directories exist ────────────────────────────
-mkdir -p "${AUTOMATON_DIR}" "${CONWAY_DIR}" "${OPENCLAW_DIR}"
-echo "[1/5] Directories created"
+mkdir -p "${ANIMA_DIR}" "${CONWAY_DIR}" "${OPENCLAW_DIR}"
+
+# Create .automaton -> .anima symlink if missing
+AUTOMATON_LINK="${AGENT_HOME}/.automaton"
+if [ ! -e "${AUTOMATON_LINK}" ]; then
+    ln -s ".anima" "${AUTOMATON_LINK}" 2>/dev/null || true
+fi
+echo "[1/6] Directories created"
 
 # ─── Step 2: Install Conway Terminal ─────────────────────────────
-echo "[2/5] Installing Conway Terminal..."
+echo "[2/6] Installing Conway Terminal..."
 
 if command -v conway-terminal &>/dev/null; then
     echo "  Conway Terminal already installed: $(which conway-terminal)"
 else
-    # Try npm install first
     if command -v npm &>/dev/null; then
         npm install -g conway-terminal 2>/dev/null && echo "  Installed via npm" || true
     fi
 
-    # Fallback: try the install script
     if ! command -v conway-terminal &>/dev/null; then
         if command -v curl &>/dev/null; then
             curl -fsSL https://conway.tech/terminal.sh | sh 2>/dev/null || true
@@ -54,44 +58,51 @@ except Exception as e:
     fi
 fi
 
-# Verify installation
 if command -v conway-terminal &>/dev/null; then
     echo "  Conway Terminal OK: $(conway-terminal --version 2>/dev/null || echo 'installed')"
 else
-    echo "  WARNING: Conway Terminal not found in PATH. Engine will attempt self-install."
+    echo "  WARNING: Conway Terminal not found in PATH"
 fi
 
 # ─── Step 3: Provision Conway API Key ────────────────────────────
-echo "[3/5] Provisioning Conway API key..."
+echo "[3/6] Provisioning Conway API key..."
 
 if [ -f "${CONWAY_DIR}/config.json" ]; then
     echo "  Conway config already exists"
 else
-    # Try to provision via conway-terminal
     if command -v conway-terminal &>/dev/null; then
         conway-terminal --provision 2>/dev/null || true
     fi
-
-    # Verify config was created
-    if [ -f "${CONWAY_DIR}/config.json" ]; then
-        echo "  API key provisioned successfully"
-    else
-        echo "  WARNING: Could not auto-provision API key. Engine wizard will handle this."
-    fi
 fi
 
-# ─── Step 4: Configure OpenClaw ──────────────────────────────────
-echo "[4/5] Configuring OpenClaw..."
+# ─── Step 4: Copy credentials to engine directory (.anima/) ─────
+echo "[4/6] Syncing credentials to engine directory..."
+
+# Copy Conway wallet to .anima/ so the engine reuses it (instead of generating a new one)
+if [ -f "${CONWAY_DIR}/wallet.json" ] && [ ! -f "${ANIMA_DIR}/wallet.json" ]; then
+    cp "${CONWAY_DIR}/wallet.json" "${ANIMA_DIR}/wallet.json"
+    chmod 600 "${ANIMA_DIR}/wallet.json"
+    echo "  Wallet synced to .anima/"
+fi
+
+# Copy Conway config to .anima/ so the engine finds the API key
+if [ -f "${CONWAY_DIR}/config.json" ] && [ ! -f "${ANIMA_DIR}/config.json" ]; then
+    cp "${CONWAY_DIR}/config.json" "${ANIMA_DIR}/config.json"
+    chmod 600 "${ANIMA_DIR}/config.json"
+    echo "  Config synced to .anima/"
+fi
+
+# ─── Step 5: Configure OpenClaw ──────────────────────────────────
+echo "[5/6] Configuring OpenClaw..."
 
 OPENCLAW_CONFIG="${OPENCLAW_DIR}/config.json"
 if [ -f "${OPENCLAW_CONFIG}" ]; then
     echo "  OpenClaw config already exists"
 else
-    # Create OpenClaw config pointing to Conway Terminal
     python3 -c "
-import json, os
+import json, os, shutil
 
-conway_cfg_path = os.path.expanduser('${CONWAY_DIR}/config.json')
+conway_cfg_path = '${CONWAY_DIR}/config.json'
 api_key = ''
 if os.path.exists(conway_cfg_path):
     try:
@@ -100,8 +111,6 @@ if os.path.exists(conway_cfg_path):
     except:
         pass
 
-# Find conway-terminal binary
-import shutil
 ct_path = shutil.which('conway-terminal') or 'conway-terminal'
 
 config = {
@@ -122,33 +131,31 @@ print('  OpenClaw configured with Conway Terminal')
 " 2>/dev/null || echo "  WARNING: OpenClaw config creation failed"
 fi
 
-# ─── Step 5: Verify Environment ─────────────────────────────────
-echo "[5/5] Verifying environment..."
+# ─── Step 6: Verify Environment ─────────────────────────────────
+echo "[6/6] Verifying environment..."
 
 echo "  Agent HOME: ${AGENT_HOME}"
-echo "  Automaton dir: ${AUTOMATON_DIR}"
 
-# Check for required files
-for f in "${AUTOMATON_DIR}/auto-config.json" "${AUTOMATON_DIR}/genesis-prompt.md"; do
-    if [ -f "$f" ]; then
-        echo "  $(basename $f): OK"
-    else
-        echo "  $(basename $f): MISSING"
+for f in "${ANIMA_DIR}/auto-config.json" "${ANIMA_DIR}/genesis-prompt.md"; do
+    if [ -f "$f" ]; then echo "  $(basename $f): OK"
+    else echo "  $(basename $f): MISSING (will be created by agent setup)"
     fi
 done
 
-# Check Conway config
-if [ -f "${CONWAY_DIR}/config.json" ]; then
-    echo "  Conway config: OK"
+if [ -f "${ANIMA_DIR}/wallet.json" ]; then
+    echo "  Wallet: OK (shared between engine and Conway Terminal)"
 else
-    echo "  Conway config: NOT PROVISIONED (will be handled by engine)"
+    echo "  Wallet: NOT SET (engine wizard will generate one)"
 fi
 
-# Check OpenClaw config
-if [ -f "${OPENCLAW_CONFIG}" ]; then
-    echo "  OpenClaw config: OK"
+if [ -f "${ANIMA_DIR}/config.json" ]; then
+    echo "  API key: OK"
 else
-    echo "  OpenClaw config: NOT SET (will be handled by engine)"
+    echo "  API key: NOT SET (engine wizard will provision one)"
+fi
+
+if [ -f "${OPENCLAW_CONFIG}" ]; then echo "  OpenClaw: OK"
+else echo "  OpenClaw: NOT SET"
 fi
 
 echo ""
