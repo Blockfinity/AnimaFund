@@ -25,17 +25,23 @@ function timeAgo(ts) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// ─── Log parsing (same as EngineConsole) ───
+// ─── Log parsing (enhanced for Conway engine format) ───
 function parseLogLine(line) {
   const trimmed = line.trim();
   if (!trimmed) return null;
+  // Skip pure decoration lines
+  if (/^[═╔╗╚╝║█▓░╗╝╚╔─╯╭│╮╰]+$/.test(trimmed) || /^[█╗╚╔═╝║]+/.test(trimmed) || trimmed.length < 2) return null;
+  // Try JSON first
   try {
     const j = JSON.parse(trimmed);
     return { type: 'structured', timestamp: j.timestamp, level: j.level || 'info', module: j.module || '', message: j.message || '', raw: trimmed };
-  } catch {
-    if (trimmed.match(/^[═╔╗╚╝║█▓░╗╝╚╔─╯╭│╮╰]+$/) || trimmed.match(/^[█╗╚╔═╝║]+/) || trimmed.length < 2) return null;
-    return { type: 'text', message: trimmed, raw: trimmed };
+  } catch { /* not JSON */ }
+  // Conway engine format: [TIMESTAMP] [MODULE] message  or  [TIMESTAMP] message
+  const tsMatch = trimmed.match(/^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\]\s*(.+)$/);
+  if (tsMatch) {
+    return { type: 'structured', timestamp: tsMatch[1], level: 'info', module: '', message: tsMatch[2], raw: trimmed };
   }
+  return { type: 'text', message: trimmed, raw: trimmed };
 }
 
 function getLogColor(entry) {
@@ -55,16 +61,23 @@ function getLogColor(entry) {
 function getLogTag(entry) {
   if (!entry) return '';
   const msg = entry.message.toLowerCase();
-  if (msg.includes('wallet created')) return 'WALLET';
-  if (msg.includes('api key provisioned')) return 'API KEY';
-  if (msg.includes('skill')) return 'SKILLS';
+  if (msg.includes('wallet created') || msg.includes('wallet loaded')) return 'WALLET';
+  if (msg.includes('api key provisioned') || msg.includes('api key')) return 'API KEY';
+  if (msg.includes('skill') || msg.includes('clawhub')) return 'SKILLS';
   if (msg.includes('heartbeat')) return 'HEARTBEAT';
-  if (msg.includes('sleeping') || msg.includes('sleep')) return 'SLEEP';
-  if (msg.includes('critical')) return 'CRITICAL';
-  if (msg.includes('error') || msg.includes('fatal')) return 'ERROR';
-  if (msg.includes('think') || msg.includes('inference')) return 'THINK';
-  if (msg.includes('state:')) return 'STATE';
-  if (entry.module === 'loop') return 'LOOP';
+  if (msg.includes('sleeping') || msg.includes('sleep') || msg.includes('backoff')) return 'SLEEP';
+  if (msg.includes('critical') || msg.includes('insufficient')) return 'CRITICAL';
+  if (msg.includes('error') || msg.includes('fatal') || msg.includes('fail')) return 'ERROR';
+  if (msg.includes('think') || msg.includes('inference') || msg.includes('routing inference')) return 'THINK';
+  if (msg.includes('[tool]') || msg.includes('tool result') || msg.includes('tool_used')) return 'TOOL';
+  if (msg.includes('orchestrator') || msg.includes('phase=')) return 'ORCH';
+  if (msg.includes('sandbox') || msg.includes('expose_port')) return 'SANDBOX';
+  if (msg.includes('browse') || msg.includes('discover_agent')) return 'NETWORK';
+  if (msg.includes('x402') || msg.includes('usdc') || msg.includes('credits')) return 'FINANCE';
+  if (msg.includes('state:') || msg.includes('waking') || msg.includes('running')) return 'STATE';
+  if (msg.includes('wake up') || msg.includes('alive')) return 'STATE';
+  if (entry.module === 'loop' || msg.includes('[loop]')) return 'LOOP';
+  if (msg.includes('turn ') || msg.includes('tools,')) return 'TURN';
   return 'INFO';
 }
 
@@ -246,7 +259,7 @@ export default function AgentMind({ genesisState, selectedAgent }) {
     fetchBalance();
     const bi = setInterval(fetchBalance, 15000);
     return () => clearInterval(bi);
-  }, []);
+  }, [selectedAgent]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -278,7 +291,10 @@ export default function AgentMind({ genesisState, selectedAgent }) {
       const newLogs = [...parsed, ...parsedErrors];
       if (newLogs.length > 0) {
         setLogs(prev => {
-          if (prev.length === newLogs.length) return prev; // Skip if same count
+          // Compare last entry to detect actual changes (not just count)
+          const prevLast = prev.length > 0 ? prev[prev.length - 1]?.raw : '';
+          const newLast = newLogs.length > 0 ? newLogs[newLogs.length - 1]?.raw : '';
+          if (prev.length === newLogs.length && prevLast === newLast) return prev;
           return newLogs;
         });
       }
@@ -296,12 +312,16 @@ export default function AgentMind({ genesisState, selectedAgent }) {
           }));
           liveAgents.unshift({ id: 'founder', name: engine.fund_name || 'Founder AI', role: 'Founder AI', status: engine.agent_state, wallet: '', sandbox: '' });
           setAgents(prev => {
-            if (prev.length === liveAgents.length) return prev;
+            if (JSON.stringify(prev) === JSON.stringify(liveAgents)) return prev;
             return liveAgents;
           });
           const newTurns = turnsData.turns || [];
           setTurns(prev => {
             if (prev.length === newTurns.length && newTurns.length === 0) return prev;
+            // Compare last turn ID to detect actual changes
+            const prevLastId = prev.length > 0 ? prev[0]?.turn_id : '';
+            const newLastId = newTurns.length > 0 ? newTurns[0]?.turn_id : '';
+            if (prev.length === newTurns.length && prevLastId === newLastId) return prev;
             if (newTurns.length > 0) return newTurns;
             return prev;
           });
@@ -321,12 +341,12 @@ export default function AgentMind({ genesisState, selectedAgent }) {
     finally { setLoading(false); }
   }, []);
 
-  // Stable polling — fixed 8-second interval to prevent cascading re-renders
+  // Stable polling — fixed 8-second interval, resets on agent switch
   useEffect(() => {
     fetchData();
     const i = setInterval(fetchData, 8000);
     return () => clearInterval(i);
-  }, [fetchData]);
+  }, [fetchData, selectedAgent]);
 
   // Auto-scroll: only when enabled AND new data arrives — simple and stable
   const prevLogCount = useRef(0);
@@ -523,9 +543,10 @@ export default function AgentMind({ genesisState, selectedAgent }) {
                   const tagColors = {
                     ERROR: '#f87171', CRITICAL: '#fb923c', THINK: '#fbbf24', SLEEP: '#a78bfa',
                     HEARTBEAT: '#60a5fa', WALLET: '#34D399', 'API KEY': '#34D399', SKILLS: '#34D399',
-                    STATE: '#818cf8', LOOP: '#fbbf24', INFO: '#71717a',
+                    STATE: '#818cf8', LOOP: '#fbbf24', INFO: '#71717a', TOOL: '#34D399',
+                    ORCH: '#e879f9', SANDBOX: '#38bdf8', NETWORK: '#22d3ee', FINANCE: '#facc15', TURN: '#a78bfa',
                   };
-                  const isImportant = ['THINK', 'ERROR', 'CRITICAL', 'STATE', 'WALLET', 'SKILLS'].includes(tag);
+                  const isImportant = ['THINK', 'ERROR', 'CRITICAL', 'STATE', 'WALLET', 'SKILLS', 'TOOL', 'ORCH', 'SANDBOX', 'TURN'].includes(tag);
                   return (
                     <div key={i} style={{
                       padding: isImportant ? '6px 10px' : '2px 10px',
@@ -568,7 +589,8 @@ export default function AgentMind({ genesisState, selectedAgent }) {
                 const tagColors = {
                   ERROR: '#f87171', CRITICAL: '#fb923c', THINK: '#fbbf24', SLEEP: '#a78bfa',
                   HEARTBEAT: '#60a5fa', WALLET: '#34D399', 'API KEY': '#34D399', SKILLS: '#34D399',
-                  STATE: '#818cf8', LOOP: '#fbbf24', INFO: '#71717a',
+                  STATE: '#818cf8', LOOP: '#fbbf24', INFO: '#71717a', TOOL: '#34D399',
+                  ORCH: '#e879f9', SANDBOX: '#38bdf8', NETWORK: '#22d3ee', FINANCE: '#facc15', TURN: '#a78bfa',
                 };
                 return (
                   <div key={i} style={{ padding: '2px 14px', display: 'flex', gap: '8px', color: getLogColor(entry), alignItems: 'flex-start' }}>

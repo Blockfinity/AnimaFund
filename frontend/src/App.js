@@ -81,6 +81,10 @@ function App() {
     await handleSelectAgent(agent.agent_id);
   };
 
+  // Use a ref for view to avoid re-creating checkStatus when view changes
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
+
   const checkStatus = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/genesis/status`);
@@ -135,7 +139,8 @@ function App() {
         } catch { /* keep previous state */ }
       }
 
-      if (view === 'loading') {
+      const currentView = viewRef.current;
+      if (currentView === 'loading') {
         if (data.config_exists || data.wallet_address || data.engine_live) {
           setView('dashboard');
           setEngineStarted(true);
@@ -145,9 +150,9 @@ function App() {
       }
     } catch (e) {
       console.error('Status poll failed:', e);
-      if (view === 'loading') setView('genesis');
+      if (viewRef.current === 'loading') setView('genesis');
     }
-  }, [view]);
+  }, []); // No dependencies — uses refs for mutable values
 
   // Poll at a stable 8-second interval — fast enough for real-time, slow enough to avoid race conditions
   useEffect(() => {

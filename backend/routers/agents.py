@@ -61,7 +61,7 @@ async def list_available_skills():
         {"name": "sandbox_write_file", "description": "Write files to cloud sandboxes", "source": "conway-cloud"},
         {"name": "sandbox_read_file", "description": "Read files from cloud sandboxes", "source": "conway-cloud"},
         {"name": "sandbox_pty_create", "description": "Interactive terminal sessions (REPLs, editors)", "source": "conway-cloud"},
-        {"name": "chat_completions", "description": "Run frontier models (GPT-4o, o3-mini, Claude, Kimi)", "source": "conway-compute"},
+        {"name": "chat_completions", "description": "Run frontier models (GPT-5.2, Claude Opus 4.6, Gemini 3, Kimi K2.5, Qwen3)", "source": "conway-compute"},
         {"name": "domain_search", "description": "Search for available domain names with pricing", "source": "conway-domains"},
         {"name": "domain_register", "description": "Register real domains (.com, .ai, .io) with USDC", "source": "conway-domains"},
         {"name": "domain_dns_add", "description": "Manage DNS records for registered domains", "source": "conway-domains"},
@@ -261,13 +261,29 @@ async def create_agent(req: CreateAgentRequest):
 
     # Write auto-config.json for non-interactive engine setup
     welcome = req.welcome_message or f"You are {req.name}. Execute immediately."
+    creator_addr = req.creator_eth_wallet or "0x0000000000000000000000000000000000000000"
     with open(os.path.join(automaton_dir, "auto-config.json"), "w") as f:
         json.dump({
             "name": req.name,
             "genesisPrompt": full_prompt,
             "creatorMessage": welcome,
-            "creatorAddress": "0x0000000000000000000000000000000000000000",
+            "creatorAddress": creator_addr,
         }, f)
+
+    # Pre-bootstrap the agent environment (install Conway Terminal, configure OpenClaw)
+    bootstrap_script = "/app/scripts/bootstrap_agent.sh"
+    if os.path.exists(bootstrap_script):
+        try:
+            bootstrap_env = os.environ.copy()
+            bootstrap_env["HOME"] = agent_home
+            subprocess.run(
+                ["bash", bootstrap_script],
+                env=bootstrap_env,
+                timeout=120,
+                capture_output=True,
+            )
+        except Exception:
+            pass  # Non-fatal — engine wizard will handle remaining setup
 
     agent_doc = {
         "agent_id": agent_id,

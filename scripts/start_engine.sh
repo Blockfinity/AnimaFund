@@ -1,6 +1,7 @@
 #!/bin/bash
 # Anima Fund Engine Starter
-# Runs the single-file bundle (all JS deps inlined, native addon loaded from /app/automaton/native/)
+# 1. Bootstraps the agent environment (Conway Terminal, OpenClaw)
+# 2. Runs the single-file bundle (all JS deps inlined, native addon loaded from /app/automaton/native/)
 
 set -e
 
@@ -20,6 +21,14 @@ case "$ARCH" in
 esac
 
 echo "Native addon ready: $(ls -la native/better_sqlite3.node 2>/dev/null || echo 'NOT FOUND')"
+
+# ─── Bootstrap agent environment (pre-install tools) ─────────────
+BOOTSTRAP_SCRIPT="/app/scripts/bootstrap_agent.sh"
+if [ -f "$BOOTSTRAP_SCRIPT" ]; then
+    echo "Running agent bootstrap..."
+    bash "$BOOTSTRAP_SCRIPT" 2>&1 || echo "Bootstrap completed with warnings (non-fatal)"
+    echo ""
+fi
 
 # Find node and run the bundle
 NODE=""
