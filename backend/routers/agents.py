@@ -27,7 +27,6 @@ class CreateAgentRequest(BaseModel):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     include_conway: bool = True  # Include Conway Terminal tools in genesis prompt
-    selected_skills: list = []  # Empty = copy all skills
 
 
 @router.get("/skills/available")
@@ -196,8 +195,7 @@ async def create_agent(req: CreateAgentRequest):
     # Each agent gets its own HOME directory so engine reads from $HOME/.automaton/
     agent_home = os.path.expanduser(f"~/agents/{agent_id}")
     automaton_dir = os.path.join(agent_home, ".automaton")
-    skills_dir = os.path.join(automaton_dir, "skills")
-    os.makedirs(skills_dir, exist_ok=True)
+    os.makedirs(automaton_dir, exist_ok=True)
 
     # Per-agent Telegram creds — REQUIRED for new agents (no global fallback)
     tg_token = req.telegram_bot_token.strip() if req.telegram_bot_token else ""
@@ -210,11 +208,12 @@ async def create_agent(req: CreateAgentRequest):
     full_prompt = full_prompt.replace("{{AGENT_NAME}}", req.name)
     full_prompt = full_prompt.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
     full_prompt = full_prompt.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
+    full_prompt = full_prompt.replace("{{CREATOR_WALLET}}", req.creator_sol_wallet or "")
+    full_prompt = full_prompt.replace("{{CREATOR_ETH_ADDRESS}}", req.creator_eth_wallet or "")
 
     # Conditionally strip Conway Terminal tools section
     if not req.include_conway:
         import re
-        # Remove the CONWAY TERMINAL block from the prompt
         full_prompt = re.sub(
             r'CONWAY TERMINAL \(MCP Server.*?\n(?=\n[A-Z]|\n={2,}|\Z)',
             'CONWAY TERMINAL: Disabled for this agent.\n\n',
@@ -231,16 +230,13 @@ async def create_agent(req: CreateAgentRequest):
         if req.creator_eth_wallet:
             full_prompt += f"Ethereum: {req.creator_eth_wallet}\n"
 
-    if tg_token and tg_chat:
-        full_prompt += f"\n\n{sep}\nTELEGRAM\n{sep}\n\n"
-        full_prompt += f'Report EVERY turn via Telegram bot token: {tg_token}, chat: {tg_chat}\n'
-
     if req.goals:
         full_prompt += f"\n\n{sep}\nGOALS\n{sep}\n\n"
         for i, goal in enumerate(req.goals, 1):
             full_prompt += f"{i}. {goal}\n"
 
-    # Write genesis prompt into agent's .automaton/
+    # Write genesis prompt — this is the ONLY instruction the agent needs.
+    # The agent is fully autonomous and will install its own tools, skills, and environment.
     with open(os.path.join(automaton_dir, "genesis-prompt.md"), "w") as f:
         f.write(full_prompt)
 
@@ -253,31 +249,6 @@ async def create_agent(req: CreateAgentRequest):
             "creatorMessage": welcome,
             "creatorAddress": "0x0000000000000000000000000000000000000000",
         }, f)
-
-    # Copy constitution (contains security rules — Article XIII)
-    constitution_src = os.path.join(AUTOMATON_DIR, "constitution.md")
-    if os.path.exists(constitution_src):
-        import shutil
-        shutil.copy2(constitution_src, os.path.join(automaton_dir, "constitution.md"))
-
-    # Copy skills — only selected, or all if none specified
-    src_skills = os.path.join(AUTOMATON_DIR, "skills")
-    if os.path.isdir(src_skills):
-        selected = set(req.selected_skills) if req.selected_skills else None
-        for sname in os.listdir(src_skills):
-            if selected and sname not in selected:
-                continue
-            sf = os.path.join(src_skills, sname, "SKILL.md")
-            if os.path.exists(sf):
-                td = os.path.join(skills_dir, sname)
-                os.makedirs(td, exist_ok=True)
-                with open(sf, "r") as f:
-                    skill_content = f.read()
-                skill_content = skill_content.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
-                skill_content = skill_content.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
-                skill_content = skill_content.replace("{{AGENT_NAME}}", req.name)
-                with open(os.path.join(td, "SKILL.md"), "w") as f:
-                    f.write(skill_content)
 
     agent_doc = {
         "agent_id": agent_id,

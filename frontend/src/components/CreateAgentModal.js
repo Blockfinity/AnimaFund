@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Loader2, Search, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Loader2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -14,21 +14,10 @@ export default function CreateAgentModal({ onClose, onCreated }) {
   const [tgBotToken, setTgBotToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
   const [includeConway, setIncludeConway] = useState(true);
-  const [allSkills, setAllSkills] = useState([]);
-  const [selectedSkills, setSelectedSkills] = useState(new Set());
-  const [skillSearch, setSkillSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [templateLoaded, setTemplateLoaded] = useState(false);
-
-  useEffect(() => {
-    fetch(`${API}/api/skills/available`).then(r => r.json()).then(d => {
-      setAllSkills(d.skills || []);
-      // Select all by default
-      setSelectedSkills(new Set((d.skills || []).map(s => s.name)));
-    }).catch(() => {});
-  }, []);
 
   const loadTemplate = async () => {
     try {
@@ -40,21 +29,6 @@ export default function CreateAgentModal({ onClose, onCreated }) {
       }
     } catch {}
   };
-
-  const toggleSkill = (name) => {
-    setSelectedSkills(prev => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      return next;
-    });
-  };
-
-  const selectAll = () => setSelectedSkills(new Set(allSkills.map(s => s.name)));
-  const selectNone = () => setSelectedSkills(new Set());
-
-  const filteredSkills = allSkills.filter(s =>
-    !skillSearch || s.name.toLowerCase().includes(skillSearch.toLowerCase()) || (s.description || '').toLowerCase().includes(skillSearch.toLowerCase())
-  );
 
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) { setError('Name and genesis prompt are required'); return; }
@@ -95,7 +69,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
       setLoading(false); setStatus(''); return;
     }
 
-    // Step 3: Create the agent
+    // Step 3: Create the agent — the agent is autonomous, it installs its own skills
     try {
       const res = await fetch(`${API}/api/agents/create`, {
         method: 'POST',
@@ -111,7 +85,6 @@ export default function CreateAgentModal({ onClose, onCreated }) {
           telegram_bot_token: tgBotToken.trim(),
           telegram_chat_id: tgChatId.trim(),
           include_conway: includeConway,
-          selected_skills: [...selectedSkills],
         }),
       });
       const data = await res.json();
@@ -120,7 +93,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
         const startRes = await fetch(`${API}/api/agents/${data.agent.agent_id}/start`, { method: 'POST' });
         const startData = await startRes.json();
         if (startData.success) {
-          setStatus('Engine started! Wallet generating...');
+          setStatus('Engine started! Agent is now autonomous.');
           setTimeout(() => onCreated(data.agent), 1500);
         } else {
           onCreated(data.agent);
@@ -174,7 +147,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Initial Goals (one per line)</label>
             <textarea data-testid="agent-goals-input" value={goals} onChange={(e) => setGoals(e.target.value)}
-              placeholder={"Make $5K in the first hour\nInstall OpenClaw\nFind 3 AI agents to partner with"}
+              placeholder={"Install OpenClaw and verify browser works\nDiscover and install trading skills from ClawHub\nGenerate $5K revenue in first 3 hours"}
               rows={3} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground resize-y" />
           </div>
 
@@ -239,53 +212,15 @@ export default function CreateAgentModal({ onClose, onCreated }) {
             </div>
           </div>
 
-          {/* Skill Selector */}
-          <div className="border-t border-border pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Skills ({selectedSkills.size}/{allSkills.length} selected)</label>
-              <div className="flex gap-2">
-                <button data-testid="skills-select-all" onClick={selectAll} className="text-[10px] text-foreground hover:underline">Select All</button>
-                <button data-testid="skills-select-none" onClick={selectNone} className="text-[10px] text-muted-foreground hover:underline">None</button>
-              </div>
-            </div>
-            <div className="relative mb-2">
-              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-muted-foreground" />
-              <input data-testid="skills-search" value={skillSearch} onChange={(e) => setSkillSearch(e.target.value)}
-                placeholder="Search skills..." className="w-full pl-8 pr-3 py-1.5 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground" />
-            </div>
-            <div className="max-h-40 overflow-y-auto border border-border rounded-md divide-y divide-border">
-              {filteredSkills.map(s => (
-                <div key={s.name} onClick={() => toggleSkill(s.name)}
-                  className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-secondary/30 cursor-pointer text-xs select-none"
-                  data-testid={`skill-item-${s.name}`}>
-                  <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${selectedSkills.has(s.name) ? 'bg-foreground border-foreground' : 'border-border'}`}>
-                    {selectedSkills.has(s.name) && <Check className="w-3 h-3 text-background" />}
-                  </div>
-                  <div className="min-w-0 flex items-center gap-1.5 flex-1">
-                    <span className="font-medium text-foreground">{s.name}</span>
-                    {s.source && s.source !== 'anima' && (
-                      <span className={`text-[8px] px-1 py-0.5 rounded-sm font-bold flex-shrink-0 ${
-                        s.source.startsWith('conway') ? 'bg-blue-500/15 text-blue-400' :
-                        s.source === 'openclaw' ? 'bg-purple-500/15 text-purple-400' :
-                        s.source === 'clawhub' ? 'bg-amber-500/15 text-amber-400' :
-                        s.source === 'mcp' ? 'bg-cyan-500/15 text-cyan-400' :
-                        'bg-emerald-500/15 text-emerald-400'
-                      }`}>
-                        {s.source.startsWith('conway') ? s.source.replace('conway-', '').toUpperCase() :
-                         s.source.toUpperCase()}
-                      </span>
-                    )}
-                    {s.installed === false && (
-                      <span className="text-[8px] px-1 py-0.5 rounded-sm font-bold bg-zinc-500/15 text-zinc-400 flex-shrink-0">MARKETPLACE</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {filteredSkills.length === 0 && <div className="px-3 py-4 text-xs text-muted-foreground text-center">No skills match your search</div>}
-            </div>
+          {/* Info box */}
+          <div className="border border-border rounded-md p-3 bg-secondary/30">
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              The agent is <strong>fully autonomous</strong>. It will install its own skills from ClawHub, set up OpenClaw for web browsing,
+              and configure its environment independently. The genesis prompt defines its mission — the agent handles everything else.
+            </p>
           </div>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p data-testid="create-agent-error" className="text-xs text-red-600">{error}</p>}
           {status && !error && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" />{status}</div>}
         </div>
         <div className="flex justify-end gap-3 px-5 py-4 border-t border-border flex-shrink-0">

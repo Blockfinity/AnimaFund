@@ -1047,3 +1047,24 @@ def get_live_tool_usage() -> dict:
     except Exception:
         conn.close()
         return {}
+
+
+def get_engine_logs(lines: int = 20) -> dict:
+    """Read engine stdout/stderr logs for the active agent."""
+    result = {"stdout": "", "stderr": ""}
+    agent_home = os.path.dirname(_active_data_dir)
+    # Check agent-specific logs first, then global
+    for log_dir in [agent_home, "/var/log"]:
+        stdout_path = os.path.join(log_dir, "engine.out.log" if log_dir != "/var/log" else "automaton.out.log")
+        stderr_path = os.path.join(log_dir, "engine.err.log" if log_dir != "/var/log" else "automaton.err.log")
+        if os.path.exists(stdout_path) or os.path.exists(stderr_path):
+            for name, path in [("stdout", stdout_path), ("stderr", stderr_path)]:
+                if os.path.exists(path):
+                    try:
+                        with open(path, "r") as f:
+                            all_lines = f.readlines()
+                            result[name] = "".join(all_lines[-lines:])
+                    except Exception:
+                        pass
+            break
+    return result

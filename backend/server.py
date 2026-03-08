@@ -11,6 +11,7 @@ wallet generation, API key provisioning, constitution, SOUL, skills, heartbeat.
 """
 import os
 import asyncio
+import logging
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -22,8 +23,9 @@ from config import CREATOR_WALLET
 from engine_bridge import (
     is_engine_live, get_live_identity,
     get_live_turns, get_live_kv_store,
+    get_engine_logs,
 )
-from telegram_notify import notify_state_change, notify_turn
+from telegram_notify import notify_state_change, notify_turn, notify_error, send_telegram
 from database import get_db
 from payment_tracker import get_payment_status
 
@@ -32,83 +34,113 @@ from routers import agents, genesis, live, telegram
 # ─── Telegram log monitor state ───
 _monitor_task = None
 _last_state = "unknown"
-_last_turn_count = 0
-_last_balance_tier = ""
+_last_turn_id = None
+_last_activity_id = 0
+_last_log_lines = 0
 
 
 async def _monitor_engine_logs():
-    """Background task that watches engine state and sends Telegram notifications to the ACTIVE agent's bot."""
-    global _last_state, _last_turn_count, _last_balance_tier
+    """Background task that forwards ALL engine actions, logs, and tool calls to the active agent's Telegram bot."""
+    global _last_state, _last_turn_id, _last_activity_id, _last_log_lines
     while True:
         try:
-            await asyncio.sleep(15)
+            await asyncio.sleep(8)
             engine = is_engine_live()
             if not engine.get("db_exists"):
                 continue
 
-            # Determine which agent is currently active
-            from engine_bridge import get_active_data_dir
-            get_active_data_dir()  # ensure module is loaded
+            # Determine active agent
+            from engine_bridge import get_active_data_dir, get_live_activity, get_engine_logs
+            get_active_data_dir()
             agent_id = None
-            # Try to find the agent_id from active_agent.txt or dir path
             try:
-                with open("/tmp/anima_active_agent_dir", "r") as f:
-                    d = f.read().strip()
-                    if "agents/" in d:
-                        agent_id = d.split("agents/")[-1].split("/")[0]
+                active_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "active_agent.txt")
+                if os.path.exists(active_file):
+                    with open(active_file, "r") as f:
+                        agent_id = f.read().strip()
             except Exception:
                 pass
             if not agent_id:
-                agent_id = "anima-fund"  # Default
+                agent_id = "anima-fund"
 
+            # 1. Forward state changes
             identity = get_live_identity()
-            current_state = identity.get("state", "unknown")
+            current_state = identity.get("state", engine.get("agent_state", "unknown"))
             if current_state != _last_state and _last_state != "unknown":
                 await notify_state_change(_last_state, current_state, agent_id=agent_id)
-                # Log the notification
-                try:
-                    db = get_db()
-                    await db.telegram_logs.insert_one({
-                        "agent_id": agent_id,
-                        "message": f"State: {_last_state} -> {current_state}",
-                        "success": True,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-                except Exception:
-                    pass
             _last_state = current_state
 
-            turns = get_live_turns(limit=1)
+            # 2. Forward ALL new turns with full details (thinking + tool calls + results)
+            turns = get_live_turns(limit=5)
             if turns:
-                latest = turns[0]
-                turn_num = latest.get("turn_number", 0)
-                if turn_num > _last_turn_count:
-                    tools = latest.get("tool_names", "").split(",") if latest.get("tool_names") else []
-                    thinking = latest.get("thinking", "")
-                    await notify_turn(turn_num, thinking, tools, agent_id=agent_id)
-                    # Log the notification
-                    try:
-                        db = get_db()
-                        await db.telegram_logs.insert_one({
-                            "agent_id": agent_id,
-                            "message": f"Turn #{turn_num}: {', '.join(tools[:3])}",
-                            "success": True,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        })
-                    except Exception:
-                        pass
-                    _last_turn_count = turn_num
+                # Turns are returned newest first — process oldest new ones first
+                new_turns = []
+                for t in reversed(turns):
+                    if _last_turn_id is None or t["turn_id"] != _last_turn_id:
+                        if _last_turn_id is None:
+                            _last_turn_id = t["turn_id"]
+                            break  # Skip first run to avoid spamming old turns
+                        new_turns.append(t)
 
-            kv = get_live_kv_store()
-            tier = ""
-            for item in kv:
-                if item.get("key") == "survival_tier":
-                    tier = item.get("value", "")
-                    break
-            if tier and tier != _last_balance_tier:
-                _last_balance_tier = tier
+                for turn in new_turns:
+                    _last_turn_id = turn["turn_id"]
+                    # Build detailed turn message
+                    thinking = (turn.get("thinking") or "")[:300]
+                    tools = turn.get("tool_calls", [])
+                    cost = turn.get("cost_cents", 0)
 
-        except Exception:
+                    msg_parts = [f"<b>TURN</b> | State: {turn.get('state', '?')} | Cost: {cost}c"]
+                    if thinking:
+                        msg_parts.append(f"\n<b>Thinking:</b> {thinking}{'...' if len(turn.get('thinking', '')) > 300 else ''}")
+
+                    for tc in tools[:6]:
+                        tool_name = tc.get("tool", "?")
+                        args = tc.get("arguments", {})
+                        result = (tc.get("result") or "")[:200]
+                        error = tc.get("error", "")
+                        duration = tc.get("duration_ms", 0)
+
+                        # Show the most useful argument (first key-value)
+                        arg_preview = ""
+                        if isinstance(args, dict):
+                            for k, v in list(args.items())[:2]:
+                                val = str(v)[:80]
+                                arg_preview += f"\n  {k}: {val}"
+
+                        tc_msg = f"\n<b>{tool_name}</b> ({duration}ms)"
+                        if arg_preview:
+                            tc_msg += arg_preview
+                        if error:
+                            tc_msg += f"\n  ERROR: {error[:150]}"
+                        elif result:
+                            tc_msg += f"\n  Result: {result[:200]}"
+                        msg_parts.append(tc_msg)
+
+                    if len(tools) > 6:
+                        msg_parts.append(f"\n... +{len(tools) - 6} more tool calls")
+
+                    full_msg = "\n".join(msg_parts)
+                    # Telegram has 4096 char limit
+                    if len(full_msg) > 4000:
+                        full_msg = full_msg[:3997] + "..."
+                    await send_telegram(full_msg, agent_id=agent_id)
+
+            # 3. Forward engine log errors (stderr)
+            try:
+                logs = get_engine_logs()
+                stderr = logs.get("stderr", "")
+                if stderr:
+                    err_lines = [line.strip() for line in stderr.split("\n") if line.strip()]
+                    new_errors = err_lines[_last_log_lines:] if _last_log_lines < len(err_lines) else []
+                    _last_log_lines = len(err_lines)
+                    if new_errors:
+                        err_msg = "\n".join(new_errors[-5:])  # Last 5 new error lines
+                        await notify_error(err_msg, agent_id=agent_id)
+            except Exception:
+                pass
+
+        except Exception as e:
+            logging.getLogger("monitor").warning(f"Monitor error: {e}")
             pass
 
 
