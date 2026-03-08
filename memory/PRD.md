@@ -18,15 +18,20 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform where new, 
 │   └── routers/
 │       ├── agents.py       # Agent CRUD, bootstrap, engine start
 │       ├── genesis.py      # Status, logs, wallet balance, prompt template
-│       └── live.py         # Live agent data (turns, soul, identity)
+│       ├── live.py         # Live agent data (turns, soul, identity)
+│       ├── infrastructure.py # VM/Sandbox monitoring, terminal, domains, activity feed
+│       └── telegram.py     # Telegram notification relay
 ├── frontend/src/
 │   ├── App.js              # Router, polling (stable useCallback with viewRef)
 │   ├── pages/
 │   │   ├── AgentMind.js    # Real-time agent monitoring (stable polling)
+│   │   ├── Infrastructure.js # VM/Sandbox/Domains/Terminal/Tools/Network monitoring
+│   │   ├── Activity.js     # Comprehensive activity feed with category filters
 │   │   ├── FundHQ.js       # Fund overview
 │   │   ├── Agents.js       # Agent list
 │   │   └── Skills.js       # Skills browser (141 skills)
 │   └── components/
+│       ├── Sidebar.js      # Navigation (includes Infrastructure)
 │       └── CreateAgentModal.js  # Agent creation with Telegram verification
 └── scripts/
     ├── start_engine.sh     # Engine starter (runs bootstrap first)
@@ -37,49 +42,56 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform where new, 
 
 ### Agent Creation & Isolation
 - Full agent isolation: each agent gets own HOME directory, data dir, logs
-- auto-config.json with proper creator address (was hardcoded to zero)
+- auto-config.json with proper creator address (fixed from hardcoded zero)
 - Pre-bootstrap script installs Conway Terminal + configures OpenClaw before engine starts
 - Per-agent Telegram credentials (required for creation)
 
 ### Genesis Prompt (Completely Rewritten)
 - Reduced from 490 lines (~25KB) to ~100 lines (~5.8KB)
-- Agent starts with tools ALREADY INSTALLED (no Phase 0 bootstrap needed in prompt)
-- Lean SOUL.md: agent condensed from massive document to focused identity
+- Agent starts with tools ALREADY INSTALLED (no Phase 0 bootstrap needed)
 - Clear 3-step startup: Telegram → Verify Tools → Condense SOUL.md
 - Complete tools reference kept but concise
-- Revenue strategies, financial discipline, security rules all present but compact
+- Revenue strategies, financial discipline, security rules all compact
+
+### Infrastructure Monitoring (NEW)
+- **Overview tab**: Stats grid showing Sandboxes, Domains, Installed Tools, Discovered Agents, Messages, Public URLs
+- **Sandboxes tab**: Lists all Conway Cloud VMs with status, resources, public URLs
+- **Terminal tab**: Read-only dark-themed terminal showing all exec/sandbox_exec output
+- **Domains tab**: Registered domains with DNS records
+- **Installed Tools tab**: MCP servers, npm packages, ClawHub skills
+- **Agent Network tab**: Discovered agents and agent-to-agent messages
+
+### Comprehensive Activity Feed (ENHANCED)
+- ALL agent actions in one stream: tool calls, transactions, on-chain TXs, messages, modifications, heartbeats
+- Category-based filtering: infrastructure, compute, finance, network, domains, orchestrator, tools, inference, memory, system
+- Real-time polling every 8 seconds
 
 ### UI Stability (Critical Bug Fixed)
-- Fixed useCallback dependency: `checkStatus` now uses `[]` with `viewRef` (was `[view]`)
-- Fixed log comparison: content-based (prevLast === newLast) instead of count-only
-- Fixed turns/agents comparison to detect actual data changes
-- Balance fetch resets on agent switch via `selectedAgent` dependency
-- Polling interval stable at 8 seconds, never re-created
+- Fixed useCallback dependency: `checkStatus` now uses `[]` with `viewRef`
+- Fixed log comparison: content-based instead of count-only
+- Balance fetch resets on agent switch
+- Polling interval stable, never re-created
 
 ### Live Feed Enhancement
 - Enhanced log parser: recognizes Conway engine format timestamps
-- New log tags: TOOL, ORCH, SANDBOX, NETWORK, FINANCE, TURN (was only 8 tags, now 14)
-- Tag colors updated for all new categories
-- Important entries highlighted with left border
+- 14 log tags: TOOL, ORCH, SANDBOX, NETWORK, FINANCE, TURN, etc.
 
 ### Skills & Models
 - Updated model names: GPT-5.2, Claude Opus 4.6, Gemini 3, Kimi K2.5, Qwen3
-- 141 skills available across Anima, Conway, OpenClaw, ClawHub sources
+- 141 skills available
 
 ## Key API Endpoints
 - `POST /api/agents/create` — Create agent with bootstrap
 - `POST /api/agents/{id}/start` — Start engine with pre-bootstrap
-- `POST /api/agents/{id}/select` — Switch active agent
 - `GET /api/genesis/status` — Agent status, wallet, engine state
 - `GET /api/engine/logs` — Agent-specific logs
 - `GET /api/wallet/balance` — Live on-chain balance
-- `GET /api/live/turns` — Live turn data from engine
-- `GET /api/live/soul` — SOUL.md content
-- `GET /api/skills/available` — All 141 skills
-- `GET /api/genesis/prompt-template` — Lean genesis prompt
-
-## DB Schema (MongoDB)
-- **agents** collection: agent_id, name, agent_home, data_dir, telegram_bot_token, telegram_chat_id, creator_sol_wallet, creator_eth_wallet, status, engine_pid
+- `GET /api/infrastructure/overview` — Infrastructure summary
+- `GET /api/infrastructure/sandboxes` — VM/Sandbox list
+- `GET /api/infrastructure/terminal` — Read-only terminal output
+- `GET /api/infrastructure/domains` — Registered domains
+- `GET /api/infrastructure/installed-tools` — Installed MCP tools
+- `GET /api/infrastructure/activity-feed` — Comprehensive activity feed
 
 ## 3rd Party Integrations
 - Conway Research: Terminal, Cloud, Compute, Domains (via MCP)
@@ -92,6 +104,8 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform where new, 
 - [x] Genesis prompt rewrite (lean, effective)
 - [x] Auto-config creator address fix
 - [x] Agent bootstrap script (Conway Terminal pre-install)
+- [x] Infrastructure monitoring page (6 tabs)
+- [x] Comprehensive activity feed with category filters
 - [x] Live Feed enhancement (better log parsing, new tags)
 - [x] Model names update
 
@@ -99,9 +113,10 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform where new, 
 - [ ] Verify agent bootstrap works end-to-end with live Conway Terminal install
 - [ ] Test agent creation flow with real Telegram credentials
 - [ ] Monitor agent behavior with new lean genesis prompt
+- [ ] Add real-time Telegram relay for infrastructure events
 
 ## P2 (Backlog)
-- [ ] Implement real smart contracts (replace instruction-based financial logic)
+- [ ] Implement real smart contracts
 - [ ] Android device control integration
 - [ ] Self-hosted infrastructure migration
-- [ ] React Query/SWR migration for polling (would eliminate all polling bugs permanently)
+- [ ] React Query/SWR migration for polling
