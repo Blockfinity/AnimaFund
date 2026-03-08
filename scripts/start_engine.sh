@@ -42,5 +42,9 @@ fi
 echo "Using $NODE ($($NODE --version))"
 echo "Starting bundle..."
 
+# Export Telegram credentials so agent can use them via exec tool
+export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+export TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+
 # Pipe "yes" to handle any interactive prompts in the setup wizard
 yes "" 2>/dev/null | exec "$NODE" dist/bundle.mjs --run

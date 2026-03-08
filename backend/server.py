@@ -16,6 +16,7 @@ import shutil
 import signal
 import base64
 import subprocess
+import asyncio
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -42,6 +43,10 @@ from engine_bridge import (
     get_live_kv_store, get_live_wake_events, get_live_heartbeat_schedule,
     get_live_skills_full, get_live_models, get_live_tool_usage,
 )
+from telegram_notify import (
+    send_telegram, notify_engine_started, notify_state_change,
+    notify_balance_update, notify_error, notify_turn, notify_custom,
+)
 
 load_dotenv()
 
@@ -55,13 +60,64 @@ AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
 ANIMA_DIR = os.path.expanduser("~/.anima")
 CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r")
 
+# ─── Telegram log monitor state ───
+_monitor_task = None
+_last_state = "unknown"
+_last_turn_count = 0
+_last_balance_tier = ""
+
+
+async def _monitor_engine_logs():
+    """Background task that watches engine state and sends Telegram notifications."""
+    global _last_state, _last_turn_count, _last_balance_tier
+    while True:
+        try:
+            await asyncio.sleep(15)
+            engine = is_engine_live()
+            if not engine.get("db_exists"):
+                continue
+
+            # State change detection
+            identity = get_live_identity()
+            current_state = identity.get("state", "unknown")
+            if current_state != _last_state and _last_state != "unknown":
+                await notify_state_change(_last_state, current_state)
+            _last_state = current_state
+
+            # Turn detection
+            turns = get_live_turns(limit=1)
+            if turns:
+                latest = turns[0]
+                turn_num = latest.get("turn_number", 0)
+                if turn_num > _last_turn_count:
+                    tools = latest.get("tool_names", "").split(",") if latest.get("tool_names") else []
+                    thinking = latest.get("thinking", "")
+                    await notify_turn(turn_num, thinking, tools)
+                    _last_turn_count = turn_num
+
+            # Balance/tier change detection
+            kv = get_live_kv_store()
+            tier = ""
+            for item in kv:
+                if item.get("key") == "survival_tier":
+                    tier = item.get("value", "")
+                    break
+            if tier and tier != _last_balance_tier:
+                _last_balance_tier = tier
+
+        except Exception:
+            pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db_client, db
+    global db_client, db, _monitor_task
     db_client = AsyncIOMotorClient(MONGO_URL)
     db = db_client[DB_NAME]
+    _monitor_task = asyncio.create_task(_monitor_engine_logs())
     yield
+    if _monitor_task:
+        _monitor_task.cancel()
     db_client.close()
 
 
@@ -378,6 +434,12 @@ async def create_genesis_agent():
         with open(ENGINE_PID_FILE, "w") as f:
             f.write(str(proc.pid))
 
+        # 6. Notify creator via Telegram
+        await notify_engine_started(
+            wallet="(generating...)",
+            creator_wallet=CREATOR_WALLET,
+        )
+
         return {
             "success": True,
             "message": "Engine starting. The agent will generate its own wallet and begin operating.",
@@ -430,7 +492,10 @@ async def reset_genesis_agent():
             if os.path.isdir(item_path):
                 shutil.rmtree(item_path, ignore_errors=True)
             else:
-                os.remove(item_path)
+                try:
+                    os.remove(item_path)
+                except OSError:
+                    pass  # File may have been deleted already
 
         # 3b. Remove ~/.automaton (will be recreated as symlink on next create)
         automaton_dir = os.path.expanduser("~/.automaton")
@@ -448,6 +513,36 @@ async def reset_genesis_agent():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ═══════════════════════════════════════════════════════════
+# TELEGRAM
+# ═══════════════════════════════════════════════════════════
+
+class TelegramMessage(BaseModel):
+    text: str
+
+
+@app.post("/api/telegram/send")
+async def telegram_send(msg: TelegramMessage):
+    """Send a custom message to the creator's Telegram."""
+    ok = await send_telegram(msg.text)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Telegram send failed. Check bot token and chat ID.")
+    return {"success": True}
+
+
+@app.get("/api/telegram/status")
+async def telegram_status():
+    """Check if Telegram notifications are configured."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    return {
+        "configured": bool(token and chat_id),
+        "bot_token_set": bool(token),
+        "chat_id_set": bool(chat_id),
+    }
 
 
 # ═══════════════════════════════════════════════════════════
