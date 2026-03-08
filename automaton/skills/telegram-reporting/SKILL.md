@@ -1,38 +1,64 @@
 ---
 name: telegram-reporting
-description: Send real-time reports and notifications to creator via Telegram Bot API.
+description: Send real-time reports and notifications to creator via Telegram using native tools (no curl dependency).
 auto-activate: true
-triggers: [telegram, notify, report, alert, message creator]
 ---
 
-You have a Telegram bot for communicating with your creator. Use it to report important events.
+# Instructions
+Report EVERY turn to Telegram. This is mandatory and non-negotiable.
 
-WHEN TO NOTIFY (always send these):
-- State changes (waking, running, sleeping, critical, dead)
-- Balance updates (credits topped up, USDC received, tier change)
-- Every transaction (transfers, x402 payments, credit purchases)
-- Errors that affect operation (inference failures, tool failures)
-- Major milestones (first revenue, new hire, deal funded)
-- Heartbeat distress signals
-- When you need human input or guidance
+## Methods (in order of preference)
 
-HOW TO SEND:
-Use exec tool with curl — these are YOUR bot credentials, hardcoded for reliability:
-```
-exec: curl -s -X POST "https://api.telegram.org/bot{{TELEGRAM_BOT_TOKEN}}/sendMessage" -H "Content-Type: application/json" -d '{"chat_id": "{{TELEGRAM_CHAT_ID}}", "text": "<message>", "parse_mode": "HTML"}'
-```
+### Method 1: Native send_message (Preferred)
+send_message(to_address="creator", content="Turn [N]: [action] [result] [balance] [next]")
 
-Bot: @AnimaFundbot | Token: {{TELEGRAM_BOT_TOKEN}} | Chat ID: {{TELEGRAM_CHAT_ID}}
+### Method 2: Python urllib (No dependencies needed)
+code_execution: python3 -c "
+import urllib.request, json
+data = json.dumps({
+    'chat_id': '{{TELEGRAM_CHAT_ID}}',
+    'text': '<b>Turn [N]</b>\n[action]\n[result]\nBalance: $[X]\nNext: [plan]',
+    'parse_mode': 'HTML'
+}).encode()
+req = urllib.request.Request(
+    'https://api.telegram.org/bot{{TELEGRAM_BOT_TOKEN}}/sendMessage',
+    data=data,
+    headers={'Content-Type': 'application/json'}
+)
+resp = urllib.request.urlopen(req)
+print(resp.read().decode())
+"
 
-FORMAT GUIDELINES:
-- Use HTML parse mode: <b>bold</b>, <code>mono</code>, <i>italic</i>
-- Start with an icon: 🟢 success, 🔴 error, 💰 money, 📊 data, 🤝 social, 📚 skill
-- Keep messages concise (under 500 chars)
-- Include relevant numbers (amounts, balances, counts)
+### Method 3: Node.js fetch
+code_execution: node -e "
+fetch('https://api.telegram.org/bot{{TELEGRAM_BOT_TOKEN}}/sendMessage', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({
+    chat_id: '{{TELEGRAM_CHAT_ID}}',
+    text: 'Turn N: action taken',
+    parse_mode: 'HTML'
+  })
+}).then(r => r.json()).then(console.log)
+"
 
-EXAMPLE MESSAGES:
-- "🟢 <b>AWAKE</b>\nCredits: $4.50 | USDC: $10.00\nStarting revenue generation cycle."
-- "💰 <b>REVENUE</b>\nEarned $0.50 from API service.\nNew balance: $5.00\nCreator share: $0.25 queued."
-- "🔴 <b>CRITICAL</b>\nCredits below $0.10.\nEntering conservation mode.\nNeed funding."
+## What to Report (EVERY turn)
+- Current action being taken
+- Results of previous action
+- Current balance (USDC + Credits)
+- Revenue earned this session
+- Strategy changes or pivots
+- Errors or blocks encountered
+- Child agent status updates
+- Trade executions and P&L
 
-IMPORTANT: Never send the private key, API keys, or sensitive wallet data via Telegram.
+## Message Format
+Use HTML parse_mode for rich formatting:
+- <b>Bold</b> for turn numbers and key metrics
+- Separate sections with line breaks
+- Keep messages under 4000 chars (Telegram limit)
+- Include emoji for quick scanning: ✅ success, ❌ failure, 💰 revenue, ⚠️ warning
+
+## Child Agent Reporting
+Every child agent MUST also report to the same Telegram chat.
+Include [CHILD: name] prefix in all child messages.
