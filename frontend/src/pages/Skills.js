@@ -5,10 +5,10 @@ const API = process.env.REACT_APP_BACKEND_URL;
 
 const SOURCE_META = {
   anima:   { label: 'Anima Fund', color: '#9B6BFF', bg: '#9B6BFF18' },
-  conway:  { label: 'Conway Platform', color: '#5B9CFF', bg: '#5B9CFF18' },
   mcp:     { label: 'MCP Server', color: '#34D399', bg: '#34D39918' },
   openclaw:{ label: 'OpenClaw', color: '#FFB347', bg: '#FFB34718' },
-  external:{ label: 'External', color: '#f87171', bg: '#f8717118' },
+  installed:{ label: 'Installed', color: '#5B9CFF', bg: '#5B9CFF18' },
+  builtin: { label: 'Built-in', color: '#71717a', bg: '#71717a18' },
 };
 
 const CATEGORY_META = {

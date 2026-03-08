@@ -47,6 +47,7 @@ from telegram_notify import (
     send_telegram, notify_engine_started, notify_state_change,
     notify_balance_update, notify_error, notify_turn, notify_custom,
 )
+from payment_tracker import get_payment_status
 
 load_dotenv()
 
@@ -59,6 +60,7 @@ db = None
 AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
 ANIMA_DIR = os.path.expanduser("~/.anima")
 CREATOR_WALLET = os.environ.get("CREATOR_WALLET", "xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r")
+CREATOR_ETH_ADDRESS = os.environ.get("CREATOR_ETH_ADDRESS", "0xec2340CD6a14229debe7B7841B8cB618dfD085b6")
 
 # ─── Telegram log monitor state ───
 _monitor_task = None
@@ -152,6 +154,15 @@ async def health():
 async def health_check():
     return {"status": "ok"}
 
+
+# ═══════════════════════════════════════════════════════════
+# PAYMENT TRACKER — 50% Creator Payout Enforcement
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/api/payments/status")
+async def payments_status():
+    """Real-time payment compliance check — tracks revenue, sustainability costs, and creator payouts."""
+    return get_payment_status()
 
 
 # ═══════════════════════════════════════════════════════════

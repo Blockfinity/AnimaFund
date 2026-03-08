@@ -227,31 +227,57 @@ export default function FundHQ({ fundName }) {
       setEngineState(engine);
 
       if (engine.live || engine.db_exists) {
-        const [agRes, actRes, hbRes] = await Promise.all([
+        const [agRes, actRes, hbRes, idRes] = await Promise.all([
           fetch(`${API}/api/live/agents`),
           fetch(`${API}/api/live/activity?limit=20`),
           fetch(`${API}/api/live/heartbeat?limit=20`),
+          fetch(`${API}/api/live/identity`),
         ]);
-        const [ag, act, hb] = await Promise.all([agRes.json(), actRes.json(), hbRes.json()]);
-        setAgents(ag.agents || []);
+        const [ag, act, hb, identity] = await Promise.all([agRes.json(), actRes.json(), hbRes.json(), idRes.json()]);
+
+        // Build the full agent list — founder + children (all real)
+        const childAgents = (ag.agents || []);
+        const allAgents = [];
+
+        // Add the founder agent from real identity data
+        if (identity.name || identity.address) {
+          const lastHb = (hb.history || [])[0];
+          allAgents.push({
+            agent_id: 'founder',
+            name: identity.name || engine.fund_name || 'Founder AI',
+            role: 'Founder / GP',
+            wallet_address: identity.address,
+            sandbox_id: identity.sandbox,
+            funded_cents: 0,
+            status: engine.agent_state || 'active',
+            last_action: lastHb ? `${lastHb.task}: ${lastHb.result || 'running'}` : (engine.agent_state || 'initializing'),
+          });
+        }
+
+        // Add real child agents with their latest action
+        for (const child of childAgents) {
+          allAgents.push({ ...child, last_action: child.status || 'active' });
+        }
+
+        setAgents(allAgents);
+
+        // Build activity feed from real data
         const toolActivities = (act.activities || []).map(a => ({
           text: `${a.tool_name}: ${(a.result_preview || '').slice(0, 60)}`,
           type: categorizeToolCall(a.tool_name),
           id: a.activity_id,
         }));
-        // If no tool calls yet, show heartbeat events as activity
-        if (toolActivities.length === 0) {
-          const hbActivities = (hb.history || []).map(h => ({
-            text: `${h.task}: ${h.result || 'pending'}${h.duration_ms ? ` (${h.duration_ms}ms)` : ''}`,
-            type: 'operational',
-            id: h.id,
-          }));
-          setActivities(hbActivities);
-        } else {
-          setActivities(toolActivities);
-        }
+        const hbActivities = (hb.history || []).map(h => ({
+          text: `${h.task}: ${h.result || 'pending'}${h.duration_ms ? ` (${h.duration_ms}ms)` : ''}`,
+          type: 'operational',
+          id: h.id,
+        }));
+        // Show tool calls first, then heartbeat events (all real data)
+        setActivities([...toolActivities, ...hbActivities].slice(0, 20));
+
+        // Build departments from real agent roles
         const deptMap = {};
-        for (const a of (ag.agents || [])) {
+        for (const a of allAgents) {
           const dept = a.department || guessDepartment(a.role);
           if (!deptMap[dept]) deptMap[dept] = { name: dept, agents: [], spend: 0 };
           deptMap[dept].agents.push(a);
