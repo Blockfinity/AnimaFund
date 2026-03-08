@@ -244,3 +244,42 @@ async def start_agent_engine(agent_id: str):
         return {"success": True, "pid": proc.pid, "home": agent_home}
     except Exception as e:
         raise HTTPException(500, f"Failed to start engine: {str(e)}")
+
+
+@router.post("/agents/push-constitution")
+async def push_constitution_to_all():
+    """Push the latest constitution to ALL existing agents without resetting them.
+    This updates the constitution file in each agent's data directory in-place.
+    Running agents will pick it up on their next constitution read."""
+    import shutil
+    constitution_src = os.path.join(AUTOMATON_DIR, "constitution.md")
+    if not os.path.exists(constitution_src):
+        raise HTTPException(404, "Source constitution.md not found")
+
+    col = get_db()["agents"]
+    agents = await col.find({}, {"_id": 0}).to_list(100)
+    updated = []
+
+    for agent in agents:
+        agent_id = agent.get("agent_id", "")
+        if agent_id == "anima-fund":
+            # Default agent uses ~/.anima
+            target_dir = os.path.expanduser("~/.anima")
+        else:
+            data_dir = agent.get("data_dir", "")
+            if data_dir:
+                target_dir = os.path.expanduser(data_dir)
+            else:
+                target_dir = os.path.expanduser(f"~/agents/{agent_id}/.automaton")
+
+        if os.path.isdir(target_dir):
+            target_path = os.path.join(target_dir, "constitution.md")
+            shutil.copy2(constitution_src, target_path)
+            updated.append(agent_id)
+
+    return {
+        "success": True,
+        "updated_agents": updated,
+        "total": len(updated),
+        "message": "Constitution pushed to all agents. Running agents will pick up changes on next read.",
+    }
