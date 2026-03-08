@@ -517,3 +517,54 @@ async def push_constitution_to_all():
         "total": len(updated),
         "message": "Constitution pushed to all agents. Running agents will pick up changes on next read.",
     }
+
+
+
+@router.post("/agents/push-genesis")
+async def push_genesis_to_all():
+    """Push the latest genesis-prompt.md to ALL existing agents.
+    This updates their prompt file so the next engine restart uses the new prompt.
+    NOTE: This does NOT change a running agent's SOUL.md — the engine loads SOUL.md
+    from its internal database. To update a running agent, it must call update_soul itself."""
+    genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+    if not os.path.exists(genesis_src):
+        raise HTTPException(404, "Source genesis-prompt.md not found")
+
+    col = get_db()["agents"]
+    agents = await col.find({}, {"_id": 0}).to_list(100)
+    updated = []
+
+    for agent in agents:
+        agent_id = agent.get("agent_id", "")
+        token = agent.get("telegram_bot_token", "") or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        chat_id = agent.get("telegram_chat_id", "") or os.environ.get("TELEGRAM_CHAT_ID", "")
+
+        if agent_id == "anima-fund":
+            target_dir = os.path.expanduser("~/.anima")
+        else:
+            data_dir = agent.get("data_dir", "")
+            target_dir = os.path.expanduser(data_dir) if data_dir else os.path.expanduser(f"~/agents/{agent_id}/.anima")
+
+        if os.path.isdir(target_dir):
+            try:
+                with open(genesis_src, "r") as f:
+                    content = f.read()
+                # Substitute per-agent variables
+                content = content.replace("{{AGENT_NAME}}", agent.get("name", agent_id))
+                content = content.replace("{{TELEGRAM_BOT_TOKEN}}", token)
+                content = content.replace("{{TELEGRAM_CHAT_ID}}", chat_id)
+
+                target_path = os.path.join(target_dir, "genesis-prompt.md")
+                with open(target_path, "w") as f:
+                    f.write(content)
+                updated.append(agent_id)
+            except Exception:
+                pass
+
+    return {
+        "success": True,
+        "updated_agents": updated,
+        "total": len(updated),
+        "prompt_size": os.path.getsize(genesis_src),
+        "message": "Genesis prompt pushed. Agents must restart engine to pick up new prompt.",
+    }
