@@ -224,73 +224,84 @@ export default function FundHQ({ fundName }) {
   const fetchData = useCallback(async () => {
     try {
       const engineRes = await fetch(`${API}/api/engine/live`);
+      if (!engineRes.ok) return; // Keep previous state
       const engine = await engineRes.json();
-      setEngineState(engine);
+
+      // Only update engine state if valid — never downgrade
+      setEngineState(prev => {
+        if (prev && prev.db_exists && !engine.db_exists) return prev;
+        return engine;
+      });
 
       if (engine.live || engine.db_exists) {
-        const [agRes, actRes, hbRes, idRes] = await Promise.all([
-          fetch(`${API}/api/live/agents`),
-          fetch(`${API}/api/live/activity?limit=20`),
-          fetch(`${API}/api/live/heartbeat?limit=20`),
-          fetch(`${API}/api/live/identity`),
-        ]);
-        const [ag, act, hb, identity] = await Promise.all([agRes.json(), actRes.json(), hbRes.json(), idRes.json()]);
+        try {
+          const [agRes, actRes, hbRes, idRes] = await Promise.all([
+            fetch(`${API}/api/live/agents`),
+            fetch(`${API}/api/live/activity?limit=20`),
+            fetch(`${API}/api/live/heartbeat?limit=20`),
+            fetch(`${API}/api/live/identity`),
+          ]);
+          const [ag, act, hb, identity] = await Promise.all([agRes.json(), actRes.json(), hbRes.json(), idRes.json()]);
 
-        // Build the full agent list — founder + children (all real)
-        const childAgents = (ag.agents || []);
-        const allAgents = [];
+          const childAgents = (ag.agents || []);
+          const allAgents = [];
 
-        // Add the founder agent from real identity data
-        if (identity.name || identity.address) {
-          const lastHb = (hb.history || [])[0];
-          allAgents.push({
-            agent_id: 'founder',
-            name: identity.name || engine.fund_name || 'Founder AI',
-            role: 'Founder / GP',
-            wallet_address: identity.address,
-            sandbox_id: identity.sandbox,
-            funded_cents: 0,
-            status: engine.agent_state || 'active',
-            last_action: lastHb ? `${lastHb.task}: ${lastHb.result || 'running'}` : (engine.agent_state || 'initializing'),
-          });
+          if (identity.name || identity.address) {
+            const lastHb = (hb.history || [])[0];
+            allAgents.push({
+              agent_id: 'founder',
+              name: identity.name || engine.fund_name || 'Founder AI',
+              role: 'Founder / GP',
+              wallet_address: identity.address,
+              sandbox_id: identity.sandbox,
+              funded_cents: 0,
+              status: engine.agent_state || 'active',
+              last_action: lastHb ? `${lastHb.task}: ${lastHb.result || 'running'}` : (engine.agent_state || 'initializing'),
+            });
+          }
+
+          for (const child of childAgents) {
+            allAgents.push({ ...child, last_action: child.status || 'active' });
+          }
+
+          // Only update if we got data — don't wipe existing
+          if (allAgents.length > 0 || agents.length === 0) {
+            setAgents(allAgents);
+          }
+
+          const toolActivities = (act.activities || []).map(a => ({
+            text: `${a.tool_name}: ${(a.result_preview || '').slice(0, 60)}`,
+            type: categorizeToolCall(a.tool_name),
+            id: a.activity_id,
+          }));
+          const hbActivities = (hb.history || []).map(h => ({
+            text: `${h.task}: ${h.result || 'pending'}${h.duration_ms ? ` (${h.duration_ms}ms)` : ''}`,
+            type: 'operational',
+            id: h.id,
+          }));
+          const newActivities = [...toolActivities, ...hbActivities].slice(0, 20);
+          if (newActivities.length > 0 || activities.length === 0) {
+            setActivities(newActivities);
+          }
+
+          const deptMap = {};
+          const agentsForDepts = allAgents.length > 0 ? allAgents : agents;
+          for (const a of agentsForDepts) {
+            const dept = a.department || guessDepartment(a.role);
+            if (!deptMap[dept]) deptMap[dept] = { name: dept, agents: [], spend: 0 };
+            deptMap[dept].agents.push(a);
+            deptMap[dept].spend += (a.funded_cents || 0);
+          }
+          setDepartments(Object.values(deptMap));
+        } catch {
+          // Keep previous data on sub-fetch failure
         }
-
-        // Add real child agents with their latest action
-        for (const child of childAgents) {
-          allAgents.push({ ...child, last_action: child.status || 'active' });
-        }
-
-        setAgents(allAgents);
-
-        // Build activity feed from real data
-        const toolActivities = (act.activities || []).map(a => ({
-          text: `${a.tool_name}: ${(a.result_preview || '').slice(0, 60)}`,
-          type: categorizeToolCall(a.tool_name),
-          id: a.activity_id,
-        }));
-        const hbActivities = (hb.history || []).map(h => ({
-          text: `${h.task}: ${h.result || 'pending'}${h.duration_ms ? ` (${h.duration_ms}ms)` : ''}`,
-          type: 'operational',
-          id: h.id,
-        }));
-        // Show tool calls first, then heartbeat events (all real data)
-        setActivities([...toolActivities, ...hbActivities].slice(0, 20));
-
-        // Build departments from real agent roles
-        const deptMap = {};
-        for (const a of allAgents) {
-          const dept = a.department || guessDepartment(a.role);
-          if (!deptMap[dept]) deptMap[dept] = { name: dept, agents: [], spend: 0 };
-          deptMap[dept].agents.push(a);
-          deptMap[dept].spend += (a.funded_cents || 0);
-        }
-        setDepartments(Object.values(deptMap));
-      } else {
-        setAgents([]);
-        setActivities([]);
-        setDepartments([]);
       }
-    } catch (e) { console.error('FundHQ fetch error:', e); }
+      // REMOVED: No longer reset to empty when engine is offline
+    } catch (e) {
+      // Keep all previous state on error
+      console.error('FundHQ fetch error:', e);
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -303,7 +314,7 @@ export default function FundHQ({ fundName }) {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData]);
+  useEffect(() => { fetchData(); const i = setInterval(fetchData, 12000); return () => clearInterval(i); }, [fetchData]);
   useEffect(() => { fetchTelegramHealth(); const i = setInterval(fetchTelegramHealth, 30000); return () => clearInterval(i); }, [fetchTelegramHealth]);
 
   const scrollBuilding = (dir) => { if (buildingRef.current) buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' }); };

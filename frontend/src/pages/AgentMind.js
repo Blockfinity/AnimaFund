@@ -198,21 +198,26 @@ export default function AgentMind({ genesisState }) {
   const logRef = useRef(null);
   // Track whether auto-scroll should run — ref avoids re-render loops
   const autoScrollRef = useRef(true);
-  const isUserScrolling = useRef(false);
-  const scrollDebounce = useRef(null);
 
-  // Fetch real-time on-chain balance
+  // Fetch real-time on-chain balance — with protective state management
+  const walletAddrRef = useRef(null); // Persist wallet address across re-renders
   useEffect(() => {
     const fetchBalance = async () => {
       try {
         const res = await fetch(`${API}/api/wallet/balance`);
+        if (!res.ok) return; // Keep previous balance on error
         const data = await res.json();
-        setBalance(data);
-      } catch {}
+        // Only update if we got valid data
+        if (data.wallet) {
+          walletAddrRef.current = data.wallet;
+          setBalance(data);
+        } else if (data.usdc !== undefined) {
+          setBalance(prev => prev ? { ...prev, ...data } : data);
+        }
+      } catch { /* keep previous balance */ }
     };
     fetchBalance();
-    // Poll less aggressively — 10s instead of 5s to reduce dashboard load
-    const bi = setInterval(fetchBalance, 10000);
+    const bi = setInterval(fetchBalance, 15000);
     return () => clearInterval(bi);
   }, []);
 
@@ -222,12 +227,17 @@ export default function AgentMind({ genesisState }) {
         fetch(`${API}/api/engine/live`),
         fetch(`${API}/api/engine/logs?lines=100`),
       ]);
+      if (!engineRes.ok || !logsRes.ok) return; // Keep previous state on failed requests
       const engine = await engineRes.json();
       const logsData = await logsRes.json();
-      setEngineState(engine);
 
+      // Only update engine state if we got valid data — NEVER downgrade
+      setEngineState(prev => {
+        if (prev && prev.db_exists && !engine.db_exists) return prev;
+        return engine;
+      });
 
-      // Parse logs
+      // Parse logs — only update if we got content
       const rawLines = (logsData.stdout || '').split('\n');
       const parsed = rawLines.map(parseLogLine).filter(Boolean);
       const errLines = (logsData.stderr || '').split('\n');
@@ -236,103 +246,102 @@ export default function AgentMind({ genesisState }) {
         if (!trimmed) return null;
         return { type: 'text', level: 'error', message: trimmed, raw: trimmed };
       }).filter(Boolean);
-      setLogs([...parsed, ...parsedErrors]);
+      const newLogs = [...parsed, ...parsedErrors];
+      if (newLogs.length > 0) {
+        setLogs(newLogs);
+      }
 
       if (engine.live || engine.db_exists) {
-        const [agRes, turnsRes, soulRes] = await Promise.all([
-          fetch(`${API}/api/live/agents`),
-          fetch(`${API}/api/live/turns?limit=100`),
-          fetch(`${API}/api/live/soul`),
-        ]);
-        const [agData, turnsData, soulData] = await Promise.all([agRes.json(), turnsRes.json(), soulRes.json()]);
-        const liveAgents = (agData.agents || []).map(a => ({
-          id: a.agent_id, name: a.name, role: a.role, status: a.status, wallet: a.wallet_address, sandbox: a.sandbox_id,
-        }));
-        liveAgents.unshift({ id: 'founder', name: engine.fund_name || 'Founder AI', role: 'Founder AI', status: engine.agent_state, wallet: '', sandbox: '' });
-        setAgents(liveAgents);
-        const newTurns = turnsData.turns || [];
-        setTurns(newTurns);
-        setSoul(soulData.content || null);
-        setStats({ total_turns: turnsData.total || 0, source: 'engine', agent_state: engine.agent_state, turn_count: engine.turn_count });
-      } else {
-        setAgents([]);
-        setTurns([]);
-        setSoul(null);
-        setStats({ total_turns: 0, source: 'waiting', agent_state: 'not_started', turn_count: 0 });
+        try {
+          const [agRes, turnsRes, soulRes] = await Promise.all([
+            fetch(`${API}/api/live/agents`),
+            fetch(`${API}/api/live/turns?limit=100`),
+            fetch(`${API}/api/live/soul`),
+          ]);
+          const [agData, turnsData, soulData] = await Promise.all([agRes.json(), turnsRes.json(), soulRes.json()]);
+          const liveAgents = (agData.agents || []).map(a => ({
+            id: a.agent_id, name: a.name, role: a.role, status: a.status, wallet: a.wallet_address, sandbox: a.sandbox_id,
+          }));
+          liveAgents.unshift({ id: 'founder', name: engine.fund_name || 'Founder AI', role: 'Founder AI', status: engine.agent_state, wallet: '', sandbox: '' });
+          setAgents(liveAgents);
+          const newTurns = turnsData.turns || [];
+          // Only update turns if we got data — don't wipe existing turns
+          if (newTurns.length > 0 || turns.length === 0) {
+            setTurns(newTurns);
+          }
+          if (soulData.content) {
+            setSoul(soulData.content);
+          }
+          setStats({ total_turns: turnsData.total || 0, source: 'engine', agent_state: engine.agent_state, turn_count: engine.turn_count });
+        } catch {
+          // Keep previous agent data on sub-fetch failure
+        }
       }
-    } catch (e) { console.error('AgentMind fetch error:', e); }
+      // REMOVED: No longer reset state to empty when engine is offline
+      // If the engine goes offline, we keep showing the last known data
+    } catch (e) {
+      // On network error, keep all previous state — don't blank the screen
+      console.error('AgentMind fetch error:', e);
+    }
     finally { setLoading(false); }
   }, []);
 
-  // Adaptive polling: fast when running, slow when sleeping
+  // Stable polling — fixed 8-second interval to prevent cascading re-renders
   useEffect(() => {
     fetchData();
-    const getInterval = () => {
-      const state = engineState?.agent_state;
-      if (state === 'sleeping' || state === 'critical' || state === 'idle') return 10000;
-      if (state === 'running' || state === 'waking') return 3000;
-      return 5000;
-    };
-    let timer = null;
-    const schedule = () => {
-      timer = setTimeout(() => {
-        fetchData().then(schedule);
-      }, getInterval());
-    };
-    schedule();
-    return () => { if (timer) clearTimeout(timer); };
-  }, [fetchData, engineState?.agent_state]);
+    const i = setInterval(fetchData, 8000);
+    return () => clearInterval(i);
+  }, [fetchData]);
 
-  // Auto-scroll: only when enabled AND new data arrives AND user is idle
+  // Auto-scroll: only when enabled AND new data arrives — simple and stable
   const prevLogCount = useRef(0);
   const prevTurnCount = useRef(0);
 
   useEffect(() => {
-    if (!autoScrollRef.current || isUserScrolling.current) return;
-    if (activeTab === 'logs' && logRef.current && logs.length > prevLogCount.current) {
+    if (!autoScrollRef.current) return;
+    if (activeTab === 'logs' && logRef.current && logs.length !== prevLogCount.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-    if (activeTab === 'feed' && feedRef.current && (turns.length > prevTurnCount.current || logs.length > prevLogCount.current)) {
-      feedRef.current.scrollTop = 0; // Feed shows newest at top
+    if (activeTab === 'feed' && feedRef.current && (turns.length !== prevTurnCount.current || logs.length !== prevLogCount.current)) {
+      feedRef.current.scrollTop = 0;
     }
     prevLogCount.current = logs.length;
     prevTurnCount.current = turns.length;
-  }, [logs, turns, activeTab]);
+  }, [logs.length, turns.length, activeTab]);
 
   // Sync ref with state for the AUTO button
   useEffect(() => { autoScrollRef.current = autoScroll; }, [autoScroll]);
 
-  // Scroll handler: detect user intent without causing re-render loops
+  // Scroll handler: simple — disable auto-scroll when user scrolls up, re-enable at bottom
   const handleLogScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
     const distFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    // Clear any pending debounce
-    if (scrollDebounce.current) clearTimeout(scrollDebounce.current);
-
-    // Mark user as actively scrolling
-    isUserScrolling.current = true;
-
-    // Debounce: after user stops scrolling for 300ms, check position
-    scrollDebounce.current = setTimeout(() => {
-      isUserScrolling.current = false;
-      const el = logRef.current;
-      if (!el) return;
-      const currentDist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // Only re-enable auto-scroll if user scrolled to very bottom (< 30px)
-      if (currentDist < 30) {
+    if (distFromBottom < 40) {
+      // User is at the bottom — enable auto-scroll
+      if (!autoScrollRef.current) {
         autoScrollRef.current = true;
         setAutoScroll(true);
-      } else {
-        // User is reading above — disable auto-scroll
+      }
+    } else if (distFromBottom > 100) {
+      // User scrolled up significantly — disable auto-scroll
+      if (autoScrollRef.current) {
         autoScrollRef.current = false;
         setAutoScroll(false);
       }
-    }, 300);
+    }
   };
 
-  const walletAddr = genesisState?.wallet_address;
+  // Use ref-backed wallet address that persists across polls
+  const walletAddr = genesisState?.wallet_address || walletAddrRef.current;
   const qrCode = genesisState?.qr_code;
+
+  // Keep the ref updated when we get a valid wallet
+  useEffect(() => {
+    if (genesisState?.wallet_address) {
+      walletAddrRef.current = genesisState.wallet_address;
+    }
+  }, [genesisState?.wallet_address]);
 
   const copyWallet = () => {
     if (walletAddr) {
@@ -443,7 +452,6 @@ export default function AgentMind({ genesisState }) {
               const next = !autoScroll;
               setAutoScroll(next);
               autoScrollRef.current = next;
-              isUserScrolling.current = false;
               if (next && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
               if (next && feedRef.current) feedRef.current.scrollTop = 0;
             }} data-testid="auto-scroll-toggle"

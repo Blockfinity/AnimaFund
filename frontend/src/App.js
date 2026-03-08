@@ -76,10 +76,18 @@ function App() {
   const checkStatus = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/genesis/status`);
+      if (!res.ok) return; // Don't update state on failed requests
       const data = await res.json();
-      setGenesisState(data);
 
-      // Once engine is detected as running or wallet exists, lock it in
+      // CRITICAL: Never replace valid wallet data with empty data
+      setGenesisState(prev => {
+        if (prev && prev.wallet_address && !data.wallet_address) {
+          return { ...data, wallet_address: prev.wallet_address, qr_code: prev.qr_code, wallet_exists: prev.wallet_exists };
+        }
+        return data;
+      });
+
+      // Once engine is detected as running or wallet exists, lock it in permanently
       if (data.engine_running || data.wallet_address || data.config_exists) {
         setEngineStarted(true);
       }
@@ -91,13 +99,22 @@ function App() {
             fetch(`${API}/api/live/identity`),
             fetch(`${API}/api/engine/live`),
           ]);
-          if (idRes.ok) setIdentity(await idRes.json());
-          if (engRes.ok) setEngineState(await engRes.json());
-        } catch { /* ignore live data fetch errors */ }
+          if (idRes.ok) {
+            const idData = await idRes.json();
+            if (idData && (idData.name || idData.address)) setIdentity(idData);
+          }
+          if (engRes.ok) {
+            const engData = await engRes.json();
+            // Only update engine state if we got valid data
+            setEngineState(prev => {
+              if (prev && prev.db_exists && !engData.db_exists) return prev;
+              return engData;
+            });
+          }
+        } catch { /* ignore live data fetch errors — keep previous state */ }
       }
 
       if (view === 'loading') {
-        // If agent has data, go directly to dashboard
         if (data.config_exists || data.wallet_address || data.engine_live) {
           setView('dashboard');
           setEngineStarted(true);
@@ -106,12 +123,18 @@ function App() {
         }
       }
     } catch (e) {
-      console.error(e);
+      // On network error, DON'T reset any state — keep showing last known good data
+      console.error('Status poll failed:', e);
       if (view === 'loading') setView('genesis');
     }
   }, [view]);
 
-  useEffect(() => { checkStatus(); const i = setInterval(checkStatus, 5000); return () => clearInterval(i); }, [checkStatus]);
+  // Poll at a stable 8-second interval — fast enough for real-time, slow enough to avoid race conditions
+  useEffect(() => {
+    checkStatus();
+    const i = setInterval(checkStatus, 8000);
+    return () => clearInterval(i);
+  }, [checkStatus]);
 
   const handleCreate = async () => {
     if (creatingRef.current) return; // Prevent double-clicks

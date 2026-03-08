@@ -71,13 +71,16 @@ def get_active_data_dir() -> str:
 
 
 def get_engine_db() -> Optional[sqlite3.Connection]:
-    """Get a read-only connection to the live engine database for the ACTIVE agent."""
+    """Get a read-only connection to the live engine database for the ACTIVE agent.
+    Uses WAL mode awareness and busy timeout to handle concurrent engine writes."""
     db_path = os.path.join(_active_data_dir, "state.db")
     if not os.path.exists(db_path):
         return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute("PRAGMA journal_mode = WAL")
         return conn
     except Exception:
         return None
