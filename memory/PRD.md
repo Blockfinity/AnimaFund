@@ -44,7 +44,7 @@ backend/
 - [x] Full 10-page dashboard (Agent Mind, Fund HQ, Agents, Skills, Deal Flow, Portfolio, Financials, Activity, Memory, Configuration, Wallet & Logs)
 - [x] Real-time engine bridge from state.db
 - [x] Telegram integration — per-agent bots supported
-- [x] 95 real skills (including gambling-mastery, rainbet-betting-mastery)
+- [x] 96 real skills (including gambling-mastery, rainbet-betting-mastery, negotiation-mastery)
 - [x] 6 AI models
 - [x] Payment compliance tracker
 - [x] Security: secrets in .env, {{placeholders}} in prompts
