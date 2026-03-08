@@ -317,10 +317,24 @@ async def select_agent(agent_id: str):
 
 @router.delete("/agents/{agent_id}")
 async def delete_agent(agent_id: str):
-    """Delete a non-default agent."""
+    """Delete a non-default agent. Blocks deletion of agents with known wallets (fund protection)."""
     if agent_id == "anima-fund":
         raise HTTPException(400, "Cannot delete the default agent")
     col = get_db()["agents"]
+    agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+    if not agent:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    # Safety: check if agent has a wallet directory (may have funds)
+    agent_home = os.path.expanduser(agent.get("agent_home", f"~/agents/{agent_id}"))
+    wallet_path = os.path.join(agent_home, ".automaton", "wallet.json")
+    if os.path.exists(wallet_path):
+        raise HTTPException(
+            400,
+            f"Agent '{agent_id}' has a wallet and may have funds. "
+            "Remove the wallet manually first, or use the reset endpoint."
+        )
+
     result = await col.delete_one({"agent_id": agent_id})
     if result.deleted_count == 0:
         raise HTTPException(404, f"Agent '{agent_id}' not found")

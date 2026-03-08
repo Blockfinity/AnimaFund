@@ -217,6 +217,7 @@ export default function FundHQ({ fundName }) {
   const [activities, setActivities] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [engineState, setEngineState] = useState(null);
+  const [telegramHealth, setTelegramHealth] = useState([]);
   const [loading, setLoading] = useState(true);
   const buildingRef = useRef(null);
 
@@ -293,7 +294,17 @@ export default function FundHQ({ fundName }) {
     finally { setLoading(false); }
   }, []);
 
+  // Fetch Telegram health separately (less frequent)
+  const fetchTelegramHealth = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/telegram/health`);
+      const data = await res.json();
+      setTelegramHealth(data.agents || []);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => { fetchData(); const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData]);
+  useEffect(() => { fetchTelegramHealth(); const i = setInterval(fetchTelegramHealth, 30000); return () => clearInterval(i); }, [fetchTelegramHealth]);
 
   const scrollBuilding = (dir) => { if (buildingRef.current) buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' }); };
 
@@ -421,6 +432,48 @@ export default function FundHQ({ fundName }) {
               <StatRow label="Turns" value={engineState?.turn_count || 0} />
               <StatRow label="State" value={(engineState?.agent_state || 'offline').toUpperCase()} />
               <StatRow label="Engine" value={isLive ? 'LIVE' : 'OFFLINE'} />
+            </div>
+          </SidePanel>
+
+          {/* Telegram Health Dashboard */}
+          <SidePanel title="TELEGRAM HEALTH" live={telegramHealth.some(a => a.bot_alive)}>
+            <div data-testid="telegram-health-panel" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {telegramHealth.length > 0 ? telegramHealth.map(agent => (
+                <div key={agent.agent_id} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 6px', borderRadius: '4px',
+                  background: agent.bot_alive ? 'rgba(96,238,121,0.08)' : agent.configured ? 'rgba(255,179,71,0.08)' : 'rgba(255,82,82,0.08)',
+                  border: `1px solid ${agent.bot_alive ? 'rgba(96,238,121,0.2)' : agent.configured ? 'rgba(255,179,71,0.2)' : 'rgba(255,82,82,0.2)'}`,
+                }}>
+                  <div style={{
+                    width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
+                    background: agent.bot_alive ? '#60EE79' : agent.configured ? '#FFB347' : '#FF5252',
+                    boxShadow: agent.bot_alive ? '0 0 4px #60EE79' : 'none',
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '9px', fontWeight: 800, color: '#35638C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {agent.name}
+                    </div>
+                    <div style={{ fontSize: '7px', color: '#7A94AB' }}>
+                      {agent.bot_username || (agent.configured ? 'Bot configured' : 'No bot')}
+                    </div>
+                    {agent.last_message_time && (
+                      <div style={{ fontSize: '7px', color: agent.last_delivery_ok ? '#60EE79' : '#FF5252', marginTop: '1px' }}>
+                        Last: {new Date(agent.last_message_time).toLocaleTimeString()} {agent.last_delivery_ok ? '' : 'FAILED'}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize: '7px', fontWeight: 800, padding: '1px 4px', borderRadius: '3px',
+                    background: agent.bot_alive ? '#60EE79' : agent.configured ? '#FFB347' : '#FF5252',
+                    color: '#fff',
+                  }}>
+                    {agent.bot_alive ? 'OK' : agent.configured ? 'DOWN' : 'NONE'}
+                  </div>
+                </div>
+              )) : (
+                <span style={{ fontSize: '9px', color: '#999' }}>Loading...</span>
+              )}
             </div>
           </SidePanel>
 

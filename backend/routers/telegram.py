@@ -1,7 +1,9 @@
 """
-Telegram notification routes — now agent-aware.
+Telegram notification routes — agent-aware, with health dashboard.
 """
 import os
+import aiohttp
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from telegram_notify import send_telegram, send_telegram_direct
@@ -80,3 +82,78 @@ async def telegram_test(agent_id: str):
     if not ok:
         raise HTTPException(500, "Telegram test failed. Check bot token and chat ID are correct.")
     return {"success": True, "agent_id": agent_id, "message": f"Test message sent for {agent_name}"}
+
+
+@router.get("/telegram/health")
+async def telegram_health():
+    """Return Telegram health for ALL agents — used by the dashboard."""
+    db = get_db()
+    agents = await db.agents.find({}, {"_id": 0}).to_list(100)
+
+    # Track per-agent Telegram notification log from MongoDB
+    results = []
+    for agent in agents:
+        agent_id = agent.get("agent_id", "unknown")
+        is_default = agent.get("is_default", False)
+        name = agent.get("name", agent_id)
+
+        if is_default:
+            token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+            chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        else:
+            token = agent.get("telegram_bot_token", "")
+            chat_id = agent.get("telegram_chat_id", "")
+
+        configured = bool(token and chat_id)
+
+        # Try to check bot health by calling getMe
+        bot_alive = False
+        bot_username = None
+        if configured:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"https://api.telegram.org/bot{token}/getMe",
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ) as resp:
+                        data = await resp.json()
+                        if data.get("ok"):
+                            bot_alive = True
+                            bot_username = data.get("result", {}).get("username", "")
+            except Exception:
+                pass
+
+        # Get last notification log from MongoDB
+        last_log = await db.telegram_logs.find_one(
+            {"agent_id": agent_id},
+            {"_id": 0},
+            sort=[("timestamp", -1)],
+        )
+
+        results.append({
+            "agent_id": agent_id,
+            "name": name,
+            "configured": configured,
+            "bot_alive": bot_alive,
+            "bot_username": f"@{bot_username}" if bot_username else None,
+            "uses_own_bot": not is_default and configured,
+            "last_message": last_log.get("message", None) if last_log else None,
+            "last_message_time": last_log.get("timestamp", None) if last_log else None,
+            "last_delivery_ok": last_log.get("success", None) if last_log else None,
+        })
+
+    return {"agents": results, "checked_at": datetime.now(timezone.utc).isoformat()}
+
+
+@router.post("/telegram/log")
+async def log_telegram_event(agent_id: str = Query(...), message: str = Query(""), success: bool = Query(True)):
+    """Log a Telegram notification event (called by the backend monitor)."""
+    db = get_db()
+    await db.telegram_logs.insert_one({
+        "agent_id": agent_id,
+        "message": message[:500],
+        "success": success,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"logged": True}
+

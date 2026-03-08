@@ -24,6 +24,7 @@ from engine_bridge import (
     get_live_turns, get_live_kv_store,
 )
 from telegram_notify import notify_state_change, notify_turn
+from database import get_db
 from payment_tracker import get_payment_status
 
 from routers import agents, genesis, live, telegram
@@ -36,7 +37,7 @@ _last_balance_tier = ""
 
 
 async def _monitor_engine_logs():
-    """Background task that watches engine state and sends Telegram notifications."""
+    """Background task that watches engine state and sends Telegram notifications to the ACTIVE agent's bot."""
     global _last_state, _last_turn_count, _last_balance_tier
     while True:
         try:
@@ -45,10 +46,36 @@ async def _monitor_engine_logs():
             if not engine.get("db_exists"):
                 continue
 
+            # Determine which agent is currently active
+            from engine_bridge import get_active_data_dir
+            get_active_data_dir()  # ensure module is loaded
+            agent_id = None
+            # Try to find the agent_id from active_agent.txt or dir path
+            try:
+                with open("/tmp/anima_active_agent_dir", "r") as f:
+                    d = f.read().strip()
+                    if "agents/" in d:
+                        agent_id = d.split("agents/")[-1].split("/")[0]
+            except Exception:
+                pass
+            if not agent_id:
+                agent_id = "anima-fund"  # Default
+
             identity = get_live_identity()
             current_state = identity.get("state", "unknown")
             if current_state != _last_state and _last_state != "unknown":
-                await notify_state_change(_last_state, current_state)
+                await notify_state_change(_last_state, current_state, agent_id=agent_id)
+                # Log the notification
+                try:
+                    db = get_db()
+                    await db.telegram_logs.insert_one({
+                        "agent_id": agent_id,
+                        "message": f"State: {_last_state} -> {current_state}",
+                        "success": True,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception:
+                    pass
             _last_state = current_state
 
             turns = get_live_turns(limit=1)
@@ -58,7 +85,18 @@ async def _monitor_engine_logs():
                 if turn_num > _last_turn_count:
                     tools = latest.get("tool_names", "").split(",") if latest.get("tool_names") else []
                     thinking = latest.get("thinking", "")
-                    await notify_turn(turn_num, thinking, tools)
+                    await notify_turn(turn_num, thinking, tools, agent_id=agent_id)
+                    # Log the notification
+                    try:
+                        db = get_db()
+                        await db.telegram_logs.insert_one({
+                            "agent_id": agent_id,
+                            "message": f"Turn #{turn_num}: {', '.join(tools[:3])}",
+                            "success": True,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
+                    except Exception:
+                        pass
                     _last_turn_count = turn_num
 
             kv = get_live_kv_store()
