@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity as ActivityIcon, Clock, Heart, MessageSquare, Wrench, Zap } from 'lucide-react';
+import { Activity as ActivityIcon, Heart, MessageSquare, Wrench, Zap, Server, Globe, DollarSign, Brain, Network, Filter } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -15,151 +15,137 @@ function timeAgo(ts) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const CATEGORY_CONFIG = {
+  all: { label: 'All Activity', icon: ActivityIcon, color: '#71717a' },
+  infrastructure: { label: 'Infrastructure', icon: Server, color: '#3b82f6' },
+  compute: { label: 'Compute', icon: Wrench, color: '#10b981' },
+  finance: { label: 'Finance', icon: DollarSign, color: '#f59e0b' },
+  network: { label: 'Network', icon: Network, color: '#8b5cf6' },
+  domains: { label: 'Domains', icon: Globe, color: '#06b6d4' },
+  orchestrator: { label: 'Orchestrator', icon: Brain, color: '#ec4899' },
+  tools: { label: 'Tools', icon: Zap, color: '#14b8a6' },
+  inference: { label: 'Inference', icon: Brain, color: '#a855f7' },
+  memory: { label: 'Memory', icon: Brain, color: '#6366f1' },
+  system: { label: 'System', icon: Heart, color: '#71717a' },
+  heartbeat: { label: 'Heartbeat', icon: Heart, color: '#60a5fa' },
+  other: { label: 'Other', icon: Wrench, color: '#9ca3af' },
+};
+
 export default function Activity() {
-  const [activities, setActivities] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [heartbeat, setHeartbeat] = useState([]);
-  const [skills, setSkills] = useState([]);
-  const [tab, setTab] = useState('heartbeat');
+  const [feed, setFeed] = useState([]);
+  const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     try {
-      const [actRes, msgRes, hbRes, skRes] = await Promise.all([
-        fetch(`${API}/api/live/activity?limit=100`),
-        fetch(`${API}/api/live/messages?limit=50`),
-        fetch(`${API}/api/live/heartbeat?limit=50`),
-        fetch(`${API}/api/live/skills`),
-      ]);
-      const [act, msg, hb, sk] = await Promise.all([actRes.json(), msgRes.json(), hbRes.json(), skRes.json()]);
-      setActivities(act.activities || []);
-      setMessages(msg.messages || []);
-      setHeartbeat(hb.history || []);
-      setSkills(sk.skills || []);
-      // Auto-switch to tools tab if there are tool calls
-      if ((act.activities || []).length > 0 && tab === 'heartbeat') setTab('tools');
+      const res = await fetch(`${API}/api/infrastructure/activity-feed?limit=200`);
+      if (res.ok) {
+        const d = await res.json();
+        setFeed(d.feed || []);
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 8000); return () => clearInterval(i); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    const i = setInterval(fetchData, 8000);
+    return () => clearInterval(i);
+  }, [fetchData]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin" /></div>;
 
-  const tabs = [
-    ['heartbeat', `Heartbeat (${heartbeat.length})`, Heart],
-    ['tools', `Tool Calls (${activities.length})`, Wrench],
-    ['messages', `Messages (${messages.length})`, MessageSquare],
-    ['skills', `Skills (${skills.length})`, Zap],
-  ];
+  // Count by category
+  const counts = {};
+  feed.forEach(item => {
+    const cat = item.category || 'other';
+    counts[cat] = (counts[cat] || 0) + 1;
+  });
+
+  const filtered = filter === 'all' ? feed : feed.filter(f => f.category === filter);
+
+  // Category buttons — only show categories that have entries
+  const activeCategories = ['all', ...Object.keys(counts).sort()];
 
   return (
     <div data-testid="activity-page" className="space-y-4 animate-slide-in">
-      {/* Tabs */}
-      <div className="flex items-center gap-1 bg-white border border-border rounded-sm p-1">
-        {tabs.map(([id, label, Icon]) => (
-          <button key={id} data-testid={`activity-tab-${id}`} onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-sm text-sm font-medium transition-colors ${tab === id ? 'bg-foreground text-white' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
-            <Icon className="w-3.5 h-3.5" />{label}
-          </button>
-        ))}
+      {/* Filter bar */}
+      <div className="flex items-center gap-1 flex-wrap bg-white border border-border rounded-sm p-1">
+        {activeCategories.map(cat => {
+          const cfg = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.other;
+          const Icon = cfg.icon;
+          const count = cat === 'all' ? feed.length : (counts[cat] || 0);
+          return (
+            <button key={cat} data-testid={`activity-filter-${cat}`} onClick={() => setFilter(cat)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium transition-colors
+                ${filter === cat ? 'bg-foreground text-white' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
+              <Icon className="w-3 h-3" />
+              {cfg.label} ({count})
+            </button>
+          );
+        })}
       </div>
 
-      {/* Heartbeat Tab */}
-      {tab === 'heartbeat' && (
-        heartbeat.length > 0 ? (
-          <div className="bg-white border border-border rounded-sm divide-y divide-border">
-            {heartbeat.map((h, i) => (
-              <div key={i} className="flex items-center gap-4 px-4 py-3 hover:bg-secondary/30">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${h.result === 'success' ? 'bg-success' : h.result === 'failure' ? 'bg-error' : 'bg-warning'}`} />
-                <span className="text-xs font-mono font-medium text-foreground min-w-[160px]">{h.task}</span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${h.result === 'success' ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>{h.result}</span>
-                {h.duration_ms != null && <span className="text-[10px] font-mono text-muted-foreground">{h.duration_ms}ms</span>}
-                {h.error && <span className="text-[10px] text-error truncate max-w-[200px]">{h.error}</span>}
-                <span className="text-[10px] font-mono text-muted-foreground ml-auto flex-shrink-0">{timeAgo(h.started_at)}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon={Heart} text="No heartbeat events yet. The heartbeat daemon runs periodic health checks, credit checks, and social inbox scans." />
-        )
-      )}
-
-      {/* Tool Calls Tab */}
-      {tab === 'tools' && (
-        activities.length > 0 ? (
-          <div className="bg-white border border-border rounded-sm divide-y divide-border">
-            {activities.map((a, i) => (
-              <div key={i} className="flex items-start gap-4 px-4 py-3 hover:bg-secondary/30">
-                <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${a.error ? 'bg-error' : 'bg-success'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm border bg-secondary text-foreground">{a.tool_name}</span>
-                    {a.duration_ms && <span className="text-[10px] font-mono text-muted-foreground">{a.duration_ms}ms</span>}
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate">{a.result_preview}</p>
-                </div>
-                <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">{timeAgo(a.timestamp)}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon={Wrench} text="No tool calls yet. Tool calls appear when the agent completes turns with actions (requires Conway credits)." />
-        )
-      )}
-
-      {/* Messages Tab */}
-      {tab === 'messages' && (
-        messages.length > 0 ? (
-          <div className="bg-white border border-border rounded-sm divide-y divide-border">
-            {messages.map((m, i) => (
-              <div key={i} className="px-4 py-3 hover:bg-secondary/30">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-mono text-foreground">{m.from_address?.slice(0, 10)}...</span>
-                  <span className="text-[10px] text-muted-foreground">&rarr;</span>
-                  <span className="text-xs font-mono text-foreground">{m.to_address?.slice(0, 10)}...</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${m.status === 'processed' ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}`}>{m.status}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">{m.content?.slice(0, 200)}</p>
-                <span className="text-[9px] text-muted-foreground">{timeAgo(m.created_at)}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon={MessageSquare} text="No messages yet. Messages appear when the agent communicates with other agents via the Conway social protocol." />
-        )
-      )}
-
-      {/* Skills Tab */}
-      {tab === 'skills' && (
-        skills.length > 0 ? (
-          <div className="bg-white border border-border rounded-sm divide-y divide-border">
-            {skills.map((s, i) => (
-              <div key={i} className="flex items-center gap-4 px-4 py-3 hover:bg-secondary/30">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.enabled ? 'bg-success' : 'bg-muted'}`} />
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium text-foreground">{s.name}</span>
-                  {s.description && <p className="text-[10px] text-muted-foreground truncate mt-0.5">{s.description}</p>}
-                </div>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.enabled ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}`}>
-                  {s.enabled ? 'enabled' : 'disabled'}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon={Zap} text="No skills installed yet." />
-        )
+      {/* Feed */}
+      {filtered.length > 0 ? (
+        <div className="bg-white border border-border rounded-sm divide-y divide-border">
+          {filtered.map((item, i) => (
+            <FeedItem key={i} item={item} />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-64 text-center">
+          <ActivityIcon className="w-8 h-8 text-border mb-3" />
+          <p className="text-sm text-muted-foreground">
+            {feed.length === 0 ? 'No activity yet. Activity appears when the agent starts operating.' : `No ${CATEGORY_CONFIG[filter]?.label || filter} activity.`}
+          </p>
+        </div>
       )}
     </div>
   );
 }
 
-function EmptyState({ icon: Icon, text }) {
+function FeedItem({ item }) {
+  const cfg = CATEGORY_CONFIG[item.category] || CATEGORY_CONFIG.other;
+  const Icon = cfg.icon;
+  const hasError = item.error && item.error.length > 0;
+
   return (
-    <div className="flex flex-col items-center justify-center h-64 text-center">
-      <Icon className="w-8 h-8 text-border mb-3" />
-      <p className="text-sm text-muted-foreground max-w-md">{text}</p>
+    <div className="flex items-start gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
+      <div className="flex-shrink-0 mt-0.5">
+        <div className="w-6 h-6 rounded-sm flex items-center justify-center" style={{ backgroundColor: cfg.color + '15' }}>
+          <Icon className="w-3 h-3" style={{ color: cfg.color }} />
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm border bg-secondary text-foreground">
+            {item.title}
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-sm" style={{ backgroundColor: cfg.color + '15', color: cfg.color }}>
+            {item.category}
+          </span>
+          {item.type === 'transaction' && item.amount_cents !== undefined && (
+            <span className={`text-[10px] font-mono font-semibold ${item.amount_cents > 0 ? 'text-green-600' : 'text-red-500'}`}>
+              {item.amount_cents > 0 ? '+' : ''}{(item.amount_cents / 100).toFixed(2)}
+            </span>
+          )}
+          {item.duration_ms > 0 && (
+            <span className="text-[10px] font-mono text-muted-foreground">{item.duration_ms}ms</span>
+          )}
+          {hasError && <span className="text-[10px] text-red-500 font-medium">ERROR</span>}
+        </div>
+        <p className="text-xs text-muted-foreground truncate">{item.detail}</p>
+        {item.result && !hasError && (
+          <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5 font-mono">{item.result.slice(0, 120)}</p>
+        )}
+        {hasError && (
+          <p className="text-[10px] text-red-400 truncate mt-0.5">{item.error}</p>
+        )}
+      </div>
+      <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0 mt-1">
+        {timeAgo(item.timestamp)}
+      </span>
     </div>
   );
 }

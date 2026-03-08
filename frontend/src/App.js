@@ -14,6 +14,7 @@ import Activity from './pages/Activity';
 import Memory from './pages/Memory';
 import Configuration from './pages/Configuration';
 import Skills from './pages/Skills';
+import Infrastructure from './pages/Infrastructure';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -356,6 +357,7 @@ function App() {
       case 'fundhq': return <FundHQ fundName={fundName} />;
       case 'mind': return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'agents': return <Agents />;
+      case 'infra': return <Infrastructure selectedAgent={selectedAgent} />;
       case 'skills': return <Skills />;
       case 'deals': return <DealFlow />;
       case 'portfolio': return <Portfolio />;

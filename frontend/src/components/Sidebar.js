@@ -2,13 +2,14 @@ import React from 'react';
 import { 
   Brain, Building2, Users, GitPullRequest, Briefcase,
   DollarSign, Activity, Database, Settings,
-  ChevronLeft, ChevronRight, Zap, Wallet
+  ChevronLeft, ChevronRight, Zap, Wallet, Server
 } from 'lucide-react';
 
 const navItems = [
   { id: 'mind', label: 'Agent Mind', icon: Brain },
   { id: 'fundhq', label: 'Fund HQ', icon: Building2 },
   { id: 'agents', label: 'Agents', icon: Users },
+  { id: 'infra', label: 'Infrastructure', icon: Server },
   { id: 'skills', label: 'Skills', icon: Zap },
   { id: 'deals', label: 'Deal Flow', icon: GitPullRequest },
   { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
