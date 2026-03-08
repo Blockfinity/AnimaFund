@@ -31,14 +31,39 @@ from datetime import datetime, timezone
 ANIMA_STATE_DB = os.path.expanduser("~/.anima/state.db")
 
 # Multi-agent support: the active data directory can be switched
+# Persisted to file so it survives server restarts/hot-reloads
 _active_data_dir = os.path.expanduser("~/.anima")
+_ACTIVE_AGENT_FILE = "/tmp/anima_active_agent_dir"
+
+
+def _load_persisted_dir():
+    """Load the persisted active data directory (survives server restarts)."""
+    global _active_data_dir, ANIMA_STATE_DB
+    try:
+        with open(_ACTIVE_AGENT_FILE, "r") as f:
+            d = f.read().strip()
+            if d and os.path.isdir(d):
+                _active_data_dir = d
+                ANIMA_STATE_DB = os.path.join(d, "state.db")
+    except FileNotFoundError:
+        pass
+
+
+# Load on module init
+_load_persisted_dir()
 
 
 def set_active_data_dir(data_dir: str):
-    """Switch the active agent data directory for all subsequent queries."""
+    """Switch the active agent data directory for all subsequent queries.
+    Also persists to disk so the selection survives server restarts."""
     global _active_data_dir, ANIMA_STATE_DB
     _active_data_dir = os.path.expanduser(data_dir)
     ANIMA_STATE_DB = os.path.join(_active_data_dir, "state.db")
+    try:
+        with open(_ACTIVE_AGENT_FILE, "w") as f:
+            f.write(_active_data_dir)
+    except Exception:
+        pass
 
 
 def get_active_data_dir() -> str:
@@ -46,11 +71,12 @@ def get_active_data_dir() -> str:
 
 
 def get_engine_db() -> Optional[sqlite3.Connection]:
-    """Get a read-only connection to the live engine database."""
-    if not os.path.exists(ANIMA_STATE_DB):
+    """Get a read-only connection to the live engine database for the ACTIVE agent."""
+    db_path = os.path.join(_active_data_dir, "state.db")
+    if not os.path.exists(db_path):
         return None
     try:
-        conn = sqlite3.connect(f"file:{ANIMA_STATE_DB}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         return conn
     except Exception:
@@ -58,8 +84,9 @@ def get_engine_db() -> Optional[sqlite3.Connection]:
 
 
 def is_engine_live() -> dict:
-    """Check if the Automaton engine is running and has state."""
-    db_exists = os.path.exists(ANIMA_STATE_DB)
+    """Check if the Automaton engine is running and has state for the ACTIVE agent."""
+    db_path = os.path.join(_active_data_dir, "state.db")
+    db_exists = os.path.exists(db_path)
     conn = get_engine_db()
     if not conn:
         return {"live": False, "db_exists": db_exists, "reason": "no state.db"}
@@ -303,8 +330,8 @@ def get_live_memory_facts() -> list:
 
 
 def get_live_soul() -> Optional[str]:
-    """Read the current SOUL.md content."""
-    soul_path = os.path.expanduser("~/.anima/SOUL.md")
+    """Read the current SOUL.md content from the ACTIVE agent's directory."""
+    soul_path = os.path.join(_active_data_dir, "SOUL.md")
     if os.path.exists(soul_path):
         with open(soul_path, "r") as f:
             return f.read()
@@ -404,8 +431,8 @@ def get_live_identity() -> dict:
     conn = get_engine_db()
     result = {"name": None, "address": None, "sandbox": None, "services": []}
 
-    # Read from config file (the AI may have changed its name)
-    config_path = os.path.expanduser("~/.anima/anima.json")
+    # Read from config file (the AI may have changed its name) — uses ACTIVE agent dir
+    config_path = os.path.join(_active_data_dir, "anima.json")
     if os.path.exists(config_path):
         try:
             with open(config_path, "r") as f:

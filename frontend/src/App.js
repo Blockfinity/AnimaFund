@@ -51,16 +51,26 @@ function App() {
       const data = await res.json();
       if (data.success) {
         setSelectedAgent(agentId);
+        // Reset ALL agent-specific state before re-fetching
+        setGenesisState(null);
+        setIdentity(null);
+        setEngineState(null);
+        setEngineStarted(false);
+        creatingRef.current = false;
+        setCreating(false);
         toast.success(`Switched to ${agentId}`);
-        checkStatus(); // Refresh all data for the new agent
+        // Re-fetch everything for the new agent
+        checkStatus();
       }
     } catch (e) { toast.error(e.message); }
   };
 
-  const handleAgentCreated = (agent) => {
+  const handleAgentCreated = async (agent) => {
     setAgentList(prev => [...prev, agent]);
     setShowCreateModal(false);
     toast.success(`Agent "${agent.name}" created`);
+    // Auto-select the new agent
+    await handleSelectAgent(agent.agent_id);
   };
 
   const checkStatus = useCallback(async () => {
@@ -87,7 +97,13 @@ function App() {
       }
 
       if (view === 'loading') {
-        setView('genesis');
+        // If agent has data, go directly to dashboard
+        if (data.config_exists || data.wallet_address || data.engine_live) {
+          setView('dashboard');
+          setEngineStarted(true);
+        } else {
+          setView('genesis');
+        }
       }
     } catch (e) {
       console.error(e);

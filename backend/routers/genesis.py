@@ -17,6 +17,7 @@ import aiohttp
 from config import AUTOMATON_DIR, ANIMA_DIR, CREATOR_WALLET, ENGINE_PID_FILE, USDC_CONTRACT, BASE_RPC
 from engine_bridge import (
     is_engine_live, get_live_kv_store, get_live_identity,
+    get_active_data_dir,
 )
 from telegram_notify import notify_engine_started
 
@@ -74,16 +75,28 @@ async def check_onchain_balance(wallet_address: str) -> dict:
 
 @router.get("/wallet/balance")
 async def wallet_balance():
-    """Real-time on-chain balance check — queries Base chain directly.
-    Checks BOTH anima.json wallet and live engine identity wallet in case they differ."""
+    """Real-time on-chain balance check for the CURRENTLY SELECTED agent."""
+    active_dir = get_active_data_dir()
     wallets = {}
 
-    # Wallet from anima.json (config wallet)
-    config_path = os.path.join(ANIMA_DIR, "anima.json")
-    if os.path.exists(config_path):
+    # Wallet from anima.json / agent config in the ACTIVE directory
+    for config_name in ["anima.json", "config.json"]:
+        config_path = os.path.join(active_dir, config_name)
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r") as f:
+                    wallets["config"] = json.load(f).get("walletAddress")
+                if wallets.get("config"):
+                    break
+            except Exception:
+                pass
+
+    # Wallet from wallet.json in the ACTIVE directory
+    wallet_file = os.path.join(active_dir, "wallet.json")
+    if not wallets.get("config") and os.path.exists(wallet_file):
         try:
-            with open(config_path, "r") as f:
-                wallets["config"] = json.load(f).get("walletAddress")
+            with open(wallet_file, "r") as f:
+                wallets["config"] = json.load(f).get("address")
         except Exception:
             pass
 
@@ -92,19 +105,16 @@ async def wallet_balance():
     if identity and identity.get("address"):
         wallets["engine"] = identity["address"]
 
-    # Primary wallet = engine wallet if available, else config wallet
     engine_wallet = wallets.get("engine")
     config_wallet = wallets.get("config")
     primary_wallet = engine_wallet or config_wallet
     wallet_mismatch = bool(engine_wallet and config_wallet and engine_wallet != config_wallet)
 
     if not primary_wallet:
-        return {"usdc": 0, "eth": 0, "credits": None, "wallet": None, "error": "No wallet found"}
+        return {"usdc": 0, "eth": 0, "credits": None, "wallet": None, "error": "No wallet found — engine not started yet"}
 
-    # Check balance on the PRIMARY wallet (engine wallet)
     onchain = await check_onchain_balance(primary_wallet)
 
-    # Also check config wallet if there's a mismatch (funds may be on old wallet)
     config_balance = None
     if wallet_mismatch:
         config_balance = await check_onchain_balance(config_wallet)
@@ -133,7 +143,6 @@ async def wallet_balance():
         "wallet_mismatch": wallet_mismatch,
     }
 
-    # Include old wallet info if there's a mismatch so user can see funds on both
     if wallet_mismatch:
         result["config_wallet"] = config_wallet
         result["engine_wallet"] = engine_wallet
@@ -145,18 +154,19 @@ async def wallet_balance():
 
 @router.get("/genesis/status")
 async def genesis_status():
-    """Check if the genesis agent has been created."""
+    """Check agent status — reads from the CURRENTLY SELECTED agent's directory."""
+    active_dir = get_active_data_dir()
     engine = is_engine_live()
-    config_exists = os.path.exists(os.path.join(ANIMA_DIR, "anima.json"))
-    wallet_file = os.path.join(ANIMA_DIR, "wallet.json")
+    config_exists = os.path.exists(os.path.join(active_dir, "anima.json"))
+    wallet_file = os.path.join(active_dir, "wallet.json")
     wallet_exists = os.path.exists(wallet_file)
-    genesis_staged = os.path.exists(os.path.join(ANIMA_DIR, "genesis-prompt.md"))
-    api_key_exists = os.path.exists(os.path.join(ANIMA_DIR, "config.json"))
+    genesis_staged = os.path.exists(os.path.join(active_dir, "genesis-prompt.md"))
+    api_key_exists = os.path.exists(os.path.join(active_dir, "config.json"))
 
     wallet_address = None
     if config_exists:
         try:
-            with open(os.path.join(ANIMA_DIR, "anima.json"), "r") as f:
+            with open(os.path.join(active_dir, "anima.json"), "r") as f:
                 config = json.load(f)
                 wallet_address = config.get("walletAddress")
         except Exception:
@@ -413,20 +423,25 @@ async def reset_genesis_agent():
 
 @router.get("/engine/status")
 async def engine_status():
+    active_dir = get_active_data_dir()
     pkg_path = os.path.join(AUTOMATON_DIR, "package.json")
     version = "unknown"
     if os.path.exists(pkg_path):
         with open(pkg_path, "r") as f:
             version = json.load(f).get("version", "unknown")
 
-    genesis_path = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+    genesis_path = os.path.join(active_dir, "genesis-prompt.md")
+    if not os.path.exists(genesis_path):
+        genesis_path = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
     genesis_lines = 0
     if os.path.exists(genesis_path):
         with open(genesis_path, "r") as f:
             genesis_lines = len(f.readlines())
 
     skills = []
-    skills_dir = os.path.join(AUTOMATON_DIR, "skills")
+    skills_dir = os.path.join(active_dir, "skills")
+    if not os.path.isdir(skills_dir):
+        skills_dir = os.path.join(AUTOMATON_DIR, "skills")
     if os.path.isdir(skills_dir):
         for s in os.listdir(skills_dir):
             if os.path.exists(os.path.join(skills_dir, s, "SKILL.md")):
@@ -440,27 +455,44 @@ async def engine_status():
         "genesis_prompt_lines": genesis_lines,
         "skills": skills,
         "creator_wallet": CREATOR_WALLET,
+        "active_data_dir": active_dir,
     }
 
 
 @router.get("/engine/logs")
 async def engine_logs(lines: int = Query(default=50, le=200)):
-    """Read engine stdout/stderr logs for debugging."""
+    """Read engine stdout/stderr logs for the CURRENTLY SELECTED agent."""
+    active_dir = get_active_data_dir()
     result = {}
-    for name, path in [("stdout", "/var/log/automaton.out.log"), ("stderr", "/var/log/automaton.err.log")]:
-        if os.path.exists(path):
-            try:
-                with open(path, "r") as f:
-                    all_lines = f.readlines()
-                    result[name] = "".join(all_lines[-lines:])
-            except Exception as e:
-                result[name] = f"Error reading: {e}"
-        else:
-            result[name] = ""
+
+    # Check both global logs and per-agent logs
+    global_logs = ("/var/log/automaton.out.log", "/var/log/automaton.err.log")
+    # For non-default agents, check their own log directory
+    agent_home = os.path.dirname(active_dir)  # ~/agents/{id}/ from ~/agents/{id}/.automaton
+    agent_logs = (os.path.join(agent_home, "engine.out.log"), os.path.join(agent_home, "engine.err.log"))
+
+    for log_set in [agent_logs, global_logs]:
+        stdout_path, stderr_path = log_set
+        if os.path.exists(stdout_path) or os.path.exists(stderr_path):
+            for name, path in [("stdout", stdout_path), ("stderr", stderr_path)]:
+                if os.path.exists(path):
+                    try:
+                        with open(path, "r") as f:
+                            all_lines = f.readlines()
+                            result[name] = "".join(all_lines[-lines:])
+                    except Exception as e:
+                        result[name] = f"Error reading: {e}"
+                else:
+                    result.setdefault(name, "")
+            break  # Use the first log set that exists
+    else:
+        result["stdout"] = ""
+        result["stderr"] = ""
+
     anima_files = []
-    if os.path.isdir(ANIMA_DIR):
-        for f in os.listdir(ANIMA_DIR):
-            fp = os.path.join(ANIMA_DIR, f)
+    if os.path.isdir(active_dir):
+        for f in os.listdir(active_dir):
+            fp = os.path.join(active_dir, f)
             anima_files.append({"name": f, "is_dir": os.path.isdir(fp), "size": os.path.getsize(fp) if os.path.isfile(fp) else 0})
     result["anima_dir"] = anima_files
     return result
@@ -468,7 +500,9 @@ async def engine_logs(lines: int = Query(default=50, le=200)):
 
 @router.get("/constitution")
 async def get_constitution():
+    active_dir = get_active_data_dir()
     for path in [
+        os.path.join(active_dir, "constitution.md"),
         os.path.join(ANIMA_DIR, "constitution.md"),
         os.path.join(AUTOMATON_DIR, "constitution.md"),
     ]:
