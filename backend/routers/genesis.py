@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 import qrcode
 import aiohttp
 
-from config import AUTOMATON_DIR, ANIMA_DIR, CREATOR_WALLET, ENGINE_PID_FILE, USDC_CONTRACT, BASE_RPC
+from config import AUTOMATON_DIR, ANIMA_DIR, CREATOR_WALLET, CREATOR_ETH_ADDRESS, ENGINE_PID_FILE, USDC_CONTRACT, BASE_RPC
 from engine_bridge import (
     is_engine_live, get_live_kv_store, get_live_identity,
     get_active_data_dir,
@@ -232,6 +232,7 @@ async def genesis_status():
         "fund_name": engine.get("fund_name"),
         "turn_count": engine.get("turn_count", 0),
         "creator_wallet": CREATOR_WALLET,
+        "creator_eth_address": CREATOR_ETH_ADDRESS,
         "stage": stage,
         "status": "running" if engine_running else ("created" if config_exists else "not_created"),
     }

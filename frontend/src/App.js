@@ -297,7 +297,7 @@ function App() {
               <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
                 <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>CREATOR WALLETS (50% net revenue)</div>
                 <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#FFB347', wordBreak: 'break-all', marginBottom: '4px' }}>SOL: {genesisState?.creator_wallet}</div>
-                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#5B9CFF', wordBreak: 'break-all' }}>ETH: 0xec2340CD6a14229debe7B7841B8cB618dfD085b6</div>
+                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#5B9CFF', wordBreak: 'break-all' }}>ETH: {genesisState?.creator_eth_address || 'Not configured'}</div>
               </div>
 
               {/* Dashboard button */}
