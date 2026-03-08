@@ -60,7 +60,13 @@ backend/
 - [x] CRITICAL: Full agent isolation — all endpoints read from active agent's data dir (state.db, SOUL.md, wallet, logs)
 - [x] Agent selection persists across server restarts (file-based persistence)
 - [x] Auto-select new agents after creation, frontend resets all state on switch
-- [x] Full E2E tested: iterations 19-24 all 100% pass, deployment-ready
+- [x] Skills API includes Conway platform tools + MCPs (99 total) with source badges
+- [x] Skill selector: individual click toggle + source badges (CONWAY/TOOL)
+- [x] Log/Live feed: no auto-switch between LOGS/TURNS, proper scroll without snapping
+- [x] Adaptive polling: timeout-based (10s sleep, 3s active)
+- [x] Genesis prompt: Turn 0 tool installation (curl, git, npm), comprehensive anti-loop/anti-block rules
+- [x] Constitution pushed to all live agents via /api/agents/push-constitution
+- [x] Full E2E tested: iterations 19-25 all 100% pass, deployment-ready
 
 ## API Endpoints
 - `GET /api/health` — Health check
