@@ -51,6 +51,8 @@ backend/
 - [x] Multi-Agent Dashboard with agent selector, full create modal with skill selector
 - [x] Genesis Prompt v3: aggressive money-making, parallel execution
 - [x] Backend refactored into modular FastAPI routers (from 1032-line monolith)
+- [x] OPSEC hardening: genesis prompt + constitution forbid agents from revealing framework, codebase, keys, or secrets
+- [x] Constitution Article XIII (Information Security) propagated to all new agents
 - [x] Full E2E tested: iterations 19-21 all 100% pass
 
 ## API Endpoints

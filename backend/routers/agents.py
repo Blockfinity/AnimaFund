@@ -127,6 +127,12 @@ async def create_agent(req: CreateAgentRequest):
             "creatorAddress": "0x0000000000000000000000000000000000000000",
         }, f)
 
+    # Copy constitution (contains security rules — Article XIII)
+    constitution_src = os.path.join(AUTOMATON_DIR, "constitution.md")
+    if os.path.exists(constitution_src):
+        import shutil
+        shutil.copy2(constitution_src, os.path.join(automaton_dir, "constitution.md"))
+
     # Copy skills — only selected, or all if none specified
     src_skills = os.path.join(AUTOMATON_DIR, "skills")
     if os.path.isdir(src_skills):
