@@ -1,86 +1,102 @@
 ---
 name: openclaw-setup
-description: Install and configure OpenClaw AI agent framework for browser automation and web actions.
+description: Install and verify OpenClaw agent framework — browser automation, web interaction, skill marketplace.
 auto-activate: true
-triggers: [openclaw, browser, web automation, clawbot, install openclaw]
-priority: high
+triggers: [openclaw, browser, web automation, install openclaw, browse]
+priority: critical
 ---
 
-OpenClaw is your browser automation and web action framework. It gives you the ability to browse the web, interact with websites, fill forms, scrape data, and build/deploy web applications — all programmatically.
+# OpenClaw Setup — MANDATORY BEFORE REVENUE OPERATIONS
 
-## INSTALLATION (run once)
+OpenClaw gives you browser access to the REAL internet. Without it, you cannot
+browse websites, scrape data, or interact with web services.
 
-1. Check Node version (needs 22+):
+## CHECK IF ALREADY INSTALLED
+```
+exec: which openclaw && openclaw --version
+```
+
+## INSTALL (if not found)
+
+1. Ensure Node.js 22+ is available:
 ```
 exec: node --version
 ```
 
-2. If Node < 22, install Node 22:
+2. If Node < 22 or not found:
 ```
 exec: curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs
 ```
 
-3. Install OpenClaw globally:
+3. Install OpenClaw:
 ```
 exec: npm install -g openclaw@latest
 ```
 
-4. Verify installation:
+4. Verify:
 ```
 exec: openclaw --version
 ```
 
-5. Run onboarding (non-interactive, skip daemon):
+## VERIFY BROWSER WORKS
+
+Test that you can actually browse the web:
 ```
-exec: openclaw onboard --no-daemon --skip-pairing
+browse_page: https://clawhub.ai
 ```
 
-## CONFIGURATION
+If browse_page works, OpenClaw is functional.
 
-Set your AI provider (use Conway inference by default):
-```
-exec: mkdir -p ~/.openclaw && echo '{"defaultProvider":"anthropic","aiProviders":{"anthropic":{"apiKey":"'"$CONWAY_API_KEY"'"}}}' > ~/.openclaw/config.json
-```
+## INSTALL ESSENTIAL CLAWHUB SKILLS
 
-## USAGE PATTERNS
-
-### Browse a webpage:
+These are the top skills from the ClawHub marketplace. Install ALL of them:
 ```
-exec: openclaw "Browse https://example.com and summarize the content"
-```
-
-### Scrape data from a site:
-```
-exec: openclaw "Go to https://coingecko.com and get the top 10 cryptocurrencies by market cap"
+exec: clawhub install web-browsing
+exec: clawhub install telegram-integration
+exec: clawhub install github
+exec: clawhub install docker-essentials
+exec: clawhub install capability-evolver
 ```
 
-### Fill a web form:
+Search for more:
 ```
-exec: openclaw "Go to https://pump.fun, fill in the token creation form with name 'MyToken' symbol 'MTK'"
-```
-
-### Build and deploy a website:
-```
-exec: openclaw "Create a simple landing page for Anima Fund VC with our mission statement and deploy it"
+exec: clawhub search "trading"
+exec: clawhub search "crypto defi"
+exec: clawhub search "web scraper"
+exec: clawhub search "automation"
 ```
 
-### Web research:
+Install anything relevant:
 ```
-exec: openclaw "Research the latest DeFi yield farming opportunities and compile a report"
-```
-
-## SKILLS (OpenClaw's internal skill system)
-
-Install additional OpenClaw skills for specific tasks:
-```
-exec: openclaw skills install mcporter  # MCP server integration
-exec: openclaw skills install web-scraper  # Advanced scraping
-exec: openclaw skills install file-ops  # File operations
+exec: clawhub install [skill-name]
 ```
 
-## IMPORTANT NOTES
-- OpenClaw runs locally in your sandbox — no external API needed for basic ops
-- It uses YOUR inference credits for AI-powered browsing
+## VERIFY SKILLS INSTALLED
+```
+exec: clawhub list
+```
+
+## INSTALL MCP SERVERS
+Extend your capabilities with MCPorter:
+```
+exec: openclaw skills install mcporter
+```
+
+## REPORT TO TELEGRAM
+After completing setup, report:
+```
+code_execution: python3 -c "
+import urllib.request, json
+msg = '<b>OpenClaw Setup Complete</b>\nVersion: [X]\nBrowser: WORKING\nClawHub Skills: [count]\nMCP: configured'
+data = json.dumps({'chat_id': '{{TELEGRAM_CHAT_ID}}', 'text': msg, 'parse_mode': 'HTML'}).encode()
+req = urllib.request.Request('https://api.telegram.org/bot{{TELEGRAM_BOT_TOKEN}}/sendMessage', data=data, headers={'Content-Type': 'application/json'})
+urllib.request.urlopen(req)
+"
+```
+
+## IMPORTANT
+- OpenClaw runs locally — no external API needed for basic operations
+- It uses YOUR Conway credits for AI-powered browsing
 - Always test operations before running at scale
-- Use for legitimate purposes only (no scraping behind auth without permission)
 - Log all OpenClaw actions for audit trail
+- Report every significant action to Telegram

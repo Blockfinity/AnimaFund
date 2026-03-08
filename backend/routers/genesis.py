@@ -280,6 +280,7 @@ async def create_genesis_agent():
         if os.path.exists(genesis_src):
             with open(genesis_src, "r") as f:
                 genesis_prompt = inject_secrets(f.read())
+            genesis_prompt = genesis_prompt.replace("{{AGENT_NAME}}", "Anima Fund")
             with open(os.path.join(ANIMA_DIR, "genesis-prompt.md"), "w") as f:
                 f.write(genesis_prompt)
 
@@ -508,3 +509,14 @@ async def get_constitution():
             with open(path, "r") as f:
                 return {"content": f.read(), "path": path}
     return {"content": "Constitution not found.", "path": None}
+
+
+
+@router.get("/genesis/prompt-template")
+async def get_prompt_template():
+    """Return the standard genesis prompt template for new agents."""
+    template_path = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+    if os.path.exists(template_path):
+        with open(template_path, "r") as f:
+            return {"content": f.read()}
+    return {"content": "Genesis prompt template not found."}

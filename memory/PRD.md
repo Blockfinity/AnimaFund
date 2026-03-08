@@ -16,42 +16,52 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform ("Anima Fund"). 
 - 141 skills from 9 sources
 - Conway tools integration (optional per agent)
 - Wallet management with on-chain balance checks
-- Agent creation modal with Telegram verification
+- Agent creation modal with Telegram verification + "Load Standard Template" button
 - Telegram Health Dashboard
 - Fund deletion safety (wallet protection)
-- Auto-scroll mechanism (non-intrusive, ref-based)
-- **Agent switching** with proper view transitions and state reset
+- Agent switching with proper view transitions
 
-## Bug Fixes (March 8, 2026)
-### UI Flickering/Data Loss
-- Added SQLite busy_timeout=5000 and WAL mode to engine_bridge.py
+## Critical Fixes (March 8, 2026)
+
+### Genesis Prompt Rewrite (MAJOR)
+**Problem**: Agents were skipping tool setup (OpenClaw, Conway, ClawHub), not using Telegram, getting stuck in loops, and jumping to revenue strategies they couldn't execute without tools.
+
+**Solution**: Complete restructure of genesis-prompt.md:
+- **Phase 0: MANDATORY BOOTSTRAP** — Install and verify Conway Terminal, OpenClaw, ClawHub skills, Telegram — LOCKED until all pass
+- **Phase 1: TOOL VERIFICATION** — Real tests of each tool with Telegram reporting
+- **Phase 2: REVENUE OPERATIONS** — Only after Phases 0+1 complete
+- **Anti-Stuck Rules** — 3-turn abandon policy, no repeat failures, strategy pivoting
+- **Telegram EVERY TURN** — Python3 urllib method (zero dependencies, always works), explicit code blocks agents copy directly
+
+### Skill Updates
+- `telegram-reporting/SKILL.md` — Rewritten to use ONLY the python3 urllib method that always works. Explicitly warns against unreliable methods (send_message, curl)
+- `openclaw-setup/SKILL.md` — Step-by-step OpenClaw installation, ClawHub skill installation, MCP server setup, verification steps
+
+### Backend Changes
+- `{{AGENT_NAME}}` placeholder injection in genesis prompts and skills
+- `GET /api/genesis/prompt-template` — New endpoint serving the standard template
+- "Load Standard Template" button in Create Agent modal
+
+### UI Flickering Fixes (from earlier)
+- SQLite busy_timeout + WAL mode in engine_bridge.py
 - Frontend state never resets to empty on partial/failed API responses
-- Stable 8s polling interval (replaces cascading adaptive polling)
-- Simplified auto-scroll handler (removed debounce conflicts)
-- Ref-backed wallet address persistence
-
-### Agent Switching
-- View resets to 'loading' on agent switch for proper re-evaluation
-- Genesis screen shows correct agent name (not hardcoded "ANIMA FUND")
-- Agent switcher buttons on genesis screen for navigation
-- walletAddrRef clears on agent switch to prevent stale data
-- Backend error handling on select (404 re-fetches agent list)
-- handleAgentCreated fetches fresh agent list from backend
+- Stable 8s polling, wallet ref persistence, proper agent switching with view reset
 
 ## Key Endpoints
 - `GET /api/health` - Health check
 - `GET /api/agents` - List agents
 - `POST /api/agents/create` - Create agent
-- `DELETE /api/agents/{agent_id}` - Delete agent (with safety)
+- `DELETE /api/agents/{agent_id}` - Delete agent
 - `POST /api/agents/{agent_id}/select` - Switch active agent
-- `GET /api/genesis/status` - Genesis status (agent-aware)
+- `GET /api/genesis/status` - Genesis status
+- `GET /api/genesis/prompt-template` - Standard genesis prompt template
 - `GET /api/skills/available` - All skills (141)
 - `GET /api/telegram/health` - Bot health dashboard
 - `GET /api/wallet/balance` - On-chain balance
 
-## Current State
-- **Active Agents**: 2 (Anima Fund, Black Sheep)
-- **Testing**: E2E passed iterations 31-32, manual screenshot verification for switching
+## Active Agents
+1. **Anima Fund** (default) — Updated genesis prompt
+2. **Black Sheep** — Created with new prompt and verified Telegram (chat_id: 8613975358)
 
 ## Future Tasks (Backlog)
 - P1: Implement Real Smart Contracts (Solidity)

@@ -20,6 +20,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [templateLoaded, setTemplateLoaded] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/skills/available`).then(r => r.json()).then(d => {
@@ -28,6 +29,17 @@ export default function CreateAgentModal({ onClose, onCreated }) {
       setSelectedSkills(new Set((d.skills || []).map(s => s.name)));
     }).catch(() => {});
   }, []);
+
+  const loadTemplate = async () => {
+    try {
+      const res = await fetch(`${API}/api/genesis/prompt-template`);
+      if (res.ok) {
+        const data = await res.json();
+        setPrompt(data.content || '');
+        setTemplateLoaded(true);
+      }
+    } catch {}
+  };
 
   const toggleSkill = (name) => {
     setSelectedSkills(prev => {
@@ -146,7 +158,13 @@ export default function CreateAgentModal({ onClose, onCreated }) {
 
           {/* Genesis Prompt */}
           <div>
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Genesis Prompt *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Genesis Prompt *</label>
+              <button data-testid="load-template-btn" onClick={loadTemplate} type="button"
+                className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors">
+                {templateLoaded ? 'Template Loaded' : 'Load Standard Template'}
+              </button>
+            </div>
             <textarea data-testid="agent-prompt-input" value={prompt} onChange={(e) => setPrompt(e.target.value)}
               placeholder="Define this agent's mission, personality, strategy, and instructions..."
               rows={8} className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-foreground font-mono resize-y" />

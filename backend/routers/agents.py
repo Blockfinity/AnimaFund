@@ -207,6 +207,7 @@ async def create_agent(req: CreateAgentRequest):
 
     # Build full genesis prompt with all config injected
     full_prompt = req.genesis_prompt
+    full_prompt = full_prompt.replace("{{AGENT_NAME}}", req.name)
     full_prompt = full_prompt.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
     full_prompt = full_prompt.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
 
@@ -274,6 +275,7 @@ async def create_agent(req: CreateAgentRequest):
                     skill_content = f.read()
                 skill_content = skill_content.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
                 skill_content = skill_content.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
+                skill_content = skill_content.replace("{{AGENT_NAME}}", req.name)
                 with open(os.path.join(td, "SKILL.md"), "w") as f:
                     f.write(skill_content)
 
