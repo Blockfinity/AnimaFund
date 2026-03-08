@@ -12,15 +12,16 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 
 ## Financial Model
 - 3% management fee on AUM (annual, calculated and collected monthly)
-- 20% carried interest on fund returns
-- 50% of all profit (management fees, carry, and all revenue after sustainability costs) transferred to creator's Solana wallet: xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r
+- 20% carried interest on fund returns (after 8% preferred return to LPs)
+- **$10,000 minimum capital threshold** to officially launch the fund
+- 50% of all profit (management fees, carry, and all revenue after sustainability costs) transferred to creator
+- **Creator Payment Addresses:**
+  - Solana: xtmyybmR6b9pwe4Xpsg6giP4FJFEjB4miCFpNp9sZ2r
+  - Ethereum ERC20: 0xec2340CD6a14229debe7B7841B8cB618dfD085b6
 - Agent prioritizes survival first — sustainability costs deducted before creator payout
-- Financial model is enforced via genesis prompt instructions (not smart contracts)
-
-## Core Components
-1. **Automaton Engine** (`/app/automaton/`): The Node.js AI agent that handles wallet generation, API provisioning, heartbeat, and all autonomous operations
-2. **Engine Bridge** (`/app/backend/engine_bridge.py`): Reads from the engine's state.db to supply live data to dashboard APIs
-3. **Dashboard Frontend**: 10-page React app for monitoring agent operations
+- 50% payout enforced on every revenue transaction (not batched)
+- Backend payment tracker monitors compliance (/api/payments/status)
+- Agent does NOT stop money-making ventures when starting the fund
 
 ## What's Been Implemented
 - [x] Agent creation flow (non-interactive via auto-config.json)
@@ -29,28 +30,20 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform named "Anim
 - [x] Dashboard with 10 pages (Fund HQ, Agent Mind, Agents, Deal Flow, Portfolio, Financials, Activity, Memory, Configuration, Wallet & Logs)
 - [x] Engine bridge reading from state.db
 - [x] better-sqlite3 native addon loading without node_modules
-- [x] UI fixes: button disable during creation, flicker prevention, accurate status display
-- [x] Deployment hardening: Untracked node_modules, fixed dist/index.js references
-- [x] Agent Mind — Live Logs: LOGS/TURNS tabs, color-coded real-time engine logs
-- [x] Wallet & Funding from Dashboard: Wallet QR code, copyable address, funding instructions
-- [x] Dashboard ↔ Wallet Navigation
-- [x] SQL Column Fix: Fixed ALL SQL queries in engine_bridge.py
-- [x] Activity page: Heartbeat/Tool Calls/Messages/Skills tabs
-- [x] Memory page: Runtime State/Wake Events/Semantic Memory tabs
-- [x] Agents page: Founder/Children/Discovered/Heartbeat Tasks tabs
-- [x] Fund HQ: Building visualization with departments and agents
-- [x] New API endpoints: /api/live/kv, /api/live/wake-events, /api/live/heartbeat-schedule, /api/live/skills-full
-- [x] Skills Page: 122 skills (95 Anima + 27 Conway Platform), 6 AI models, filters, search, sort
-- [x] Real-Time On-Chain Balance: USDC/ETH via Base blockchain RPC
-- [x] Genesis Config Fix: auto-config.json with creatorMessage and genesisPrompt
 - [x] Telegram Integration: @AnimaFundbot with real-time notifications
 - [x] OpenClaw Integration: 5 skills for agent self-install of web automation
-- [x] 87 custom skills (finance, DeFi, trading, learning, OpenClaw, Telegram)
+- [x] 95 real custom skills (finance, DeFi, trading, learning, OpenClaw, Telegram)
 - [x] Security Fix: Secrets only in .env, runtime injection via placeholders
 - [x] UI Scroll Fix: No more auto-scroll snapping in log feeds
 - [x] Reset Agent Feature: POST /api/genesis/reset preserves wallet
-- [x] **P0 Verification Complete (2026-03-08)**: ALL 33 API endpoints verified (64/64 backend tests pass), all 10 frontend pages verified (100% pass). Full data connection audit complete.
-- [x] Revenue text updated to reflect "50% of all profit after sustainability costs"
+- [x] P0 Data Verification: ALL 33 API endpoints verified (100% pass)
+- [x] **No Fakes/Mocks (2026-03-08):**
+  - Removed 27 hardcoded fake Conway Platform tools from skills (only 95 real skills remain)
+  - Fund HQ building now shows real founder agent from identity data with real departments/tasks
+  - Payment tracker enforces 50% creator payout rule with compliance monitoring
+  - $10K fund launch threshold added to genesis prompt and Financials page
+  - Both SOL and ETH creator wallet addresses displayed on genesis page and in genesis prompt
+  - Financials page shows Creator Payout Compliance (50% Rule) and Fund Launch Status
 
 ## API Endpoints
 All prefixed with `/api`:
@@ -58,6 +51,7 @@ All prefixed with `/api`:
 - `POST /api/genesis/reset` — Stop engine, clean state, preserve wallet
 - `GET /api/genesis/status` — Agent status, wallet, stage
 - `GET /api/wallet/balance` — Real-time on-chain USDC/ETH balance
+- `GET /api/payments/status` — **NEW**: Payment compliance tracker (50% rule, fund readiness)
 - `POST /api/telegram/send` — Send message via Telegram bot
 - `GET /api/telegram/status` — Check Telegram configuration
 - `GET /api/health` — Health check
@@ -66,9 +60,6 @@ All prefixed with `/api`:
 - `GET /api/engine/logs` — Engine stdout/stderr
 - `GET /api/constitution` — Immutable constitution
 - `GET /api/live/*` — 20+ live data endpoints from state.db
-
-## P1 Assessment (Smart Contracts) — NOT NECESSARY
-The genesis prompt already enforces the 50% revenue split. The Conway platform handles all financial operations internally. Smart contracts would add trustless on-chain enforcement but are not needed for the current operational model. Can be revisited when managing real LP capital at scale.
 
 ## Upcoming/Future Tasks
 ### P2
