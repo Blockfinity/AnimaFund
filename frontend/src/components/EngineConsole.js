@@ -70,6 +70,7 @@ export default function EngineConsole({ isRunning }) {
   const [animaFiles, setAnimaFiles] = useState([]);
   const scrollRef = useRef(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const userScrolledUp = useRef(false);
 
   useEffect(() => {
     if (!isRunning && logs.length === 0) return;
@@ -102,10 +103,10 @@ export default function EngineConsole({ isRunning }) {
   }, [isRunning, logs.length]);
 
   useEffect(() => {
-    if (autoScroll && scrollRef.current) {
+    if (!userScrolledUp.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [logs, autoScroll]);
+  }, [logs]);
 
   // Derive setup progress from logs
   const wizardSteps = [
@@ -139,7 +140,12 @@ export default function EngineConsole({ isRunning }) {
             </span>
           )}
           <button
-            onClick={() => setAutoScroll(!autoScroll)}
+            onClick={() => {
+              const next = !autoScroll;
+              setAutoScroll(next);
+              userScrolledUp.current = !next;
+              if (next && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }}
             style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', border: '1px solid #27272a', background: autoScroll ? '#166534' : '#18181b', color: autoScroll ? '#34D399' : '#71717a', cursor: 'pointer' }}>
             {autoScroll ? 'AUTO' : 'SCROLL'}
           </button>
@@ -170,9 +176,11 @@ export default function EngineConsole({ isRunning }) {
         ref={scrollRef}
         onScroll={(e) => {
           const { scrollTop, scrollHeight, clientHeight } = e.target;
-          setAutoScroll(scrollHeight - scrollTop - clientHeight < 40);
+          const isAtBottom = scrollHeight - scrollTop - clientHeight < 60;
+          userScrolledUp.current = !isAtBottom;
+          setAutoScroll(isAtBottom);
         }}
-        style={{ maxHeight: '280px', overflowY: 'auto', padding: '6px 0', fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', lineHeight: '18px' }}>
+        style={{ maxHeight: '280px', overflowY: 'auto', overflowAnchor: 'none', padding: '6px 0', fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', lineHeight: '18px' }}>
         {logs.length === 0 ? (
           <div style={{ padding: '20px', textAlign: 'center', color: '#52525b', fontSize: '11px' }}>
             {isRunning ? 'Waiting for engine output...' : 'Engine not started. Click "Create Genesis Agent" to begin.'}

@@ -263,14 +263,20 @@ export default function AgentMind({ genesisState }) {
 
   useEffect(() => { fetchData(); const i = setInterval(fetchData, 3000); return () => clearInterval(i); }, [fetchData]);
 
-  // Auto-scroll logs
-  useEffect(() => {
-    if (autoScroll && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [logs, autoScroll]);
+  // Auto-scroll logs — only when user hasn't scrolled up
+  const userScrolledUp = useRef(false);
 
   useEffect(() => {
-    if (autoScroll && feedRef.current && activeTab === 'turns') feedRef.current.scrollTop = 0;
-  }, [turns, autoScroll, activeTab]);
+    if (!userScrolledUp.current && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  useEffect(() => {
+    if (!userScrolledUp.current && feedRef.current && activeTab === 'turns') {
+      feedRef.current.scrollTop = 0;
+    }
+  }, [turns, activeTab]);
 
   const walletAddr = genesisState?.wallet_address;
   const qrCode = genesisState?.qr_code;
@@ -375,7 +381,12 @@ export default function AgentMind({ genesisState }) {
                 ))}
               </>
             )}
-            <button onClick={() => setAutoScroll(!autoScroll)} data-testid="auto-scroll-toggle"
+            <button onClick={() => {
+              const next = !autoScroll;
+              setAutoScroll(next);
+              userScrolledUp.current = !next;
+              if (next && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+            }} data-testid="auto-scroll-toggle"
               style={{ fontSize: '9px', fontWeight: 700, padding: '3px 8px', borderRadius: '3px', border: 'none', cursor: 'pointer',
                 background: autoScroll ? '#34D399' : '#18181b', color: autoScroll ? '#fff' : '#71717a' }}>
               AUTO
@@ -387,8 +398,13 @@ export default function AgentMind({ genesisState }) {
         {activeTab === 'logs' ? (
           /* ═══ LIVE LOGS TAB ═══ */
           <div ref={logRef}
-            onScroll={(e) => { const { scrollTop, scrollHeight, clientHeight } = e.target; setAutoScroll(scrollHeight - scrollTop - clientHeight < 40); }}
-            style={{ flex: 1, background: '#0a0a0f', borderRadius: '0 0 6px 6px', padding: '8px 0', overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', lineHeight: '20px' }}>
+            onScroll={(e) => {
+              const { scrollTop, scrollHeight, clientHeight } = e.target;
+              const isAtBottom = scrollHeight - scrollTop - clientHeight < 60;
+              userScrolledUp.current = !isAtBottom;
+              setAutoScroll(isAtBottom);
+            }}
+            style={{ flex: 1, background: '#0a0a0f', borderRadius: '0 0 6px 6px', padding: '8px 0', overflowY: 'auto', overflowAnchor: 'none', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', lineHeight: '20px' }}>
             {logs.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center' }}>
                 <Terminal className="w-8 h-8" style={{ color: '#27272a', margin: '0 auto 12px' }} />
