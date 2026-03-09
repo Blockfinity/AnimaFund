@@ -29,7 +29,7 @@ from telegram_notify import notify_state_change, notify_turn, notify_error, send
 from database import get_db
 from payment_tracker import get_payment_status
 
-from routers import agents, genesis, live, telegram, infrastructure, telegram_logs, agent_logs
+from routers import agents, genesis, live, telegram, infrastructure
 
 # ─── Telegram log monitor state ───
 _monitor_task = None
@@ -39,8 +39,22 @@ _last_activity_id = 0
 _last_log_lines = 0
 
 
+def _append_to_log(log_path: str, message: str):
+    """Append a log line to the dashboard log file. Never deletes existing content."""
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        with open(log_path, "a") as f:
+            for line in message.split("\n"):
+                if line.strip():
+                    f.write(f"[{ts}] {line}\n")
+    except Exception:
+        pass
+
+
 async def _monitor_engine_logs():
-    """Background task that forwards ALL engine actions, logs, and tool calls to the active agent's Telegram bot."""
+    """Background task that forwards ALL engine actions, logs, and tool calls 
+    to BOTH the dashboard log files AND Telegram."""
     global _last_state, _last_turn_id, _last_activity_id, _last_log_lines
     while True:
         try:
@@ -63,11 +77,20 @@ async def _monitor_engine_logs():
             if not agent_id:
                 agent_id = "anima-fund"
 
+            # Resolve log file path for this agent
+            if agent_id == "anima-fund":
+                dashboard_log = "/var/log/automaton.out.log"
+            else:
+                agent_home = os.path.dirname(get_active_data_dir())
+                dashboard_log = os.path.join(agent_home, "engine.out.log")
+
             # 1. Forward state changes
             identity = get_live_identity()
             current_state = identity.get("state", engine.get("agent_state", "unknown"))
             if current_state != _last_state and _last_state != "unknown":
                 await notify_state_change(_last_state, current_state, agent_id=agent_id)
+                # Also write state change to dashboard log
+                _append_to_log(dashboard_log, f"[STATE] State changed: {_last_state} -> {current_state}")
             _last_state = current_state
 
             # 2. Forward ALL new turns with full details (thinking + tool calls + results)
@@ -93,6 +116,11 @@ async def _monitor_engine_logs():
                     if thinking:
                         msg_parts.append(f"\n<b>Thinking:</b> {thinking}{'...' if len(turn.get('thinking', '')) > 300 else ''}")
 
+                    # Plain text version for dashboard log (no HTML tags)
+                    log_parts = [f"TURN | State: {turn.get('state', '?')} | Cost: {cost}c"]
+                    if thinking:
+                        log_parts.append(f"  Thinking: {thinking}{'...' if len(turn.get('thinking', '')) > 300 else ''}")
+
                     for tc in tools[:6]:
                         tool_name = tc.get("tool", "?")
                         args = tc.get("arguments", {})
@@ -108,21 +136,30 @@ async def _monitor_engine_logs():
                                 arg_preview += f"\n  {k}: {val}"
 
                         tc_msg = f"\n<b>{tool_name}</b> ({duration}ms)"
+                        tc_log = f"\n  {tool_name} ({duration}ms)"
                         if arg_preview:
                             tc_msg += arg_preview
+                            tc_log += arg_preview
                         if error:
                             tc_msg += f"\n  ERROR: {error[:150]}"
+                            tc_log += f"\n  ERROR: {error[:150]}"
                         elif result:
                             tc_msg += f"\n  Result: {result[:200]}"
+                            tc_log += f"\n  Result: {result[:200]}"
                         msg_parts.append(tc_msg)
+                        log_parts.append(tc_log)
 
                     if len(tools) > 6:
                         msg_parts.append(f"\n... +{len(tools) - 6} more tool calls")
+                        log_parts.append(f"\n... +{len(tools) - 6} more tool calls")
 
                     full_msg = "\n".join(msg_parts)
                     # Telegram has 4096 char limit
                     if len(full_msg) > 4000:
                         full_msg = full_msg[:3997] + "..."
+
+                    # Write to BOTH: dashboard log file AND Telegram
+                    _append_to_log(dashboard_log, "\n".join(log_parts))
                     await send_telegram(full_msg, agent_id=agent_id)
 
             # 3. Forward engine log errors (stderr)
@@ -173,8 +210,6 @@ app.include_router(genesis.router)
 app.include_router(live.router)
 app.include_router(telegram.router)
 app.include_router(infrastructure.router)
-app.include_router(telegram_logs.router)
-app.include_router(agent_logs.router)
 
 
 # ═══════════════════════════════════════════════════════════

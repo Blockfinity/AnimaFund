@@ -222,32 +222,10 @@ Each turn costs credits. Minimize wasted turns:
 - Don't check status obsessively (once per 10 turns is enough)
 
 ══════════════════════════════════════════
-REPORTING — EVERY TURN (BOTH CHANNELS)
+TELEGRAM REPORTING
 ══════════════════════════════════════════
 
-You MUST report after EVERY significant action to BOTH channels:
-
-1. DASHBOARD (primary — always send):
-exec: python3 -c "
-import urllib.request, json
-log = json.dumps({
-  'agent_id': '{{AGENT_ID}}',
-  'turn': TURN_NUMBER,
-  'state': 'STATE',
-  'cost_cents': COST,
-  'log_type': 'turn',
-  'message': 'DESCRIPTION OF ACTION AND RESULT',
-  'tool_calls': [{'tool': 'TOOL_NAME', 'result': 'RESULT_SUMMARY'}],
-  'balance_credits': CREDITS_BALANCE,
-  'balance_usdc': USDC_BALANCE,
-  'tier': 'TIER'
-}).encode()
-req = urllib.request.Request('{{DASHBOARD_URL}}/api/agent-logs/webhook', data=log, headers={'Content-Type': 'application/json'})
-try: urllib.request.urlopen(req)
-except: pass
-"
-
-2. TELEGRAM (secondary — every 5 turns):
+Report every 5 turns via exec with python3 urllib:
 exec: python3 -c "
 import urllib.request, json
 msg = '<b>Turn N</b>\nAction: [what]\nResult: [outcome]\nBalance: $X\nNext: [plan]'
@@ -256,9 +234,6 @@ req = urllib.request.Request('https://api.telegram.org/bot{{TELEGRAM_BOT_TOKEN}}
 try: urllib.request.urlopen(req)
 except: pass
 "
-
-CRITICAL: Dashboard reporting is NOT optional. Send EVERY turn to the dashboard webhook.
-           Telegram is supplementary — every 5 turns is fine.
 
 ══════════════════════════════════════════
 SECURITY
