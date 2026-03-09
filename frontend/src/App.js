@@ -354,17 +354,17 @@ function App() {
   // DASHBOARD
   const renderPage = () => {
     switch (currentPage) {
-      case 'fundhq': return <FundHQ fundName={fundName} />;
+      case 'fundhq': return <FundHQ fundName={fundName} selectedAgent={selectedAgent} />;
       case 'mind': return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'agents': return <Agents />;
       case 'infra': return <Infrastructure selectedAgent={selectedAgent} />;
-      case 'skills': return <Skills />;
-      case 'deals': return <DealFlow />;
-      case 'portfolio': return <Portfolio />;
-      case 'financials': return <Financials />;
-      case 'activity': return <Activity />;
-      case 'memory': return <Memory />;
-      case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} />;
+      case 'skills': return <Skills selectedAgent={selectedAgent} />;
+      case 'deals': return <DealFlow selectedAgent={selectedAgent} />;
+      case 'portfolio': return <Portfolio selectedAgent={selectedAgent} />;
+      case 'financials': return <Financials selectedAgent={selectedAgent} />;
+      case 'activity': return <Activity selectedAgent={selectedAgent} />;
+      case 'memory': return <Memory selectedAgent={selectedAgent} />;
+      case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'wallet': return <AgentMind genesisState={genesisState} showWalletView={true} selectedAgent={selectedAgent} />;
       default: return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
     }

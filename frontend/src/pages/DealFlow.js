@@ -3,7 +3,7 @@ import { GitPullRequest } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
-export default function DealFlow() {
+export default function DealFlow({ selectedAgent }) {
   const [facts, setFacts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -17,7 +17,7 @@ export default function DealFlow() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData]);
+  useEffect(() => { fetchData(); const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData, selectedAgent]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin" /></div>;
 

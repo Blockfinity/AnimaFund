@@ -47,7 +47,7 @@ function timeAgo(ts) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export default function Skills() {
+export default function Skills({ selectedAgent }) {
   const [skills, setSkills] = useState([]);
   const [models, setModels] = useState([]);
   const [toolUsage, setToolUsage] = useState({});
@@ -96,7 +96,7 @@ export default function Skills() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 15000); return () => clearInterval(i); }, [fetchData]);
+  useEffect(() => { fetchData(); const i = setInterval(fetchData, 15000); return () => clearInterval(i); }, [fetchData, selectedAgent]);
 
   // Enrich skills with usage data
   const enriched = useMemo(() => skills.map(s => ({

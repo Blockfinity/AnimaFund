@@ -12,7 +12,7 @@ function timeAgo(ts) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export default function Memory() {
+export default function Memory({ selectedAgent }) {
   const [facts, setFacts] = useState([]);
   const [kv, setKv] = useState([]);
   const [wake, setWake] = useState([]);
@@ -35,7 +35,7 @@ export default function Memory() {
     finally { setLoading(false); }
   }, [tab]);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 8000); return () => clearInterval(i); }, [fetchData]);
+  useEffect(() => { fetchData(); const i = setInterval(fetchData, 8000); return () => clearInterval(i); }, [fetchData, selectedAgent]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin" /></div>;
 

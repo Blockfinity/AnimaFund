@@ -18,7 +18,7 @@ function formatUSD(val) {
   return `$${val.toFixed(2)}`;
 }
 
-export default function Financials() {
+export default function Financials({ selectedAgent }) {
   const [financials, setFinancials] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [paymentStatus, setPaymentStatus] = useState(null);
@@ -39,7 +39,7 @@ export default function Financials() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData]);
+  useEffect(() => { fetchData(); const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData, selectedAgent]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin" /></div>;
 

@@ -3,7 +3,7 @@ import { Shield, Cpu } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
-export default function Configuration({ identity, engineState, genesisState }) {
+export default function Configuration({ identity, engineState, genesisState, selectedAgent }) {
   const [constitution, setConstitution] = useState('');
   const [engineStatus, setEngineStatus] = useState(null);
   const [activeTab, setActiveTab] = useState('engine');
@@ -22,7 +22,7 @@ export default function Configuration({ identity, engineState, genesisState }) {
       finally { setLoading(false); }
     };
     fetchAll();
-  }, []);
+  }, [selectedAgent]);
 
   const isLive = engineState?.live || false;
 

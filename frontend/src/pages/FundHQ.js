@@ -212,7 +212,7 @@ function DepartmentFloor({ deptName, agents, floorNum, spendCents }) {
 }
 
 // ─── Main FundHQ Component ──────────────────────────────
-export default function FundHQ({ fundName }) {
+export default function FundHQ({ fundName, selectedAgent }) {
   const [agents, setAgents] = useState([]);
   const [activities, setActivities] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -317,8 +317,8 @@ export default function FundHQ({ fundName }) {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 12000); return () => clearInterval(i); }, [fetchData]);
-  useEffect(() => { fetchTelegramHealth(); const i = setInterval(fetchTelegramHealth, 30000); return () => clearInterval(i); }, [fetchTelegramHealth]);
+  useEffect(() => { fetchData(); const i = setInterval(fetchData, 12000); return () => clearInterval(i); }, [fetchData, selectedAgent]);
+  useEffect(() => { fetchTelegramHealth(); const i = setInterval(fetchTelegramHealth, 30000); return () => clearInterval(i); }, [fetchTelegramHealth, selectedAgent]);
 
   const scrollBuilding = (dir) => { if (buildingRef.current) buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' }); };
 

@@ -31,7 +31,7 @@ const CATEGORY_CONFIG = {
   other: { label: 'Other', icon: Wrench, color: '#9ca3af' },
 };
 
-export default function Activity() {
+export default function Activity({ selectedAgent }) {
   const [feed, setFeed] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -51,7 +51,7 @@ export default function Activity() {
     fetchData();
     const i = setInterval(fetchData, 8000);
     return () => clearInterval(i);
-  }, [fetchData]);
+  }, [fetchData, selectedAgent]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin" /></div>;
 
