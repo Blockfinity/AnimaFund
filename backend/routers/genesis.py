@@ -139,15 +139,21 @@ async def wallet_balance():
 
     credits_cents = 0
     tier = "unknown"
+
+    # Source 1: KV store last_credit_check (engine writes credits in CENTS)
     if isinstance(credits_data, dict):
-        credits_cents = credits_data.get("credits", 0)
-        if isinstance(credits_cents, (int, float)) and credits_cents > 1:
-            credits_cents = int(credits_cents)
-        else:
-            credits_cents = (balance_data or {}).get("creditsCents", 0) if isinstance(balance_data, dict) else 0
+        raw_credits = credits_data.get("credits", 0)
+        if isinstance(raw_credits, (int, float)) and raw_credits > 0:
+            credits_cents = int(raw_credits)
         tier = credits_data.get("tier", "unknown")
 
-    # Also get REAL-TIME credits from Conway API (overrides stale local cache)
+    # Source 2: KV store last_known_balance
+    if credits_cents == 0 and isinstance(balance_data, dict):
+        bk = balance_data.get("creditsCents", 0)
+        if isinstance(bk, (int, float)) and bk > 0:
+            credits_cents = int(bk)
+
+    # Source 3: REAL-TIME credits from Conway API (most authoritative — overrides local cache)
     conway_api_key = os.environ.get("CONWAY_API_KEY", "")
     if not conway_api_key:
         config_path = os.path.join(active_dir, "config.json")
@@ -159,8 +165,7 @@ async def wallet_balance():
                 pass
     if conway_api_key:
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                # Try both auth header formats for Conway API compatibility
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
                 headers_options = [
                     {"Authorization": f"Bearer {conway_api_key}"},
                     {"x-api-key": conway_api_key},
@@ -174,22 +179,25 @@ async def wallet_balance():
                             if resp.status == 200:
                                 conway_data = await resp.json()
                                 conway_credits = conway_data.get("credits_cents", None)
+                                if conway_credits is None:
+                                    conway_credits = conway_data.get("creditsCents", None)
+                                if conway_credits is None:
+                                    conway_credits = conway_data.get("credits", None)
                                 if conway_credits is not None:
-                                    credits_cents = conway_credits
-                                    # Derive tier from live credits
-                                    if conway_credits <= 0:
+                                    credits_cents = int(conway_credits)
+                                    if credits_cents <= 0:
                                         tier = "critical"
-                                    elif conway_credits < 50:
+                                    elif credits_cents < 50:
                                         tier = "survival"
-                                    elif conway_credits < 500:
+                                    elif credits_cents < 500:
                                         tier = "conservation"
                                     else:
                                         tier = "normal"
-                                break  # Success — stop trying other headers
+                                break
                     except Exception:
                         continue
         except Exception:
-            pass  # Keep local cache if Conway API fails
+            pass
 
     result = {
         "wallet": primary_wallet,
