@@ -9,6 +9,7 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 - **Database**: MongoDB (anima_fund)
 - **Agent Engine**: Conway Automaton (TypeScript, compiled to dist/bundle.mjs)
 - **Integrations**: Conway Cloud API, OpenClaw, Telegram Bot, Base chain (USDC/ETH)
+- **Real-time**: Server-Sent Events (SSE) via /api/live/stream — single connection shared across all components
 
 ## Two Genesis Prompt System
 1. **Anima Fund (The Catalyst)**: `/root/.anima/genesis-prompt.md` — VC fund founder with specific identity and fund model
@@ -16,14 +17,22 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 3. **Both include identical mandatory boot sequence** (Steps 0-7)
 4. **Push-genesis skips anima-fund** to protect The Catalyst's custom prompt
 
+## Real-time Architecture (SSE)
+- **Backend**: `/api/live/stream` pushes engine status, agent count, activity ID, credits every 8s
+- **Frontend**: `SSEProvider` wraps app, creates single `EventSource` connection
+- **Hook**: `useSSETrigger(fetchFn, opts)` replaces all `setInterval` polling
+- **Fallback**: Automatic polling at configurable intervals when SSE disconnects
+- **Header**: Wi-Fi icon shows LIVE (green) or POLL (gray pulsing) connection status
+- **Pages updated**: All 12 dashboard pages use SSE-triggered fetches
+
 ## All Screens & Connections (13 pages)
 | Screen | Page | Backend APIs | Status |
 |---|---|---|---|
 | Agent Mind | AgentMind.js | /api/engine/live, /api/live/*, /api/wallet/balance | VERIFIED |
 | Fund HQ | FundHQ.js | /api/engine/live, /api/live/*, /api/telegram/health | VERIFIED |
-| Agents | Agents.js | /api/live/agents, /api/live/discovered | VERIFIED (prop fix) |
+| Agents | Agents.js | /api/live/agents, /api/live/discovered | VERIFIED |
 | Infrastructure | Infrastructure.js | /api/infrastructure/* | VERIFIED |
-| **OpenClaw VM** | **OpenClawViewer.js** | **/api/openclaw/** | **NEW** |
+| OpenClaw VM | OpenClawViewer.js | /api/openclaw/* | VERIFIED |
 | Skills | Skills.js | /api/live/skills-full, /api/skills/available | VERIFIED |
 | Deal Flow | DealFlow.js | /api/live/memory | VERIFIED |
 | Portfolio | Portfolio.js | /api/live/memory | VERIFIED |
@@ -33,22 +42,15 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 | Configuration | Configuration.js | /api/constitution, /api/engine/status | VERIFIED |
 | Wallet & Logs | AgentMind.js | same as Agent Mind | VERIFIED |
 
-## New: OpenClaw VM Viewer
-- 4 tabs: Live View, Actions, Sandbox VMs, Browsing
-- Real-time auto-refresh every 5 seconds
-- Shows browsing sessions (browse_page calls), sandbox VMs (Conway API), all agent tool calls
-- Empty state messaging when agent is idle
-- Filter by action category (browsing, sandbox, payment, network, tools)
-
 ## Test Results
-- **Unit tests**: 21/21 passed at `/app/backend/tests/test_api.py`
-- **E2E iteration 47**: 18/19 backend + 100% frontend (all 12 feature categories verified)
+- **Unit tests**: 27/27 passed (iteration 48 - SSE integration tests)
+- **E2E**: 100% backend + 100% frontend (all 13 pages load, SSE connected, data flows)
 - **Deployment check**: PASS
 
 ## Remaining Tasks
 
 ### P0 (Critical)
-- Start the agent engine and monitor first 10 turns
+- Full user verification: start agent engine and monitor first 10 turns
 
 ### P1 (High)
 - Verify Telegram messages, skills loading, wallet updates during live operation
