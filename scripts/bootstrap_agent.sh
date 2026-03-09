@@ -1,9 +1,13 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
 # Anima Fund — Agent Environment Bootstrap
-# Pre-installs Conway Terminal, provisions API key, configures
-# OpenClaw, and copies credentials to engine directory (.anima/).
+# Pre-installs system tools, Conway Terminal, provisions API key,
+# configures OpenClaw, and copies credentials to engine directory.
 # Each agent gets its own fully isolated environment.
+#
+# This script runs BEFORE the LLM engine starts. Every tool
+# installed here is available to the agent from Turn 1.
+# The LLM cannot skip what this script does mechanically.
 #
 # Usage: HOME=/path/to/agent/home bash bootstrap_agent.sh
 # ═══════════════════════════════════════════════════════════════════
@@ -19,6 +23,39 @@ echo "════════════════════════�
 echo "  AGENT BOOTSTRAP — ${AGENT_HOME}"
 echo "══════════════════════════════════════════════════════"
 
+# ─── Step 0: Install system tools (MECHANICAL — cannot be skipped) ─
+echo "[0/8] Installing system tools (curl, git, wget, build-essential)..."
+
+apt-get update -qq 2>/dev/null || true
+apt-get install -y -qq curl git wget build-essential jq > /dev/null 2>&1 || true
+
+# Verify each tool
+for tool in curl git wget jq; do
+    if command -v $tool &>/dev/null; then
+        echo "  $tool: OK ($(which $tool))"
+    else
+        echo "  WARNING: $tool failed to install"
+    fi
+done
+
+# ─── Step 0.5: Install Node.js if missing ────────────────────────
+echo "[0.5/8] Checking Node.js..."
+
+if command -v node &>/dev/null; then
+    echo "  Node.js already installed: $(node --version)"
+else
+    echo "  Installing Node.js 22.x..."
+    if command -v curl &>/dev/null; then
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null 2>&1 || true
+        apt-get install -y -qq nodejs > /dev/null 2>&1 || true
+    fi
+    if command -v node &>/dev/null; then
+        echo "  Node.js installed: $(node --version)"
+    else
+        echo "  WARNING: Node.js installation failed"
+    fi
+fi
+
 # ─── Step 1: Ensure directories exist ────────────────────────────
 mkdir -p "${ANIMA_DIR}" "${CONWAY_DIR}" "${OPENCLAW_DIR}"
 
@@ -27,10 +64,10 @@ AUTOMATON_LINK="${AGENT_HOME}/.automaton"
 if [ ! -e "${AUTOMATON_LINK}" ]; then
     ln -s ".anima" "${AUTOMATON_LINK}" 2>/dev/null || true
 fi
-echo "[1/7] Directories created"
+echo "[1/8] Directories created"
 
 # ─── Step 2: Install Conway Terminal ─────────────────────────────
-echo "[2/7] Installing Conway Terminal..."
+echo "[2/8] Installing Conway Terminal..."
 
 if command -v conway-terminal &>/dev/null; then
     echo "  Conway Terminal already installed: $(which conway-terminal)"
@@ -68,7 +105,7 @@ fi
 # The agent provisions its OWN wallet and API key via Conway.
 # We do NOT copy the platform's global Conway credentials.
 # The engine's setup wizard or conway-terminal --provision handles this.
-echo "[3/7] Conway provisioning (agent self-provisions on first run)..."
+echo "[3/8] Conway provisioning (agent self-provisions on first run)..."
 
 if [ -f "${CONWAY_DIR}/config.json" ]; then
     echo "  Agent already has Conway config"
@@ -78,11 +115,24 @@ else
     echo "  No Conway config yet — agent will self-provision on first run"
 fi
 
-# ─── Step 4: Configure OpenClaw ──────────────────────────────────
-# OpenClaw MCP config points to Conway Terminal.
-# The agent's OWN Conway API key is used (set via CONWAY_API_KEY env at runtime).
-# We do NOT inject the platform's global key.
-echo "[4/7] Configuring OpenClaw..."
+# ─── Step 4: Install & Configure OpenClaw ────────────────────────
+# Install OpenClaw binary, then configure MCP to point to Conway Terminal.
+echo "[4/8] Installing & configuring OpenClaw..."
+
+if command -v openclaw &>/dev/null; then
+    echo "  OpenClaw binary already installed: $(which openclaw)"
+else
+    echo "  Installing OpenClaw..."
+    if command -v curl &>/dev/null; then
+        curl -fsSL https://openclaw.ai/install.sh | bash 2>/dev/null && \
+            openclaw onboard --install-daemon 2>/dev/null || true
+    fi
+    if command -v openclaw &>/dev/null; then
+        echo "  OpenClaw installed: $(which openclaw)"
+    else
+        echo "  WARNING: OpenClaw installation failed (agent can retry)"
+    fi
+fi
 
 OPENCLAW_CONFIG="${OPENCLAW_DIR}/config.json"
 if [ -f "${OPENCLAW_CONFIG}" ]; then
@@ -121,7 +171,7 @@ print('  OpenClaw configured with Conway Terminal' + (' + API key' if conway_key
 fi
 
 # ─── Step 5: Install Conway Terminal skills & commands ───────────
-echo "[5/7] Installing Conway Terminal skills and commands..."
+echo "[5/8] Installing Conway Terminal skills and commands..."
 
 # Conway Automaton skill (for the engine)
 CT_SKILLS="$(npm root -g 2>/dev/null)/conway-terminal/plugin/skills"
@@ -148,7 +198,7 @@ if [ -d "$CT_COMMANDS" ]; then
 fi
 
 # ─── Step 6: File permission isolation ───────────────────────────
-echo "[6/7] Setting file permissions..."
+echo "[6/8] Setting file permissions..."
 
 # Lock down agent home so other agents can't read it
 chmod 700 "${AGENT_HOME}" 2>/dev/null || true
@@ -158,7 +208,7 @@ chmod 700 "${OPENCLAW_DIR}" 2>/dev/null || true
 echo "  Agent home locked to owner-only access"
 
 # ─── Step 7: Verify Environment ─────────────────────────────────
-echo "[7/7] Verifying environment..."
+echo "[7/8] Verifying environment..."
 
 echo "  Agent HOME: ${AGENT_HOME}"
 
@@ -188,3 +238,37 @@ echo ""
 echo "══════════════════════════════════════════════════════"
 echo "  BOOTSTRAP COMPLETE"
 echo "══════════════════════════════════════════════════════"
+
+# ─── Step 8: Send Telegram bootstrap notification ─────────────────
+echo "[8/8] Sending Telegram bootstrap notification..."
+
+# Read telegram config from genesis prompt or env
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+
+# Try to extract from genesis prompt if not in env
+if [ -z "$TELEGRAM_BOT_TOKEN" ] && [ -f "${ANIMA_DIR}/genesis-prompt.md" ]; then
+    TELEGRAM_BOT_TOKEN=$(grep -oP 'bot\K[0-9]+:[A-Za-z0-9_-]+' "${ANIMA_DIR}/genesis-prompt.md" | head -1)
+    TELEGRAM_BOT_TOKEN="bot${TELEGRAM_BOT_TOKEN}"
+fi
+if [ -z "$TELEGRAM_CHAT_ID" ] && [ -f "${ANIMA_DIR}/genesis-prompt.md" ]; then
+    TELEGRAM_CHAT_ID=$(grep -oP "'chat_id': '\K[0-9]+" "${ANIMA_DIR}/genesis-prompt.md" | head -1)
+fi
+
+if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    python3 -c "
+import urllib.request, json
+tools = []
+for t in ['curl', 'git', 'wget', 'node', 'npm', 'conway-terminal']:
+    import shutil
+    tools.append(f'  {t}: {\"OK\" if shutil.which(t) else \"MISSING\"}')
+msg = '<b>BOOTSTRAP COMPLETE (mechanical)</b>\n' + '\n'.join(tools) + '\nEngine starting next...'
+data = json.dumps({'chat_id': '${TELEGRAM_CHAT_ID}', 'text': msg, 'parse_mode': 'HTML'}).encode()
+req = urllib.request.Request('https://api.telegram.org/${TELEGRAM_BOT_TOKEN}/sendMessage', data=data, headers={'Content-Type': 'application/json'})
+try: urllib.request.urlopen(req)
+except Exception as e: print(f'Telegram notification failed: {e}')
+" 2>/dev/null || true
+    echo "  Telegram notification sent"
+else
+    echo "  Telegram credentials not found — skipping notification"
+fi
