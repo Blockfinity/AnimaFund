@@ -10,71 +10,75 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 - **Agent Engine**: Conway Automaton (TypeScript, compiled to dist/bundle.mjs)
 - **Integrations**: Conway Cloud API, OpenClaw, Telegram Bot, Base chain (USDC/ETH)
 
+## Two Genesis Prompt System
+1. **Anima Fund (The Catalyst)**: `/root/.anima/genesis-prompt.md` — VC fund founder AI with specific identity, personality, fund model, and revenue strategy
+2. **Generic Agent Template**: `/app/automaton/genesis-prompt.md` — Used by CreateAgentModal "Load Template" button. Generic template for new agents with `{{AGENT_NAME}}` and `{{TELEGRAM_BOT_TOKEN}}` placeholders
+3. **Both include identical mandatory boot sequence** (Steps 0-7)
+
 ## What's Been Implemented
 
 ### Core Platform
-- Multi-agent dashboard with agent switching
-- Agent creation/management API
+- Multi-agent dashboard with agent switching and data isolation
+- Agent creation/management API with welcome message, tool selector, Telegram per-agent
 - Real-time engine logs viewer
-- SOUL.md viewer and editor (with emergency patch API)
-- Wallet QR code + balance display
-- Telegram bot integration for notifications
+- SOUL.md viewer and editor (Edit/Save buttons with emergency patch API)
+- Wallet QR code + balance display (Conway + on-chain)
+- Telegram bot integration for per-agent notifications
 - Conway Cloud integration for sandbox VMs, domains, payments
 - Agent sandboxing (environment variable isolation)
+- SSE live stream for real-time dashboard updates
 
-### Critical Fixes (March 9, 2026)
-1. **SOUL.md Emergency Patch**: Direct overwrite from 30,666 bytes to 726 chars, bypassing update_soul char limits
-2. **Genesis Prompt Rewrite**: Removed "already available" assumption, added mandatory boot sequence, anti-stuck rules with ULID guidance, Telegram reporting every turn, skill loading steps
+### Critical Fixes (March 9-10, 2026)
+1. **SOUL.md Emergency Patch**: 30,666 bytes → 370 chars. Patch-soul API added.
+2. **Genesis Prompt Split**: Catalyst-specific vs generic template. Push-genesis skips anima-fund.
 3. **Soul Validator Limits Raised**: corePurpose 2000→4000, personality 1000→2000 chars
-4. **Loop Detection Improved**: Engine loop messages now guide agent to use exec/write_file/sandbox_create directly instead of looping on create_goal
-5. **Wallet Balance Auth Fix**: Conway API now tries both Bearer and x-api-key headers
-6. **OpenClaw Config Fix**: Bootstrap writes to config.json (was openclaw.json), injects Conway API key
-7. **SSE Live Stream**: New /api/live/stream endpoint for real-time dashboard updates
-8. **Frontend SOUL.md Editor**: Edit/Save buttons in Agent Mind dashboard for emergency soul patches
+4. **Loop Detection Improved**: Engine guides agent to use exec/write_file directly
+5. **Anti-Stuck Rules**: ULID guidance, forbidden loop patterns, 3-turn rule
+6. **Wallet Balance Auth Fix**: Conway API tries both Bearer and x-api-key headers
+7. **OpenClaw Config Fix**: bootstrap writes config.json (was openclaw.json), injects API key
+8. **Telegram Per-Agent**: Each agent has own token/chat_id, update works for .anima and .automaton
 9. **Automaton Bundle Rebuilt**: All source changes compiled to dist/
+
+### Test Results
+- Unit tests: 21 passed, 8 skipped (need live MongoDB) at `/app/backend/tests/test_api.py`
+- E2E tests: 16/16 passed (iteration_46)
+- Deployment check: PASS — no blockers
+- All 11 user-requested categories verified
 
 ## Key API Endpoints
 - `POST /api/agents` — Create agent
 - `POST /api/agents/{id}/start` — Start agent
+- `POST /api/agents/{id}/select` — Switch active agent (data isolation)
 - `POST /api/agents/{id}/patch-soul` — Emergency SOUL.md overwrite
 - `GET /api/agents/{id}/soul` — Read agent's SOUL.md
-- `GET /api/wallet/balance` — Real-time wallet balance (Conway + on-chain)
+- `POST /api/agents/push-genesis` — Push template to all agents (skips anima-fund)
+- `GET /api/wallet/balance` — Real-time wallet balance
 - `GET /api/live/stream` — SSE for real-time updates
-- `GET /api/conway/balance` — Conway credits balance
-- `GET /api/engine/live` — Engine status
-- `GET /api/engine/logs` — Engine stdout/stderr logs
-
-## Key Files
-- `/app/automaton/genesis-prompt.md` — Genesis prompt template (rewritten)
-- `/app/automaton/src/soul/validator.ts` — Soul validation limits
-- `/app/automaton/src/agent/loop.ts` — Loop detection logic
-- `/app/backend/routers/genesis.py` — Genesis, wallet, patch-soul APIs
-- `/app/backend/routers/live.py` — Live data + SSE stream
-- `/app/backend/engine_bridge.py` — State.db reader
-- `/app/scripts/bootstrap_agent.sh` — Agent bootstrap script
-- `/root/.anima/SOUL.md` — Live agent's soul (726 chars)
-- `/root/.anima/genesis-prompt.md` — Staged genesis prompt for agent
+- `GET /api/conway/balance` — Conway credits
+- `GET /api/telegram/health` — Telegram bot status per agent
+- `GET /api/genesis/prompt-template` — Generic agent template
 
 ## Remaining Tasks
 
 ### P0 (Critical)
-- Start/restart the agent engine with the new genesis prompt and condensed SOUL.md, monitor first 10 turns to confirm loop is broken
+- Start the agent engine with new genesis prompt + condensed SOUL.md
+- Monitor first 10 turns to confirm boot sequence executes correctly and loop is broken
 
 ### P1 (High)
-- Verify Conway wallet balance accuracy after agent starts running
-- Confirm Telegram messages are being sent every turn
-- Verify skills are being loaded and used
+- Verify Telegram messages sent every turn after agent restarts
+- Verify skills loading works
+- Verify wallet balance updates in real-time during agent operation
 
 ### P2 (Medium)
-- Implement real smart contracts (ERC-8004)
-- Android device control integration
+- Real smart contracts (ERC-8004)
+- Android device control
 - Self-hosted agent engine migration
 - Revenue tracking charts
 - Multi-agent communication dashboard
-- Historical analysis of agent turns/costs
 
 ### Backlog
 - Domain trading automation
 - Agent marketplace
 - Cross-chain wallet support
 - Agent performance scoring
+- Historical analysis of agent turns/costs
