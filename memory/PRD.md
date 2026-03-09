@@ -91,6 +91,23 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform called "Ani
 ## Frontend (11 Pages)
 Agent Mind (3 tabs), Fund HQ, Agents, Infrastructure (6 tabs), Skills (filters + search), Deal Flow, Portfolio, Financials, Activity, Memory, Configuration
 
+## Per-Agent Data Flow (FIXED)
+
+All 11 frontend pages now receive `selectedAgent` prop from App.js and include it in their `useEffect` dependency arrays. This ensures:
+- Immediate re-fetch when switching between agents (no stale data)
+- Each page displays the correct agent's data from state.db
+- Backend `engine_bridge.py` reads from `_active_data_dir` which switches per `POST /api/agents/{id}/select`
+
+### Pages with selectedAgent:
+AgentMind, FundHQ, Infrastructure, Skills, DealFlow, Portfolio, Financials, Activity, Memory, Configuration
+
+### Multi-Agent Data Isolation:
+- Each agent: `~/agents/{id}/` with `.anima/` (state.db, skills, config)
+- Default agent (anima-fund): `~/.anima/` at root
+- Agent creation: `POST /api/agents/create` → isolated HOME dir + bootstrap
+- Agent switching: `POST /api/agents/{id}/select` → updates `_active_data_dir` globally
+- Agent deletion: `DELETE /api/agents/{id}` → removes from MongoDB + filesystem
+
 ## Per-Agent Sandboxing (IMPLEMENTED)
 
 ### Isolation Architecture
