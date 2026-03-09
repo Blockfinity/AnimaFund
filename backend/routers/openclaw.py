@@ -1,12 +1,21 @@
 """
-OpenClaw VM Viewer — real-time browsing sessions, actions, and sandbox state.
-Reads from engine state.db (tool calls involving browse_page, sandbox_*, openclaw)
-and from Conway API for live sandbox data.
+OpenClaw VM Viewer — Conway Sandbox + OpenClaw monitoring.
+
+Architecture:
+  - The agent creates Conway sandbox VMs via sandbox_create
+  - The agent installs OpenClaw INSIDE those sandbox VMs via sandbox_exec
+  - OpenClaw runs as a daemon inside the Conway VM (browser control, agent network, MCP)
+  - All browsing, agent discovery, and MCP calls go through OpenClaw in the sandbox
+
+This module reads:
+  1. Conway API — live sandbox VMs (status, URLs, specs)
+  2. Agent state.db — tool calls involving sandbox_* and browse_page
+  3. Derived OpenClaw state from sandbox_exec commands (install, daemon, browse activity)
 """
 import os
 import json
+import re
 import aiohttp
-from datetime import datetime, timezone
 from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/openclaw", tags=["openclaw"])
@@ -30,47 +39,25 @@ def _get_conway_api_key() -> str:
     return key
 
 
-def _get_openclaw_config() -> dict:
-    """Read the OpenClaw config to understand MCP server connections."""
-    for path in [
-        os.path.expanduser("~/.openclaw/config.json"),
-        os.path.expanduser("~/.openclaw/openclaw.json"),
-    ]:
-        if os.path.exists(path):
-            try:
-                with open(path) as f:
-                    return json.load(f)
-            except Exception:
-                pass
-    return {}
-
-
-def _get_browsing_actions(limit: int = 100) -> list:
-    """Extract browsing-related tool calls from agent turns in state.db."""
+def _get_tool_calls(tool_names: tuple, limit: int = 200) -> list:
+    """Read tool calls from agent state.db matching given tool names."""
     from engine_bridge import get_engine_db
     conn = get_engine_db()
     if not conn:
         return []
     try:
-        # Tool names that involve browsing/openclaw/sandbox operations
-        browse_tools = (
-            "browse_page", "sandbox_create", "sandbox_exec", "sandbox_write_file",
-            "sandbox_read_file", "sandbox_expose_port", "sandbox_list", "sandbox_delete",
-            "x402_fetch", "x402_discover", "discover_agents", "send_message",
-            "check_social_inbox", "install_mcp_server", "install_skill",
-        )
-        placeholders = ",".join(["?" for _ in browse_tools])
+        placeholders = ",".join(["?" for _ in tool_names])
         cursor = conn.execute(f"""
             SELECT tc.id, tc.name, tc.arguments, tc.result, tc.duration_ms, tc.error,
-                   t.timestamp, t.state
+                   tc.created_at, t.timestamp as turn_timestamp, t.state as turn_state
             FROM tool_calls tc
             JOIN turns t ON tc.turn_id = t.id
             WHERE tc.name IN ({placeholders})
-            ORDER BY t.timestamp DESC, tc.rowid ASC
+            ORDER BY t.timestamp DESC, tc.created_at DESC
             LIMIT ?
-        """, (*browse_tools, limit))
+        """, (*tool_names, limit))
 
-        actions = []
+        results = []
         for row in cursor.fetchall():
             args = {}
             try:
@@ -78,23 +65,20 @@ def _get_browsing_actions(limit: int = 100) -> list:
             except Exception:
                 pass
             result_text = row["result"] or ""
-            # Truncate very large results for display
-            if len(result_text) > 2000:
-                result_text = result_text[:2000] + "... [truncated]"
+            if len(result_text) > 3000:
+                result_text = result_text[:3000] + "\n... [truncated]"
 
-            actions.append({
+            results.append({
                 "id": row["id"],
                 "tool": row["name"],
                 "arguments": args,
                 "result": result_text,
                 "duration_ms": row["duration_ms"],
                 "error": row["error"],
-                "timestamp": row["timestamp"],
-                "turn_state": row["state"],
-                "category": _categorize_action(row["name"]),
+                "timestamp": row["turn_timestamp"],
             })
         conn.close()
-        return actions
+        return results
     except Exception:
         try:
             conn.close()
@@ -103,72 +87,178 @@ def _get_browsing_actions(limit: int = 100) -> list:
         return []
 
 
-def _categorize_action(tool_name: str) -> str:
-    if tool_name == "browse_page":
+def _parse_openclaw_state(sandbox_actions: list) -> dict:
+    """Derive OpenClaw installation/running state from sandbox_exec commands."""
+    openclaw_installed = False
+    openclaw_daemon_running = False
+    mcp_configured = False
+    conway_terminal_in_sandbox = False
+    last_openclaw_action = None
+
+    for a in sandbox_actions:
+        if a["tool"] != "sandbox_exec":
+            continue
+        cmd = a["arguments"].get("command", "")
+        result = a["result"] or ""
+
+        # Detect OpenClaw install
+        if "openclaw" in cmd.lower() and ("install" in cmd.lower() or "curl" in cmd.lower()):
+            if a["error"] is None and ("INSTALLED" in result or "openclaw" in result.lower()):
+                openclaw_installed = True
+                last_openclaw_action = a["timestamp"]
+
+        # Detect daemon running
+        if "openclaw" in cmd.lower() and "daemon" in cmd.lower():
+            openclaw_daemon_running = True
+            last_openclaw_action = a["timestamp"]
+
+        # Detect MCP config
+        if "mcp" in cmd.lower() and ("config" in cmd.lower() or "openclaw" in cmd.lower()):
+            mcp_configured = True
+
+        # Detect Conway Terminal in sandbox
+        if "conway-terminal" in cmd.lower() and ("install" in cmd.lower() or "npm" in cmd.lower()):
+            if a["error"] is None:
+                conway_terminal_in_sandbox = True
+
+    return {
+        "openclaw_installed": openclaw_installed,
+        "openclaw_daemon_running": openclaw_daemon_running,
+        "mcp_configured": mcp_configured,
+        "conway_terminal_in_sandbox": conway_terminal_in_sandbox,
+        "last_openclaw_action": last_openclaw_action,
+    }
+
+
+def _extract_sandbox_ids(actions: list) -> list:
+    """Extract unique sandbox IDs from sandbox_create results and other sandbox_* calls."""
+    sandbox_ids = set()
+    for a in actions:
+        if a["tool"] == "sandbox_create":
+            # sandbox_create result usually contains the sandbox ID
+            result = a["result"] or ""
+            # Try to parse JSON result
+            try:
+                r = json.loads(result)
+                sid = r.get("id") or r.get("sandbox_id") or r.get("sandboxId", "")
+                if sid:
+                    sandbox_ids.add(sid)
+            except Exception:
+                # Try regex for ULIDs or UUIDs
+                matches = re.findall(r'[0-9a-fA-F-]{20,}|[A-Z0-9]{26}', result)
+                for m in matches:
+                    sandbox_ids.add(m)
+        elif a["tool"].startswith("sandbox_") and a["tool"] != "sandbox_create":
+            # Other sandbox calls have sandbox_id in arguments
+            sid = a["arguments"].get("sandbox_id", a["arguments"].get("sandboxId", ""))
+            if sid:
+                sandbox_ids.add(sid)
+    return list(sandbox_ids)
+
+
+def _categorize_action(tool_name: str, args: dict) -> str:
+    """Categorize a tool call by what it's doing in the Conway/OpenClaw context."""
+    cmd = args.get("command", "").lower()
+
+    if tool_name == "sandbox_create":
+        return "vm_provision"
+    elif tool_name == "sandbox_delete":
+        return "vm_teardown"
+    elif tool_name == "sandbox_expose_port":
+        return "vm_network"
+    elif tool_name == "sandbox_exec":
+        if "openclaw" in cmd:
+            return "openclaw_setup" if ("install" in cmd or "onboard" in cmd) else "openclaw_action"
+        elif "conway-terminal" in cmd or "npm install" in cmd:
+            return "tool_install"
+        elif "node " in cmd or "npm start" in cmd or "python" in cmd:
+            return "service_deploy"
+        elif "apt" in cmd or "curl" in cmd or "wget" in cmd:
+            return "system_setup"
+        return "sandbox_exec"
+    elif tool_name in ("sandbox_write_file", "sandbox_read_file"):
+        return "sandbox_file"
+    elif tool_name == "browse_page":
         return "browsing"
-    elif tool_name.startswith("sandbox_"):
-        return "sandbox"
     elif tool_name.startswith("x402_"):
         return "payment"
     elif tool_name in ("discover_agents", "send_message", "check_social_inbox"):
-        return "network"
-    elif tool_name in ("install_mcp_server", "install_skill"):
-        return "tools"
+        return "agent_network"
     return "other"
 
 
 @router.get("/status")
 async def openclaw_status():
-    """Get OpenClaw installation status and MCP config."""
-    config = _get_openclaw_config()
-    mcp_servers = config.get("mcpServers", {})
+    """Overall status: Conway sandboxes + OpenClaw state derived from agent activity."""
+    # Get all sandbox-related tool calls
+    sandbox_tools = (
+        "sandbox_create", "sandbox_exec", "sandbox_write_file", "sandbox_read_file",
+        "sandbox_expose_port", "sandbox_list", "sandbox_delete",
+    )
+    sandbox_actions = _get_tool_calls(sandbox_tools, limit=200)
 
-    # Check if OpenClaw binary exists
-    import shutil
-    openclaw_installed = shutil.which("openclaw") is not None
-    conway_terminal_installed = shutil.which("conway-terminal") is not None
+    # Derive OpenClaw state from sandbox_exec commands
+    openclaw_state = _parse_openclaw_state(sandbox_actions)
+
+    # Get active sandbox IDs from tool calls
+    sandbox_ids = _extract_sandbox_ids(sandbox_actions)
+
+    # Count sandbox operations
+    total_sandbox_ops = len(sandbox_actions)
+    creates = sum(1 for a in sandbox_actions if a["tool"] == "sandbox_create")
+    execs = sum(1 for a in sandbox_actions if a["tool"] == "sandbox_exec")
+    exposed = sum(1 for a in sandbox_actions if a["tool"] == "sandbox_expose_port")
+
+    # Get live sandboxes from Conway API
+    live_sandboxes = await _fetch_conway_sandboxes()
 
     return {
-        "openclaw_installed": openclaw_installed,
-        "conway_terminal_installed": conway_terminal_installed,
-        "mcp_servers": list(mcp_servers.keys()),
-        "mcp_config": {
-            name: {"command": srv.get("command", ""), "has_env": bool(srv.get("env", {}))}
-            for name, srv in mcp_servers.items()
+        "openclaw": openclaw_state,
+        "sandbox_summary": {
+            "known_sandbox_ids": sandbox_ids,
+            "live_sandboxes": len(live_sandboxes),
+            "total_operations": total_sandbox_ops,
+            "creates": creates,
+            "execs": execs,
+            "ports_exposed": exposed,
         },
-        "config_path": next(
-            (p for p in [
-                os.path.expanduser("~/.openclaw/config.json"),
-                os.path.expanduser("~/.openclaw/openclaw.json"),
-            ] if os.path.exists(p)),
-            None,
-        ),
+        "has_activity": total_sandbox_ops > 0,
     }
 
 
 @router.get("/actions")
 async def openclaw_actions(limit: int = 100):
-    """Get browsing & sandbox actions from agent turns."""
-    actions = _get_browsing_actions(limit)
+    """All Conway sandbox + OpenClaw + browsing actions from agent turns."""
+    all_tools = (
+        "sandbox_create", "sandbox_exec", "sandbox_write_file", "sandbox_read_file",
+        "sandbox_expose_port", "sandbox_list", "sandbox_delete",
+        "browse_page", "x402_fetch", "x402_discover",
+        "discover_agents", "send_message", "check_social_inbox",
+        "install_mcp_server", "install_skill",
+    )
+    actions = _get_tool_calls(all_tools, limit=limit)
+
+    # Add category to each action
+    categorized = []
     categories = {}
     for a in actions:
-        cat = a["category"]
+        cat = _categorize_action(a["tool"], a["arguments"])
+        a["category"] = cat
         categories[cat] = categories.get(cat, 0) + 1
+        categorized.append(a)
 
     return {
-        "actions": actions,
-        "total": len(actions),
+        "actions": categorized,
+        "total": len(categorized),
         "categories": categories,
     }
 
 
-@router.get("/sandboxes")
-async def openclaw_sandboxes():
-    """Get live sandbox VMs from Conway API."""
+async def _fetch_conway_sandboxes() -> list:
+    """Fetch live sandbox VMs from Conway API."""
     api_key = _get_conway_api_key()
     if not api_key:
-        return {"sandboxes": [], "error": "No Conway API key configured"}
-
+        return []
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
             async with session.get(
@@ -177,53 +267,153 @@ async def openclaw_sandboxes():
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    sandboxes = data if isinstance(data, list) else data.get("sandboxes", [])
-                    return {"sandboxes": sandboxes, "total": len(sandboxes)}
-                return {"sandboxes": [], "error": f"Conway API returned {resp.status}"}
-    except Exception as e:
-        return {"sandboxes": [], "error": str(e)}
+                    return data.get("sandboxes", data if isinstance(data, list) else [])
+    except Exception:
+        pass
+    return []
 
 
-@router.get("/browsing-sessions")
+@router.get("/sandboxes")
+async def openclaw_sandboxes():
+    """Live Conway sandbox VMs — these are where OpenClaw runs."""
+    live = await _fetch_conway_sandboxes()
+
+    # Also get sandbox IDs from agent tool calls for cross-reference
+    sandbox_tools = ("sandbox_create", "sandbox_exec", "sandbox_expose_port", "sandbox_list")
+    sandbox_actions = _get_tool_calls(sandbox_tools, limit=100)
+    known_ids = _extract_sandbox_ids(sandbox_actions)
+
+    # Extract exposed ports/URLs from tool call results
+    exposed_urls = []
+    for a in sandbox_actions:
+        if a["tool"] == "sandbox_expose_port":
+            result = a["result"] or ""
+            urls = re.findall(r'https?://[^\s"\'<>]+', result)
+            for url in urls:
+                exposed_urls.append({
+                    "url": url,
+                    "sandbox_id": a["arguments"].get("sandbox_id", ""),
+                    "port": a["arguments"].get("port", ""),
+                    "timestamp": a["timestamp"],
+                })
+
+    # Extract sandbox specs from create results
+    created_sandboxes = []
+    for a in sandbox_actions:
+        if a["tool"] == "sandbox_create":
+            result = a["result"] or ""
+            try:
+                r = json.loads(result)
+                created_sandboxes.append({
+                    "id": r.get("id", r.get("sandbox_id", "")),
+                    "spec": a["arguments"],
+                    "timestamp": a["timestamp"],
+                    "status": "created",
+                })
+            except Exception:
+                created_sandboxes.append({
+                    "id": "unknown",
+                    "spec": a["arguments"],
+                    "timestamp": a["timestamp"],
+                    "result_raw": result[:500],
+                })
+
+    return {
+        "live_sandboxes": live,
+        "created_sandboxes": created_sandboxes,
+        "exposed_urls": exposed_urls,
+        "known_sandbox_ids": known_ids,
+        "total_live": len(live),
+        "total_created": len(created_sandboxes),
+    }
+
+
+@router.get("/browsing")
 async def browsing_sessions(limit: int = 50):
-    """Extract browse_page calls as browsing sessions with URL, content, timing."""
-    actions = _get_browsing_actions(limit)
+    """Browsing sessions — browse_page calls that go through OpenClaw in the Conway sandbox."""
+    browse_actions = _get_tool_calls(("browse_page",), limit=limit)
     sessions = []
-    for a in actions:
-        if a["tool"] == "browse_page":
-            url = a["arguments"].get("url", a["arguments"].get("target", ""))
-            sessions.append({
-                "url": url,
-                "timestamp": a["timestamp"],
-                "duration_ms": a["duration_ms"],
-                "result_preview": a["result"][:500] if a["result"] else "",
-                "success": a["error"] is None,
-                "error": a["error"],
-            })
+    for a in browse_actions:
+        url = a["arguments"].get("url", a["arguments"].get("target", ""))
+        sessions.append({
+            "url": url,
+            "timestamp": a["timestamp"],
+            "duration_ms": a["duration_ms"],
+            "result_preview": a["result"][:500] if a["result"] else "",
+            "success": a["error"] is None,
+            "error": a["error"],
+        })
     return {"sessions": sessions, "total": len(sessions)}
 
 
-@router.get("/sandbox/{sandbox_id}/live")
-async def sandbox_live_view(sandbox_id: str):
-    """Get live state of a specific sandbox VM."""
-    api_key = _get_conway_api_key()
-    if not api_key:
-        return {"error": "No Conway API key configured"}
+@router.get("/sandbox-exec-log")
+async def sandbox_exec_log(limit: int = 50):
+    """Raw sandbox_exec commands — shows what's being run inside Conway VMs.
+    This includes OpenClaw installs, service deployments, system setup, etc."""
+    exec_actions = _get_tool_calls(("sandbox_exec",), limit=limit)
+    log = []
+    for a in exec_actions:
+        cmd = a["arguments"].get("command", "")
+        sandbox_id = a["arguments"].get("sandbox_id", a["arguments"].get("sandboxId", ""))
+        log.append({
+            "command": cmd,
+            "sandbox_id": sandbox_id,
+            "output": a["result"],
+            "duration_ms": a["duration_ms"],
+            "error": a["error"],
+            "timestamp": a["timestamp"],
+            "category": _categorize_action("sandbox_exec", a["arguments"]),
+        })
+    return {"log": log, "total": len(log)}
 
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-            # Get sandbox details
-            async with session.get(
-                f"https://api.conway.tech/v1/sandboxes/{sandbox_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
-            ) as resp:
-                if resp.status == 200:
-                    sandbox_data = await resp.json()
-                    return {
-                        "sandbox": sandbox_data,
-                        "sandbox_id": sandbox_id,
-                        "public_urls": sandbox_data.get("exposed_ports", []),
-                    }
-                return {"error": f"Sandbox not found or Conway returned {resp.status}"}
-    except Exception as e:
-        return {"error": str(e)}
+
+@router.get("/sandbox/{sandbox_id}")
+async def sandbox_detail(sandbox_id: str):
+    """Detail view for a specific Conway sandbox VM."""
+    api_key = _get_conway_api_key()
+
+    # Try Conway API first
+    live_data = None
+    if api_key:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                async with session.get(
+                    f"https://api.conway.tech/v1/sandboxes/{sandbox_id}",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ) as resp:
+                    if resp.status == 200:
+                        live_data = await resp.json()
+        except Exception:
+            pass
+
+    # Get all tool calls for this sandbox from state.db
+    all_tools = (
+        "sandbox_create", "sandbox_exec", "sandbox_write_file", "sandbox_read_file",
+        "sandbox_expose_port", "sandbox_delete",
+    )
+    all_actions = _get_tool_calls(all_tools, limit=500)
+    sandbox_actions = [
+        a for a in all_actions
+        if a["arguments"].get("sandbox_id", a["arguments"].get("sandboxId", "")) == sandbox_id
+        or (a["tool"] == "sandbox_create" and sandbox_id in (a["result"] or ""))
+    ]
+
+    # Derive OpenClaw state from this sandbox's execs
+    openclaw_state = _parse_openclaw_state(sandbox_actions)
+
+    # Extract exposed URLs
+    exposed_urls = []
+    for a in sandbox_actions:
+        if a["tool"] == "sandbox_expose_port":
+            urls = re.findall(r'https?://[^\s"\'<>]+', a["result"] or "")
+            for url in urls:
+                exposed_urls.append({"url": url, "port": a["arguments"].get("port", "")})
+
+    return {
+        "sandbox_id": sandbox_id,
+        "live": live_data,
+        "openclaw": openclaw_state,
+        "exposed_urls": exposed_urls,
+        "actions": sandbox_actions[:50],
+        "total_actions": len(sandbox_actions),
+    }

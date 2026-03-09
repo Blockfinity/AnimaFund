@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Server, Globe, Terminal, Wrench, Network, ChevronDown, ChevronRight, ExternalLink, Copy, RefreshCw } from 'lucide-react';
+import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -59,11 +60,7 @@ export default function Infrastructure({ selectedAgent }) {
     } catch {}
   }, []);
 
-  useEffect(() => {
-    fetchAll();
-    const i = setInterval(fetchAll, 10000);
-    return () => clearInterval(i);
-  }, [fetchAll, selectedAgent]);
+  useSSETrigger(fetchAll, { fallbackMs: 10000, deps: [selectedAgent] });
 
   // Auto-scroll terminal
   useEffect(() => {

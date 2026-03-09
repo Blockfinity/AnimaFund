@@ -1,5 +1,6 @@
 import React from 'react';
-import { Menu, CircleDot, ChevronDown, Plus } from 'lucide-react';
+import { Menu, CircleDot, ChevronDown, Plus, Wifi, WifiOff } from 'lucide-react';
+import { useSSE } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -21,6 +22,7 @@ export default function Header({ overview, currentPage, onToggleSidebar, agentLi
   const isLive = overview?.live || false;
   const dbExists = overview?.db_exists || false;
   const agentState = overview?.agent_state;
+  const { connected: sseConnected } = useSSE();
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const dropRef = React.useRef(null);
 
@@ -82,7 +84,13 @@ export default function Header({ overview, currentPage, onToggleSidebar, agentLi
         <span className="text-muted-foreground text-xs hidden md:inline">/</span>
         <h1 className="font-heading text-sm font-medium text-muted-foreground hidden md:block">{pageLabels[currentPage] || 'Dashboard'}</h1>
       </div>
-      <div className="flex items-center gap-2 text-xs font-mono">
+      <div className="flex items-center gap-3 text-xs font-mono">
+        <div className="flex items-center gap-1.5" title={sseConnected ? 'Real-time stream connected' : 'Polling (SSE reconnecting...)'}>
+          {sseConnected
+            ? <Wifi className="w-3 h-3 text-success" data-testid="sse-connected-icon" />
+            : <WifiOff className="w-3 h-3 text-muted-foreground animate-pulse" data-testid="sse-disconnected-icon" />}
+          <span className="text-muted-foreground text-[10px] hidden sm:inline">{sseConnected ? 'LIVE' : 'POLL'}</span>
+        </div>
         <CircleDot className={`w-3 h-3 ${isLive ? 'text-success animate-pulse-dot' : dbExists ? 'text-amber-400 animate-pulse-dot' : 'text-muted-foreground'}`} />
         <span className="text-muted-foreground uppercase tracking-wider">
           {isLive ? `LIVE | ${overview.turn_count || 0} turns` : dbExists ? `ENGINE ACTIVE | ${agentState || 'awaiting funding'}` : 'WAITING FOR ENGINE'}

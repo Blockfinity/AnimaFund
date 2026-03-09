@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Users, Clock, Bot, Heart, Globe, Shield } from 'lucide-react';
+import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -37,7 +38,7 @@ export default function Agents() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 8000); return () => clearInterval(i); }, [fetchData]);
+  useSSETrigger(fetchData, { fallbackMs: 8000 });
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin" /></div>;
 

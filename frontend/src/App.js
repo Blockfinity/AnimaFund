@@ -16,10 +16,11 @@ import Configuration from './pages/Configuration';
 import Skills from './pages/Skills';
 import Infrastructure from './pages/Infrastructure';
 import OpenClawViewer from './pages/OpenClawViewer';
+import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
-function App() {
+function AppInner() {
   const [view, setView] = useState('loading');
   const [genesisState, setGenesisState] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -156,12 +157,8 @@ function App() {
     }
   }, []); // No dependencies — uses refs for mutable values
 
-  // Poll at a stable 8-second interval — fast enough for real-time, slow enough to avoid race conditions
-  useEffect(() => {
-    checkStatus();
-    const i = setInterval(checkStatus, 8000);
-    return () => clearInterval(i);
-  }, [checkStatus]);
+  // SSE-triggered status check — replaces 8s polling with push-based updates
+  useSSETrigger(checkStatus, { fallbackMs: 8000, deps: [selectedAgent] });
 
   const handleCreate = async () => {
     if (creatingRef.current) return; // Prevent double-clicks
@@ -382,6 +379,14 @@ function App() {
       </div>
       {showCreateModal && <CreateAgentModal onClose={() => setShowCreateModal(false)} onCreated={handleAgentCreated} />}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <SSEProvider>
+      <AppInner />
+    </SSEProvider>
   );
 }
 

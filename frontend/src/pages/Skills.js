@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Zap, Search, Filter, Clock, TrendingUp, Users, Cpu, Globe, Wrench, Shield, DollarSign, BarChart3, ChevronDown, ChevronRight, Bot } from 'lucide-react';
+import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -96,7 +97,7 @@ export default function Skills({ selectedAgent }) {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 15000); return () => clearInterval(i); }, [fetchData, selectedAgent]);
+  useSSETrigger(fetchData, { fallbackMs: 15000, deps: [selectedAgent] });
 
   // Enrich skills with usage data
   const enriched = useMemo(() => skills.map(s => ({

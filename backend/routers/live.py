@@ -170,7 +170,8 @@ async def live_heartbeat_schedule():
 @router.get("/live/stream")
 async def live_stream():
     """Server-Sent Events endpoint for real-time agent data.
-    Pushes wallet, turns, engine status every 10 seconds."""
+    Pushes engine status, turn count, agent count, and credits every 8 seconds.
+    Frontend uses change indicators to trigger targeted data fetches."""
     import asyncio
     import json as _json
     import os
@@ -178,11 +179,15 @@ async def live_stream():
     from fastapi.responses import StreamingResponse
 
     async def event_generator():
+        prev_hash = ""
         while True:
             try:
-                # Gather live data
                 engine = is_engine_live()
                 engine["agent_id"] = get_active_agent_id()
+
+                agents = get_live_agents()
+                activity = get_live_activity(1)
+                latest_activity_id = activity[0].get("activity_id", 0) if activity else 0
 
                 # Get Conway balance
                 conway_credits = 0
@@ -212,16 +217,31 @@ async def live_stream():
                         pass
 
                 payload = {
-                    "engine": engine,
+                    "engine": {
+                        "live": engine.get("live", False),
+                        "db_exists": engine.get("db_exists", False),
+                        "agent_state": engine.get("agent_state", ""),
+                        "turn_count": engine.get("turn_count", 0),
+                        "agent_id": engine.get("agent_id", ""),
+                    },
                     "conway_credits_cents": conway_credits,
-                    "turns_count": engine.get("turn_count", 0),
+                    "agent_count": len(agents),
+                    "latest_activity_id": latest_activity_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
-                yield f"data: {_json.dumps(payload)}\n\n"
+
+                # Only send if data actually changed
+                cur_hash = f"{payload['engine']['turn_count']}:{payload['engine']['agent_state']}:{payload['agent_count']}:{payload['latest_activity_id']}:{conway_credits}"
+                if cur_hash != prev_hash:
+                    yield f"data: {_json.dumps(payload)}\n\n"
+                    prev_hash = cur_hash
+                else:
+                    # Send heartbeat to keep connection alive
+                    yield ": heartbeat\n\n"
             except Exception as e:
                 yield f"data: {_json.dumps({'error': str(e)})}\n\n"
 
-            await asyncio.sleep(10)
+            await asyncio.sleep(8)
 
     return StreamingResponse(
         event_generator(),
@@ -229,5 +249,6 @@ async def live_stream():
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
         },
     )

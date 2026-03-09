@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -317,8 +318,8 @@ export default function FundHQ({ fundName, selectedAgent }) {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 12000); return () => clearInterval(i); }, [fetchData, selectedAgent]);
-  useEffect(() => { fetchTelegramHealth(); const i = setInterval(fetchTelegramHealth, 30000); return () => clearInterval(i); }, [fetchTelegramHealth, selectedAgent]);
+  useSSETrigger(fetchData, { fallbackMs: 12000, deps: [selectedAgent] });
+  useSSETrigger(fetchTelegramHealth, { fallbackMs: 30000, deps: [selectedAgent] });
 
   const scrollBuilding = (dir) => { if (buildingRef.current) buildingRef.current.scrollBy({ top: dir * 200, behavior: 'smooth' }); };
 

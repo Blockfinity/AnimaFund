@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Brain, Terminal, Wrench, DollarSign, AlertTriangle, Clock, Cpu, Eye, ChevronDown, ChevronRight, Search, Wallet, Copy, Zap } from 'lucide-react';
+import { useSSE, useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -241,27 +242,22 @@ export default function AgentMind({ genesisState, selectedAgent }) {
     }
   }, [selectedAgent]);
 
-  // Fetch real-time on-chain balance — with protective state management
+  // Fetch real-time on-chain balance — SSE-triggered instead of polling
   const walletAddrRef = useRef(null); // Persist wallet address across re-renders
-  useEffect(() => {
-    const fetchBalance = async () => {
-      try {
-        const res = await fetch(`${API}/api/wallet/balance`);
-        if (!res.ok) return; // Keep previous balance on error
-        const data = await res.json();
-        // Only update if we got valid data
-        if (data.wallet) {
-          walletAddrRef.current = data.wallet;
-          setBalance(data);
-        } else if (data.usdc !== undefined) {
-          setBalance(prev => prev ? { ...prev, ...data } : data);
-        }
-      } catch { /* keep previous balance */ }
-    };
-    fetchBalance();
-    const bi = setInterval(fetchBalance, 15000);
-    return () => clearInterval(bi);
-  }, [selectedAgent]);
+  const fetchBalance = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/wallet/balance`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.wallet) {
+        walletAddrRef.current = data.wallet;
+        setBalance(data);
+      } else if (data.usdc !== undefined) {
+        setBalance(prev => prev ? { ...prev, ...data } : data);
+      }
+    } catch { /* keep previous balance */ }
+  }, []);
+  useSSETrigger(fetchBalance, { fallbackMs: 15000, deps: [selectedAgent] });
 
   const fetchData = useCallback(async () => {
     try {
@@ -343,12 +339,8 @@ export default function AgentMind({ genesisState, selectedAgent }) {
     finally { setLoading(false); }
   }, []);
 
-  // Stable polling — fixed 8-second interval, resets on agent switch
-  useEffect(() => {
-    fetchData();
-    const i = setInterval(fetchData, 8000);
-    return () => clearInterval(i);
-  }, [fetchData, selectedAgent]);
+  // SSE-triggered data fetch — replaces 8s polling
+  useSSETrigger(fetchData, { fallbackMs: 8000, deps: [selectedAgent] });
 
   // Auto-scroll: only when enabled AND new data arrives — simple and stable
   const prevLogCount = useRef(0);

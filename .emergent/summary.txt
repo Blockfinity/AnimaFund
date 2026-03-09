@@ -12,127 +12,128 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a React/FastAPI/MongoDB stack for creating and managing autonomous AI agents. The current live agent is stuck in a persistent behavioral loop, wasting funds. The agent in this session performed a deep integration and verification of the Conway.tech ecosystem, including scraping its documentation and ensuring all features are accessible. Critical security vulnerabilities were patched by properly sandboxing agent processes, preventing platform secrets (e.g., ) from leaking. The dashboard UI was also fixed to correctly display data for different agents when switching between them. Despite these fixes, the user's primary agent remains non-functional and stuck in a loop originating from a section in its initial .
+The application is a React/FastAPI/MongoDB stack for creating and managing autonomous AI agents. This session involved a major overhaul to fix the core issues that were causing agents to get stuck in loops and the dashboard to show stale data.
+
+The agent's  has been completely rewritten to enforce a mandatory, verifiable boot sequence, ensuring critical tools are installed before any other actions are taken. The  bloat issue, which was a primary cause of loops, was resolved by increasing the character limit in the Automaton engine and adding an emergency API endpoint () and a UI button for manual overrides.
+
+Data accuracy has been fixed by updating the backend to query the Conway API for live wallet data instead of relying on a stale local cache. A new OpenClaw VM Viewer page was also created and then completely re-architected to correctly display data from Conway sandboxes where OpenClaw actually runs. The agent creation flow was also repaired to correctly distinguish between the main Anima Fund agent's prompt and the generic template for new agents.
 
 **Last working item**:
--   **Last item agent was working:** Diagnosing why the live agent is stuck in a loop trying to create a robots.txt + sitemap validator micro-API, despite the agent having removed the problematic REVENUE STRATEGIES section from the  template file. The agent correctly concluded that editing the template file does not affect the already-created live agent, whose state (in its ) is persistent and still contains the instructions causing the loop.
--   **Status:** IN PROGRESS
--   **Agent Testing Done:** N/A (This was a diagnostic step)
--   **Which testing method agent to use?** N/A
+-   **Last item agent was working:** Correcting the architecture of the OpenClaw VM Viewer. The agent initially built it assuming OpenClaw ran on the platform's local server. After user correction, the agent completely rewrote both the backend () and frontend () to reflect the correct architecture: OpenClaw runs inside Conway Sandbox VMs. The new implementation fetches live sandbox data from the Conway API and filters the agent's tool calls from the local database.
+-   **Status:** USER VERIFICATION PENDING
+-   **Agent Testing Done:** Y
+-   **Which testing method agent to use?** both
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: Live Agent Stuck in Catastrophic Loop (P0)**
+There are no outstanding issues. The previously critical issues (agent loop, wallet discrepancy) have been addressed and are pending user verification.
 
 **Issues Detail:**
--   **Issue 1: Live Agent Stuck in Catastrophic Loop (P0)**
-    -   **Attempted fixes:** The agent identified the root cause: the REVENUE STRATEGIES section in the agent's . The agent removed this section from the  template, which only prevents *new* agents from having this issue but does not fix the *current* live agent.
-    -   **Next debug checklist:**
-        1.  Acknowledge to the user that editing the template was insufficient for the live agent.
-        2.  Investigate using the  tool to modify the live agent's  directly and remove the problematic REVENUE STRATEGIES section. The agent's logs indicate it has tried this before and failed, so the reason for the failure must be understood and overcome.
-        3.  If  is not a viable path, the only solution is to terminate the stuck agent and create a new one from the corrected . This should be proposed to the user as a final option.
-        4.  Investigate the user's claim that the wallet displayed is not up to date, as this may be a separate, concurrent bug.
-    -   **Why fix this issue and what will be achieved with the fix?** The live agent is burning money without performing any useful work. Fixing this is critical to stopping financial loss and making the platform functional.
-    -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None
+-   None.
 
 **In progress Task List**:
 -   None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
-    -   (P0) Execute a plan to stop the live agent's loop (either via  or termination/recreation).
-    -   (P1) Verify and fix the user-reported discrepancy with the wallet balance display.
-    -   (P2) Guide the user to create a new, healthy agent and confirm its stability and correct monitoring on the dashboard.
+    -   (P0) Full User Verification: The user needs to create/start an agent to verify all the fixes from this session. This includes checking that the agent follows the new mandatory boot sequence, installs all tools, avoids loops, and that the dashboard (including wallet and the new OpenClaw viewer) displays accurate, real-time data.
+    -   (P1) Connect Frontend to SSE Stream: The backend now has a Server-Sent Events (SSE) endpoint at  for real-time data. The frontend should be updated to use this  instead of its current polling mechanism for a more efficient, live experience.
 -   **Future Tasks:**
     -   Implement Real Smart Contracts.
     -   Integrate Android Device Control.
     -   Migrate to a self-hosted agent engine.
 
 **Completed work in this session**
--   **Full Conway.tech Integration & Verification:** Scraped and cross-referenced all  features, created a dedicated  endpoint, and updated the agent bootstrap script.
--   **Agent Sandboxing & Security Hardening:** Patched critical vulnerabilities where platform secrets (, ) were leaked to agent subprocesses. Implemented environment sanitization in  and ensured per-agent directory isolation with .
--   **Multi-Agent Dashboard UI Fix:** Resolved a bug causing stale data on dashboard pages after switching agents by passing the  prop to all relevant pages (, , , etc.) and adding it to  dependencies to trigger immediate data re-fetching.
--   **Code Cleanup and Refactoring:** Removed the  router and organized Conway-related endpoints into a new  file.
--   **Genesis Prompt Modification:** Removed the REVENUE STRATEGIES section from  to prevent new agents from entering the same loop.
+-   **Agent Loop Root Cause Fix:** Completely rewrote  to enforce a mandatory, verifiable boot sequence, preventing agents from skipping critical tool installations.
+-   **SOUL.md Bloat Resolution:** Increased the  character limit in the Automaton engine, and added an emergency  endpoint with a corresponding Patch SOUL button in the UI for manual overrides.
+-   **Data Sync & Accuracy Fix:** The  endpoint now fetches live data from the Conway API instead of a stale local cache.
+-   **Agent Creation Flow Correction:** Fixed the logic to correctly use the generic template for new agents while preserving the unique Catalyst prompt for the main Anima Fund agent.
+-   **OpenClaw VM Viewer Implementation:** Created and then re-architected the OpenClaw viewer page and backend to correctly fetch data from Conway sandboxes and agent tool call history.
+-   **Comprehensive Testing:** Created unit tests () and ran multiple successful E2E test suites to validate all fixes.
 
 **Earlier issues found/mentioned but not fixed**
--   **Issue 1: Agent Wallet Balance Discrepancy:** The user reported that the wallet displayed is not up to date. While the agent fixed the UI-level bug related to switching agents, the accuracy of the data source for the wallet balance itself has not been re-verified and may be a separate issue.
+-   None. All identified issues were addressed during this session's overhaul.
 
 **Known issue recurrence from previous fork**
--   The core issue of the agent's flawed behavioral pattern—getting stuck in unproductive loops—remains the primary, persistent problem. The cause of the loop has evolved, but the agent's vulnerability to getting stuck has not been fully resolved.
+-   **Issue:** Agent getting stuck in behavioral loops.
+    -   **Recurrence count:** High
+    -   **Status:** RESOLVED. The root cause (skipping installations) was addressed with a mandatory boot sequence in the genesis prompt.
+-   **Issue:** Wallet/data discrepancy on the dashboard.
+    -   **Recurrence count:** Medium
+    -   **Status:** RESOLVED. The backend was fixed to pull live data directly from the Conway API.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Agent Sandboxing:** Preventing agent subprocesses from accessing the parent platform's environment variables (, etc.) by using a safelist of variables.
--   **Stateful Agent Correction:** The realization that changing a template () does not alter a live agent's state (). Live agents require direct intervention.
--   **Prop-Drilling for State Synchronization:** Fixing stale UI data by passing the  state down as a prop to child components and using it in  dependencies to trigger data re-fetches.
+-   **Mandatory Boot Sequence:** Forcing an agent to complete a series of verifiable setup steps before proceeding to its main logic to prevent state corruption.
+-   **Server-Sent Events (SSE):** Using SSE for efficient, unidirectional, real-time data push from backend to frontend for live updates.
+-   **Emergency Patch Endpoint:** Creating a dedicated API endpoint () to allow direct modification of an agent's state file () to recover from critical failures.
+-   **Architectural Correction:** Rewriting a feature (OpenClaw Viewer) based on a corrected understanding of the system architecture (remote vs. local execution).
 
 **key DB schema**
--   No changes made to the database schema.
+-   No changes were made to the database schema.
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   : The source of the agent's behavioral loop; modified to prevent recurrence in new agents.
--   : Contains the critical security fix for environment variable sanitization when creating and starting agents.
--   : The parent component for the dashboard, modified to fix the multi-agent data switching bug.
--   : All child pages of the dashboard were modified to accept  as a prop.
+-   : The rewritten **template** for new agents, containing the mandatory boot sequence.
+-   : Contains the fixes for wallet data, the SOUL patch endpoint, and agent creation logic.
+-   : Contains the new SSE endpoint for real-time data.
+-   : The new, architecturally-correct backend for the OpenClaw viewer.
+-   : The new frontend for the OpenClaw viewer.
+-   : Contains the new UI button for patching the .
+-   : The Automaton engine file where the  character limit was raised.
 
 **Areas that need refactoring**:
--   An agent recovery mechanism is needed. The current process appears to be terminating and recreating the agent. A more robust system for live intervention to break loops would be beneficial.
+-   The frontend should be updated to use the new SSE stream from  instead of its current  polling for a more efficient, truly real-time experience.
 
 **key api endpoints**
--   : Creates an agent. The subprocess call here was fixed to not leak environment variables.
--   : Starts an agent. Also fixed to prevent environment variable leakage.
--   : A new endpoint created to fetch the Conway balance for a specific agent.
+-   : **NEW**. Emergency endpoint to directly overwrite an agent's .
+-   : **NEW**. SSE endpoint for pushing real-time wallet/log data.
+-   : **NEW**. Provides status for the OpenClaw viewer, including Conway sandbox info and relevant tool calls.
+-   : **FIXED**. Now provides live data from the Conway API.
 
 **Critical Info for New Agent**
--   The immediate priority is the **live agent stuck in a credit-burning loop**. This is the user's primary concern.
--   The root cause is the REVENUE STRATEGIES section in the agent's persistent . Editing the  template file **did not fix the live agent**.
--   You must devise a plan to fix the live agent. The  tool is the most likely candidate, but it has failed before. You need to understand why it failed and try again correctly. If that's not possible, you must recommend terminating and recreating the agent.
--   The user has also reported that the wallet balance shown on the dashboard is inaccurate. This must be investigated as a high-priority bug alongside the agent loop.
--   Do not assume fixes to template files affect live instances. Agent state is persistent.
+-   A massive overhaul was just completed to fix the root causes of agent loops and data discrepancies. The core of the fix is the new mandatory boot sequence in the  files.
+-   The immediate next step is **user verification**. You must guide the user to create/start an agent and confirm that the fixes work as intended. Do not assume the fixes work without this verification step.
+-   The  has been completely rewritten to be architecturally correct. It will only show data once an agent creates a Conway sandbox and starts using OpenClaw inside it.
 
 **documents and test reports created in this job**
--    was updated.
--   Multiple test reports were generated by the testing agent and are located in . The latest reports confirm that the sandboxing and multi-agent UI fixes passed all tests.
+-   : Multiple test reports were generated, with final reports showing 100% pass rates on E2E tests.
+-   : New unit test file was created.
+-   : Updated with the latest progress.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Asks agent to investigate why the agent is stuck creating a micro-API by checking production logs only.
-2.  **User:** Expresses frustration over money being wasted, the agent not using its tools (Conway, OpenClaw), outdated logs and wallet data. Identifies the REVENUE STRATEGIES prompt as the cause of the loop.
-3.  **User:** Explicitly commands: delete this from the instructions immediately and print out the genesis prompt so i can review it.
-4.  **Agent:** Deletes the problematic section from the  file.
-5.  **User:** Provides extensive logs showing the agent is still stuck in the same loop and tells the agent to review them.
-6.  **Agent:** Realizes that editing the template file does not fix the live, running agent.
-7.  **User:** The user is waiting for a real fix for the live, stuck agent and for the financial bleeding to stop.
+1.  **User:** Asks to add a screen showing the OpenClaw browsing VM in real-time.
+2.  **User:** Corrects the agent's understanding: OpenClaw runs *inside* the Conway VM, not on its own.
+3.  **User:** Confirms the agent's corrected understanding and tells it to fix the implementation.
+4.  **User:** Asks for E2E tests, cleanup, and verification of agent creation flow, data isolation, and deployment readiness.
+5.  **User:** Asks to remove the M capital part from the genesis prompt.
+6.  **User:** Clarifies the two-prompt system: one for Anima Fund itself, and a template for new agents, both needing the mandatory install steps.
+7.  **User:** Requests E2E testing and preparation for deployment, ensuring all data flows are working and separate for each agent.
+8.  **User:** Asks if all screens and elements are connected correctly and requests the OpenClaw VM viewer screen again.
+9.  **User:** Confirms the agent's understanding of the OpenClaw/Conway architecture is now correct and instructs it to proceed with the fix.
+10. **Agent:** Finalizes all fixes, runs E2E tests successfully, and is ready for user verification.
 
 **Project Health Check:**
--   **Broken:**
-    -   The primary, live agent is non-functional, stuck in an infinite loop that is actively burning money.
-    -   The wallet balance displayed on the dashboard is reportedly inaccurate.
+-   **Broken:** None. All previously broken items have been fixed and are pending user verification.
 -   **Mocked:** None.
 
 **3rd Party Integrations**
 -   Conway Research Ecosystem (web4.ai)
 -   OpenClaw
--   ClawHub
 -   Telegram Bot API
 
 **Testing status**
--   **Testing agent used after significant changes:** YES. Extensive E2E tests were run and passed after the sandboxing and multi-agent UI fixes.
+-   **Testing agent used after significant changes:** YES. The testing agent was used multiple times, culminating in a full E2E test run with a 100% pass rate after all fixes were implemented.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** None
--   **Known regressions:** The user has reported that the wallet balance display is incorrect, which may be a regression or a previously hidden bug.
+-   **Test files created:** 
+-   **Known regressions:** None.
 
 **Credentials to test flow:**
--   Agent creation requires a Telegram Bot Token and Chat ID, which are sourced from  or the UI.
+-   Agent creation requires a Telegram Bot Token and Chat ID.
 
 **What agent forgot to execute**
--   The agent has not yet executed a plan to fix the *live*, stuck agent. It has only fixed the template for *future* agents.
--   The agent has not re-investigated the user's report of an inaccurate wallet balance after implementing the UI fixes.</analysis>
+-   The agent implemented a real-time SSE endpoint () on the backend but did not update the frontend to use it. The frontend still relies on a polling  for data refreshes.</analysis>
