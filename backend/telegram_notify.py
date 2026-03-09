@@ -2,12 +2,33 @@
 Telegram notification service for Anima Fund.
 Sends real-time alerts to the creator's Telegram for agent events.
 Supports per-agent Telegram bot tokens.
+Includes rate limiting to prevent 429 errors from Telegram API.
 """
 import os
+import time
 import aiohttp
 import logging
 
 logger = logging.getLogger("telegram")
+
+# Rate limiter state
+_rate_limit = {
+    "blocked_until": 0,     # unix timestamp when we can send again
+    "last_send": 0,         # unix timestamp of last successful send
+    "min_interval": 3,      # minimum seconds between messages
+    "queued_count": 0,      # messages dropped while rate limited
+}
+
+
+def _is_rate_limited():
+    """Check if we should skip sending due to rate limits."""
+    now = time.time()
+    if now < _rate_limit["blocked_until"]:
+        _rate_limit["queued_count"] += 1
+        return True
+    if now - _rate_limit["last_send"] < _rate_limit["min_interval"]:
+        return True
+    return False
 
 
 def _get_global_config():
@@ -32,13 +53,15 @@ async def _get_agent_config(agent_id: str = None):
     except Exception as e:
         logger.warning(f"Failed to get agent Telegram config: {e}")
 
-    # Fallback to global only for backward compat
     token, chat_id = _get_global_config()
     return token, chat_id
 
 
 async def send_telegram(text: str, parse_mode: str = "HTML", agent_id: str = None):
-    """Send a message to the agent's (or global default) Telegram."""
+    """Send a message with rate limiting. Respects Telegram's retry_after."""
+    if _is_rate_limited():
+        return False
+
     token, chat_id = await _get_agent_config(agent_id)
     if not token or not chat_id:
         return False
@@ -52,16 +75,30 @@ async def send_telegram(text: str, parse_mode: str = "HTML", agent_id: str = Non
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 data = await resp.json()
-                if not data.get("ok"):
-                    logger.warning(f"Telegram send failed: {data}")
-                return data.get("ok", False)
+                if data.get("ok"):
+                    _rate_limit["last_send"] = time.time()
+                    if _rate_limit["queued_count"] > 0:
+                        logger.info(f"Telegram resumed. {_rate_limit['queued_count']} messages were dropped during rate limit.")
+                        _rate_limit["queued_count"] = 0
+                    return True
+                else:
+                    # Handle 429 rate limit
+                    retry_after = data.get("parameters", {}).get("retry_after", 0)
+                    if retry_after > 0:
+                        _rate_limit["blocked_until"] = time.time() + retry_after
+                        logger.warning(f"Telegram rate limited for {retry_after}s")
+                    else:
+                        logger.warning(f"Telegram send failed: {data}")
+                    return False
     except Exception as e:
         logger.warning(f"Telegram error: {e}")
         return False
 
 
 async def send_telegram_direct(text: str, token: str, chat_id: str, parse_mode: str = "HTML"):
-    """Send using explicit token/chat_id (no DB lookup)."""
+    """Send using explicit token/chat_id (no DB lookup). Also rate limited."""
+    if _is_rate_limited():
+        return False
     if not token or not chat_id:
         return False
     api_url = f"https://api.telegram.org/bot{token}"
@@ -73,7 +110,13 @@ async def send_telegram_direct(text: str, token: str, chat_id: str, parse_mode: 
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 data = await resp.json()
-                return data.get("ok", False)
+                if data.get("ok"):
+                    _rate_limit["last_send"] = time.time()
+                    return True
+                retry_after = data.get("parameters", {}).get("retry_after", 0)
+                if retry_after > 0:
+                    _rate_limit["blocked_until"] = time.time() + retry_after
+                return False
     except Exception as e:
         logger.warning(f"Telegram error: {e}")
         return False
@@ -90,17 +133,17 @@ async def notify_engine_started(wallet: str, creator_wallet: str, agent_id: str 
 
 async def notify_state_change(old_state: str, new_state: str, agent_id: str = None):
     icons = {
-        "running": "🟢", "waking": "🔵", "sleeping": "😴",
-        "critical": "🔴", "dead": "💀", "low_compute": "🟡",
-        "setup": "⚙️",
+        "running": "", "waking": "", "sleeping": "",
+        "critical": "", "dead": "", "low_compute": "",
+        "setup": "",
     }
-    icon = icons.get(new_state, "⚪")
+    icon = icons.get(new_state, "")
     await send_telegram(f"{icon} <b>STATE: {new_state.upper()}</b>\n(was: {old_state})", agent_id=agent_id)
 
 
 async def notify_balance_update(usdc: float, credits: float, eth: float, tier: str, agent_id: str = None):
-    icons = {"high": "🟢", "normal": "🟢", "low_compute": "🟡", "critical": "🔴", "dead": "💀"}
-    icon = icons.get(tier, "⚪")
+    icons = {"high": "", "normal": "", "low_compute": "", "critical": "", "dead": ""}
+    icon = icons.get(tier, "")
     await send_telegram(
         f"{icon} <b>BALANCE UPDATE</b>\n"
         f"USDC: ${usdc:.2f}\n"
@@ -112,6 +155,9 @@ async def notify_balance_update(usdc: float, credits: float, eth: float, tier: s
 
 
 async def notify_turn(turn_num: int, thinking: str, tools_used: list, agent_id: str = None):
+    # Only notify every 5th turn to avoid rate limits
+    if turn_num % 5 != 0 and turn_num != 1:
+        return
     tools_str = ", ".join(tools_used[:5]) if tools_used else "none"
     think_preview = (thinking[:200] + "...") if thinking and len(thinking) > 200 else (thinking or "")
     await send_telegram(
@@ -124,7 +170,7 @@ async def notify_turn(turn_num: int, thinking: str, tools_used: list, agent_id: 
 
 async def notify_transaction(tx_type: str, amount: float, to: str, details: str = "", agent_id: str = None):
     await send_telegram(
-        f"💰 <b>TRANSACTION</b>\n"
+        f"<b>TRANSACTION</b>\n"
         f"Type: {tx_type}\n"
         f"Amount: ${amount:.2f}\n"
         f"To: <code>{to}</code>\n"
@@ -135,11 +181,11 @@ async def notify_transaction(tx_type: str, amount: float, to: str, details: str 
 
 async def notify_error(error: str, agent_id: str = None):
     preview = (error[:300] + "...") if len(error) > 300 else error
-    await send_telegram(f"⚠️ <b>ERROR</b>\n<code>{preview}</code>", agent_id=agent_id)
+    await send_telegram(f"<b>ERROR</b>\n<code>{preview}</code>", agent_id=agent_id)
 
 
 async def notify_skill_loaded(count: int, agent_id: str = None):
-    await send_telegram(f"📚 <b>{count} skills loaded</b>", agent_id=agent_id)
+    await send_telegram(f"<b>{count} skills loaded</b>", agent_id=agent_id)
 
 
 async def notify_custom(message: str, agent_id: str = None):

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -72,35 +73,26 @@ export default function EngineConsole({ isRunning }) {
   const [autoScroll, setAutoScroll] = useState(true);
   const userScrolledUp = useRef(false);
 
-  useEffect(() => {
+  const fetchLogs = useCallback(async () => {
     if (!isRunning && logs.length === 0) return;
-
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/api/engine/logs?lines=100`);
-        const data = await res.json();
-
-        // Parse stdout
-        const rawLines = (data.stdout || '').split('\n');
-        const parsed = rawLines.map(parseLogLine).filter(Boolean);
-
-        // Parse stderr for errors
-        const errLines = (data.stderr || '').split('\n');
-        const parsedErrors = errLines.map(l => {
-          const trimmed = l.trim();
-          if (!trimmed) return null;
-          return { type: 'text', level: 'error', message: trimmed, raw: trimmed };
-        }).filter(Boolean);
-
-        setLogs([...parsed, ...parsedErrors]);
-        setAnimaFiles(data.anima_dir || []);
-      } catch { /* ignore fetch errors */ }
-    };
-
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
+    try {
+      const res = await fetch(`${API}/api/engine/logs?lines=100`);
+      const data = await res.json();
+      const rawLines = (data.stdout || '').split('\n');
+      const parsed = rawLines.map(parseLogLine).filter(Boolean);
+      const errLines = (data.stderr || '').split('\n');
+      const parsedErrors = errLines.map(l => {
+        const trimmed = l.trim();
+        if (!trimmed) return null;
+        return { type: 'text', level: 'error', message: trimmed, raw: trimmed };
+      }).filter(Boolean);
+      setLogs([...parsed, ...parsedErrors]);
+      setAnimaFiles(data.anima_dir || []);
+    } catch { /* ignore fetch errors */ }
   }, [isRunning, logs.length]);
+
+  // SSE-triggered log fetching — replaces 2s polling
+  useSSETrigger(fetchLogs, { fallbackMs: 8000 });
 
   useEffect(() => {
     if (!userScrolledUp.current && scrollRef.current) {
