@@ -146,6 +146,40 @@ async def wallet_balance():
             credits_cents = (balance_data or {}).get("creditsCents", 0) if isinstance(balance_data, dict) else 0
         tier = credits_data.get("tier", "unknown")
 
+    # Also get REAL-TIME credits from Conway API (overrides stale local cache)
+    conway_api_key = os.environ.get("CONWAY_API_KEY", "")
+    if not conway_api_key:
+        config_path = os.path.join(active_dir, "config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path) as f:
+                    conway_api_key = json.load(f).get("apiKey", "")
+            except Exception:
+                pass
+    if conway_api_key:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                async with session.get(
+                    "https://api.conway.tech/v1/credits/balance",
+                    headers={"x-api-key": conway_api_key},
+                ) as resp:
+                    if resp.status == 200:
+                        conway_data = await resp.json()
+                        conway_credits = conway_data.get("credits_cents", None)
+                        if conway_credits is not None:
+                            credits_cents = conway_credits
+                            # Derive tier from live credits
+                            if conway_credits <= 0:
+                                tier = "critical"
+                            elif conway_credits < 50:
+                                tier = "low_compute"
+                            elif conway_credits < 500:
+                                tier = "normal"
+                            else:
+                                tier = "normal"
+        except Exception:
+            pass  # Keep local cache if Conway API fails
+
     result = {
         "wallet": primary_wallet,
         "usdc": onchain["usdc"],

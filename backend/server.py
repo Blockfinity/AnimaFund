@@ -29,7 +29,7 @@ from telegram_notify import notify_state_change, notify_turn, notify_error, send
 from database import get_db
 from payment_tracker import get_payment_status
 
-from routers import agents, genesis, live, telegram, infrastructure
+from routers import agents, genesis, live, telegram, infrastructure, telegram_logs
 
 # ─── Telegram log monitor state ───
 _monitor_task = None
@@ -149,9 +149,14 @@ async def lifespan(app: FastAPI):
     global _monitor_task
     init_db()
     _monitor_task = asyncio.create_task(_monitor_engine_logs())
+    # Start background Telegram log ingestion
+    from routers.telegram_logs import start_ingest_background
+    start_ingest_background()
     yield
     if _monitor_task:
         _monitor_task.cancel()
+    from routers.telegram_logs import stop_ingest_background
+    stop_ingest_background()
     close_db()
 
 
@@ -173,6 +178,7 @@ app.include_router(genesis.router)
 app.include_router(live.router)
 app.include_router(telegram.router)
 app.include_router(infrastructure.router)
+app.include_router(telegram_logs.router)
 
 
 # ═══════════════════════════════════════════════════════════
