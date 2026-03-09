@@ -91,6 +91,27 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform called "Ani
 ## Frontend (11 Pages)
 Agent Mind (3 tabs), Fund HQ, Agents, Infrastructure (6 tabs), Skills (filters + search), Deal Flow, Portfolio, Financials, Activity, Memory, Configuration
 
+## Per-Agent Sandboxing (IMPLEMENTED)
+
+### Isolation Architecture
+- **Each agent gets**: `~/agents/{agent_id}/` as isolated HOME directory
+- **Conway self-provisioning**: Agents create their OWN wallet + API key on first engine run (platform does NOT copy its global credentials)
+- **OpenClaw MCP config**: Per-agent at `~/agents/{id}/.openclaw/openclaw.json` with empty `env{}` — agent provides own Conway API key at runtime
+- **File permissions**: All agent dirs set to `chmod 700` (owner-only)
+- **Environment sanitization**: Platform strips `MONGO_URL`, `DB_NAME`, `DASHBOARD_URL` from agent process env before launch
+- **Conway sandbox isolation**: Each agent operates in its own Conway Cloud sandbox VM (when funded). `sandboxId` in identity → `isLocal=false` → all exec/file operations go to remote VM, not host
+
+### What the platform controls vs what agents control
+| Responsibility | Owner |
+|---|---|
+| Agent HOME directory | Platform creates `~/agents/{id}/` |
+| Conway wallet + API key | Agent self-provisions on first run |
+| Conway sandbox VM | Agent creates via Conway Cloud API (when funded) |
+| Genesis prompt + config | Platform writes to agent's dir |
+| Skills + commands | Platform pre-installs from Conway Terminal npm |
+| File permissions | Platform sets chmod 700 |
+| Environment secrets | Platform strips before passing to agent |
+
 ## Current State (as of this session)
 - **Conway Terminal**: v2.0.9 installed, provisioned, skills & commands installed
 - **Conway APIs**: All 3 healthy and accessible
