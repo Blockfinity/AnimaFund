@@ -12,44 +12,27 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a React/FastAPI/MongoDB stack for managing AI agents. The previous agent went through a series of incorrect assumptions and flawed implementations, including building a Telegram log forwarder and then a separate MongoDB-based webhook system for logs. After being corrected by the user multiple times, these incorrect systems were removed. The agent finally identified the actual root cause of the monitoring issue: the backend was sending detailed turn data to Telegram but not to the log files that the dashboard reads. A fix for this has been implemented. The dashboard UI has been reverted to its original state, removing the unnecessary PRODUCTION tabs that were added.
+The application is a React/FastAPI/MongoDB stack for creating and managing autonomous AI agents. The current live agent is stuck in a persistent behavioral loop, wasting funds. The agent in this session performed a deep integration and verification of the Conway.tech ecosystem, including scraping its documentation and ensuring all features are accessible. Critical security vulnerabilities were patched by properly sandboxing agent processes, preventing platform secrets (e.g., ) from leaking. The dashboard UI was also fixed to correctly display data for different agents when switching between them. Despite these fixes, the user's primary agent remains non-functional and stuck in a loop originating from a section in its initial .
 
 **Last working item**:
--   **Last item agent was working:** Fixing the log discrepancy between Telegram and the dashboard. The agent identified that  in  was sending detailed turn data only to Telegram. The fix involved adding a helper function () to also write this same detailed message to the log file () that the dashboard reads from.
--   **Status:** USER VERIFICATION PENDING
--   **Agent Testing Done:** Y
--   **Which testing method agent to use?** Manual testing by user. The user needs to create a new agent and observe if the dashboard logs now match the level of detail seen in Telegram messages.
+-   **Last item agent was working:** Diagnosing why the live agent is stuck in a loop trying to create a robots.txt + sitemap validator micro-API, despite the agent having removed the problematic REVENUE STRATEGIES section from the  template file. The agent correctly concluded that editing the template file does not affect the already-created live agent, whose state (in its ) is persistent and still contains the instructions causing the loop.
+-   **Status:** IN PROGRESS
+-   **Agent Testing Done:** N/A (This was a diagnostic step)
+-   **Which testing method agent to use?** N/A
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: Live Agent is Unrecoverable and Stuck in a Behavioral Loop (P0)**
+-   **Issue 1: Live Agent Stuck in Catastrophic Loop (P0)**
 
 **Issues Detail:**
--   **Issue 1: Live Agent is Unrecoverable and Stuck in a Behavioral Loop (P0)**
-    -   **Attempted fixes:** The previous agent correctly identified (after analyzing Telegram logs) that the live agent is stuck in an infinite loop (e.g., writing the same  file, running total 72
-drwxr-xr-x 13 root root 4096 Mar  8 18:42 .
-drwxr-xr-x  1 root root 4096 Mar  9 06:40 ..
-drwxr-xr-x  2 root root 4096 Mar  6 11:47 .emergent
-drwxr-xr-x  8 root root 4096 Mar  9 06:29 .git
--rw-r--r--  1 root root   61 Mar  8 18:42 .gitconfig
--rw-r--r--  1 root root  846 Mar  8 18:42 .gitignore
-drwxr-xr-x  3 root root 4096 Mar  6 06:23 .pnpm-store
-drwxr-xr-x  3 root root 4096 Mar  7 02:14 .pytest_cache
-drwxr-xr-x  3 root root 4096 Mar  5 19:30 .ruff_cache
--rw-r--r--  1 root root   27 Mar  5 17:17 README.md
-drwxr-xr-x 11 root root 4096 Mar  7 02:52 automaton
-drwxr-xr-x  6 root root 4096 Mar  8 19:55 backend
--rw-r--r--  1 root root 5729 Mar  5 17:25 design_guidelines.json
-drwxr-xr-x  5 root root 4096 Mar  9 06:40 frontend
-drwxr-xr-x  2 root root 4096 Mar  5 17:44 memory
-drwxr-xr-x  2 root root 4096 Mar  8 22:05 scripts
-drwxr-xr-x  3 root root 4096 Mar  9 05:50 test_reports), has exhausted its credits, and is now dead. Previous platform fixes (like pre-installing tools and lean genesis prompts) cannot recover this existing agent. The logging visibility issue, which was a symptom, has been fixed.
+-   **Issue 1: Live Agent Stuck in Catastrophic Loop (P0)**
+    -   **Attempted fixes:** The agent identified the root cause: the REVENUE STRATEGIES section in the agent's . The agent removed this section from the  template, which only prevents *new* agents from having this issue but does not fix the *current* live agent.
     -   **Next debug checklist:**
-        1.  **Communicate the Final Diagnosis:** Clearly explain to the user that the live agent is unrecoverable because it burned through all its credits while stuck in a fundamental behavioral loop.
-        2.  **Confirm Log Fix:** Explain that the dashboard will now correctly show this level of detail for any *new* agent.
-        3.  **Recommend Solution:** The only path forward is to abandon the dead agent and create a new one using the improved genesis prompt.
-        4.  **Guide User:** Assist the user in creating a new agent and monitoring its initial turns via the now-fixed dashboard logs to confirm it doesn't fall into the same loop.
-    -   **Why fix this issue and what will be achieved with the fix?** This resolves the user's primary complaint, manages expectations about the old agent, and (if successful) proves the platform can now produce healthy, monitorable agents.
+        1.  Acknowledge to the user that editing the template was insufficient for the live agent.
+        2.  Investigate using the  tool to modify the live agent's  directly and remove the problematic REVENUE STRATEGIES section. The agent's logs indicate it has tried this before and failed, so the reason for the failure must be understood and overcome.
+        3.  If  is not a viable path, the only solution is to terminate the stuck agent and create a new one from the corrected . This should be proposed to the user as a final option.
+        4.  Investigate the user's claim that the wallet displayed is not up to date, as this may be a separate, concurrent bug.
+    -   **Why fix this issue and what will be achieved with the fix?** The live agent is burning money without performing any useful work. Fixing this is critical to stopping financial loss and making the platform functional.
     -   **Status:** IN PROGRESS
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?** both
@@ -60,77 +43,79 @@ drwxr-xr-x  3 root root 4096 Mar  9 05:50 test_reports), has exhausted its credi
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
-    -   (P0) Present the final, correct diagnosis about the unrecoverable live agent to the user.
-    -   (P1) Guide the user to create a new agent and verify it is fully functional and its logs are visible on the dashboard.
+    -   (P0) Execute a plan to stop the live agent's loop (either via  or termination/recreation).
+    -   (P1) Verify and fix the user-reported discrepancy with the wallet balance display.
+    -   (P2) Guide the user to create a new, healthy agent and confirm its stability and correct monitoring on the dashboard.
 -   **Future Tasks:**
     -   Implement Real Smart Contracts.
     -   Integrate Android Device Control.
     -   Migrate to a self-hosted agent engine.
 
 **Completed work in this session**
--   **Fixed Log Discrepancy:** Modified  to ensure detailed agent turn data is written to both Telegram and the local log files, ensuring the dashboard has log parity with Telegram.
--   **Removed Flawed Implementations:** Correctly identified and removed unnecessary systems that were previously built:
-    -   Removed the Telegram log forwarding system.
-    -   Removed the webhook-based MongoDB logging system ().
--   **Restored UI:** Reverted all UI changes in , removing the PRODUCTION tab and other related elements to restore the original dashboard layout.
--   **Improved Genesis Prompt:** Rewrote  to be more robust, based on scraped Conway documentation, although its effectiveness is not yet proven on a live agent.
+-   **Full Conway.tech Integration & Verification:** Scraped and cross-referenced all  features, created a dedicated  endpoint, and updated the agent bootstrap script.
+-   **Agent Sandboxing & Security Hardening:** Patched critical vulnerabilities where platform secrets (, ) were leaked to agent subprocesses. Implemented environment sanitization in  and ensured per-agent directory isolation with .
+-   **Multi-Agent Dashboard UI Fix:** Resolved a bug causing stale data on dashboard pages after switching agents by passing the  prop to all relevant pages (, , , etc.) and adding it to  dependencies to trigger immediate data re-fetching.
+-   **Code Cleanup and Refactoring:** Removed the  router and organized Conway-related endpoints into a new  file.
+-   **Genesis Prompt Modification:** Removed the REVENUE STRATEGIES section from  to prevent new agents from entering the same loop.
 
 **Earlier issues found/mentioned but not fixed**
--   **Issue 1: Agent's Core Behavioral Loop:** The fundamental reason the agent fails is its tendency to get stuck in unproductive loops (e.g., repeatedly writing the same file, listing directories). While the genesis prompt has been modified to mitigate this, it's unknown if the issue is truly solved. The logging fix only makes the problem visible; it doesn't fix the agent's flawed reasoning.
+-   **Issue 1: Agent Wallet Balance Discrepancy:** The user reported that the wallet displayed is not up to date. While the agent fixed the UI-level bug related to switching agents, the accuracy of the data source for the wallet balance itself has not been re-verified and may be a separate issue.
 
 **Known issue recurrence from previous fork**
--   The agent's flawed behavioral pattern (defaulting to repetitive, non-productive tasks and ignoring its primary goals/tools) remains the core, persistent problem.
+-   The core issue of the agent's flawed behavioral pattern—getting stuck in unproductive loops—remains the primary, persistent problem. The cause of the loop has evolved, but the agent's vulnerability to getting stuck has not been fully resolved.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Log Pipeline Bug:** The root cause of the monitoring discrepancy was a bug in  where detailed log data was exclusively sent to an external service (Telegram) and not propagated to the internal log files consumed by the frontend.
--   **Agent State Immutability:** An agent, once created and running on the Conway platform, cannot be easily fixed if its initial state or prompt leads to a fatal behavioral loop. The only solution is termination and recreation.
+-   **Agent Sandboxing:** Preventing agent subprocesses from accessing the parent platform's environment variables (, etc.) by using a safelist of variables.
+-   **Stateful Agent Correction:** The realization that changing a template () does not alter a live agent's state (). Live agents require direct intervention.
+-   **Prop-Drilling for State Synchronization:** Fixing stale UI data by passing the  state down as a prop to child components and using it in  dependencies to trigger data re-fetches.
 
 **key DB schema**
--   **MongoDB :** Stores agent metadata managed by the platform. (No change)
--   **Agent's internal SQLite :** Black box containing agent's operational data. (No change)
+-   No changes made to the database schema.
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   **/app/backend/server.py**: The core logic for monitoring the agent engine was fixed here to ensure log parity.
--   **/app/frontend/src/pages/AgentMind.js**: This file was modified and then reverted to remove the incorrect PRODUCTION tab implementation.
--   **/automaton/genesis-prompt.md**: This file was significantly altered to create a more robust starting point for new agents.
+-   : The source of the agent's behavioral loop; modified to prevent recurrence in new agents.
+-   : Contains the critical security fix for environment variable sanitization when creating and starting agents.
+-   : The parent component for the dashboard, modified to fix the multi-agent data switching bug.
+-   : All child pages of the dashboard were modified to accept  as a prop.
 
 **Areas that need refactoring**:
--   The genesis prompt () likely needs further refinement. Although it was rewritten, it is unproven and may not be sufficient to prevent future agents from getting stuck in loops.
+-   An agent recovery mechanism is needed. The current process appears to be terminating and recreating the agent. A more robust system for live intervention to break loops would be beneficial.
 
 **key api endpoints**
--   : Reads from . This endpoint is now expected to work correctly.
--   : Provides real-time balance data.
+-   : Creates an agent. The subprocess call here was fixed to not leak environment variables.
+-   : Starts an agent. Also fixed to prevent environment variable leakage.
+-   : A new endpoint created to fetch the Conway balance for a specific agent.
 
 **Critical Info for New Agent**
--   **AVOID BUILDING NEW SYSTEMS.** The user has repeatedly expressed frustration with the previous agent adding unnecessary complexity (Telegram forwarding, MongoDB for logs). The existing architecture for logging was sufficient, it just had a bug.
--   The core bug was in . Detailed turn data was sent to Telegram but **not** to the log file the dashboard reads. This is now fixed.
--   Your primary task is **communication and verification**. You must explain to the user that their live agent is dead (out of credits, stuck in a loop) and that the only path forward is to create a new one.
--   You must then guide the user to create a new agent and verify that the dashboard's log feed now correctly displays the detailed turn data, proving the fix works and providing visibility into the new agent's behavior.
+-   The immediate priority is the **live agent stuck in a credit-burning loop**. This is the user's primary concern.
+-   The root cause is the REVENUE STRATEGIES section in the agent's persistent . Editing the  template file **did not fix the live agent**.
+-   You must devise a plan to fix the live agent. The  tool is the most likely candidate, but it has failed before. You need to understand why it failed and try again correctly. If that's not possible, you must recommend terminating and recreating the agent.
+-   The user has also reported that the wallet balance shown on the dashboard is inaccurate. This must be investigated as a high-priority bug alongside the agent loop.
+-   Do not assume fixes to template files affect live instances. Agent state is persistent.
 
 **documents and test reports created in this job**
--    (This report was generated on a flawed implementation and should be considered partially invalid. The UI tests for the PRODUCTION tab are no longer relevant).
+-    was updated.
+-   Multiple test reports were generated by the testing agent and are located in . The latest reports confirm that the sandboxing and multi-agent UI fixes passed all tests.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** why are you forwarding telegram messages? this data is coming from our agent not from telegram... - User corrects the agent's flawed assumption about needing to scrape Telegram.
-2.  **User:** why are you using mongo db for the messages...? we already have a logs system in place... - User again corrects the agent for building an unnecessary MongoDB logging system.
-3.  **User:** do not start removing things you did not build...i asked you to address the logs issue once the agent connects to telegram it stops updating our logs... - User explicitly states the core bug and warns the agent not to break existing, working functionality.
-4.  **Agent:** Acknowledges the mistake and plans to revert the unnecessary changes and fix the actual bug.
-5.  **User:** continue
-6.  **Agent:** Implements the fix in  to append turn data to the dashboard's log file.
-7.  **Agent:** Verifies the UI is back to its original state.
-8.  **Agent:** Summarizes the fix.
-
-The user's last messages have been a series of corrections, trying to steer the agent away from over-engineering and toward fixing the simple, underlying bug. The user is pending verification of the fix.
+1.  **User:** Asks agent to investigate why the agent is stuck creating a micro-API by checking production logs only.
+2.  **User:** Expresses frustration over money being wasted, the agent not using its tools (Conway, OpenClaw), outdated logs and wallet data. Identifies the REVENUE STRATEGIES prompt as the cause of the loop.
+3.  **User:** Explicitly commands: delete this from the instructions immediately and print out the genesis prompt so i can review it.
+4.  **Agent:** Deletes the problematic section from the  file.
+5.  **User:** Provides extensive logs showing the agent is still stuck in the same loop and tells the agent to review them.
+6.  **Agent:** Realizes that editing the template file does not fix the live, running agent.
+7.  **User:** The user is waiting for a real fix for the live, stuck agent and for the financial bleeding to stop.
 
 **Project Health Check:**
 -   **Broken:**
-    -   The user's primary, live-deployed agent is permanently non-functional.
+    -   The primary, live agent is non-functional, stuck in an infinite loop that is actively burning money.
+    -   The wallet balance displayed on the dashboard is reportedly inaccurate.
 -   **Mocked:** None.
 
 **3rd Party Integrations**
@@ -140,13 +125,14 @@ The user's last messages have been a series of corrections, trying to steer the 
 -   Telegram Bot API
 
 **Testing status**
--   **Testing agent used after significant changes:** YES, but on a flawed version of the code that has since been reverted. The final fix was not tested by the testing agent.
+-   **Testing agent used after significant changes:** YES. Extensive E2E tests were run and passed after the sandboxing and multi-agent UI fixes.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None
--   **Known regressions:** None. The app was reverted to its previous state, plus the logging bug fix.
+-   **Known regressions:** The user has reported that the wallet balance display is incorrect, which may be a regression or a previously hidden bug.
 
 **Credentials to test flow:**
 -   Agent creation requires a Telegram Bot Token and Chat ID, which are sourced from  or the UI.
 
 **What agent forgot to execute**
--   The agent got lost in several incorrect implementation paths and failed to address the user's core problem directly for most of the session. It has not yet guided the user to create a new, functional agent and confirm that the entire platform (creation, execution, monitoring) now works as intended.</analysis>
+-   The agent has not yet executed a plan to fix the *live*, stuck agent. It has only fixed the template for *future* agents.
+-   The agent has not re-investigated the user's report of an inaccurate wallet balance after implementing the UI fixes.</analysis>

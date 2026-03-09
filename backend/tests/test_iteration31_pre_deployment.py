@@ -19,7 +19,7 @@ import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 if not BASE_URL:
-    BASE_URL = "https://multi-agent-vc.preview.emergentagent.com"
+    BASE_URL = "https://multi-agent-platform-10.preview.emergentagent.com"
 
 
 class TestHealthEndpoint:
