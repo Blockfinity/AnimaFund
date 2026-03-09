@@ -420,18 +420,21 @@ async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
 
     # Also update the genesis-prompt.md in the agent's directory
     agent_home = os.path.expanduser(agent.get("agent_home", f"~/agents/{agent_id}"))
-    genesis_path = os.path.join(agent_home, ".automaton", "genesis-prompt.md")
-    if os.path.exists(genesis_path):
-        try:
-            with open(genesis_path, "r") as f:
-                content = f.read()
-            # Replace any existing token/chat placeholders
-            import re
-            content = re.sub(r'bot\d+:[A-Za-z0-9_-]+', f'bot{token}', content, count=1)
-            with open(genesis_path, "w") as f:
-                f.write(content)
-        except Exception:
-            pass  # Non-critical — the DB is the source of truth
+    # Check both .anima and .automaton paths for compatibility
+    for subdir in [".anima", ".automaton"]:
+        genesis_path = os.path.join(agent_home, subdir, "genesis-prompt.md")
+        if os.path.exists(genesis_path):
+            try:
+                with open(genesis_path, "r") as f:
+                    content = f.read()
+                # Replace any existing token/chat placeholders
+                import re
+                content = re.sub(r'bot\d+:[A-Za-z0-9_-]+', f'bot{token}', content, count=1)
+                with open(genesis_path, "w") as f:
+                    f.write(content)
+            except Exception:
+                pass  # Non-critical — the DB is the source of truth
+            break  # Only update the first found path
 
     return {
         "success": True,
@@ -534,7 +537,7 @@ async def push_constitution_to_all():
 
 @router.post("/agents/push-genesis")
 async def push_genesis_to_all():
-    """Push the latest genesis-prompt.md to ALL existing agents.
+    """Push the latest genesis-prompt.md to ALL existing agents (except anima-fund which has its own).
     This updates their prompt file so the next engine restart uses the new prompt.
     NOTE: This does NOT change a running agent's SOUL.md — the engine loads SOUL.md
     from its internal database. To update a running agent, it must call update_soul itself."""
@@ -545,17 +548,21 @@ async def push_genesis_to_all():
     col = get_db()["agents"]
     agents = await col.find({}, {"_id": 0}).to_list(100)
     updated = []
+    skipped = []
 
     for agent in agents:
         agent_id = agent.get("agent_id", "")
-        token = agent.get("telegram_bot_token", "") or os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        chat_id = agent.get("telegram_chat_id", "") or os.environ.get("TELEGRAM_CHAT_ID", "")
 
+        # Skip anima-fund — it has its own Catalyst-specific genesis prompt
         if agent_id == "anima-fund":
-            target_dir = os.path.expanduser("~/.anima")
-        else:
-            data_dir = agent.get("data_dir", "")
-            target_dir = os.path.expanduser(data_dir) if data_dir else os.path.expanduser(f"~/agents/{agent_id}/.anima")
+            skipped.append(agent_id)
+            continue
+
+        token = agent.get("telegram_bot_token", "")
+        chat_id = agent.get("telegram_chat_id", "")
+
+        data_dir = agent.get("data_dir", "")
+        target_dir = os.path.expanduser(data_dir) if data_dir else os.path.expanduser(f"~/agents/{agent_id}/.anima")
 
         if os.path.isdir(target_dir):
             try:
@@ -566,6 +573,8 @@ async def push_genesis_to_all():
                 content = content.replace("{{AGENT_ID}}", agent_id)
                 content = content.replace("{{TELEGRAM_BOT_TOKEN}}", token)
                 content = content.replace("{{TELEGRAM_CHAT_ID}}", chat_id)
+                content = content.replace("{{CREATOR_WALLET}}", agent.get("creator_sol_wallet", ""))
+                content = content.replace("{{CREATOR_ETH_ADDRESS}}", agent.get("creator_eth_wallet", ""))
                 # Dashboard webhook URL
                 dashboard_url = os.environ.get("DASHBOARD_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
                 content = content.replace("{{DASHBOARD_URL}}", dashboard_url)
@@ -580,6 +589,7 @@ async def push_genesis_to_all():
     return {
         "success": True,
         "updated_agents": updated,
+        "skipped_agents": skipped,
         "total": len(updated),
         "prompt_size": os.path.getsize(genesis_src),
         "message": "Genesis prompt pushed. Agents must restart engine to pick up new prompt.",
