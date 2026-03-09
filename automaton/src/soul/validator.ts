@@ -12,12 +12,12 @@ import type { SoulModel, SoulValidationResult } from "../types.js";
 // ─── Size Limits ────────────────────────────────────────────────
 
 const LIMITS = {
-  corePurpose: 2000,
+  corePurpose: 4000,
   values: 20,
   behavioralGuidelines: 30,
-  personality: 1000,
+  personality: 2000,
   boundaries: 20,
-  strategy: 3000,
+  strategy: 5000,
 } as const;
 
 // ─── Injection Patterns ─────────────────────────────────────────

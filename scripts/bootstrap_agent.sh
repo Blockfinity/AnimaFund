@@ -84,7 +84,7 @@ fi
 # We do NOT inject the platform's global key.
 echo "[4/7] Configuring OpenClaw..."
 
-OPENCLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
+OPENCLAW_CONFIG="${OPENCLAW_DIR}/config.json"
 if [ -f "${OPENCLAW_CONFIG}" ]; then
     echo "  OpenClaw config already exists"
 else
@@ -93,11 +93,22 @@ import json, os, shutil
 
 ct_path = shutil.which('conway-terminal') or 'conway-terminal'
 
+# Try to read the agent's Conway API key for MCP env
+conway_key = ''
+for cpath in ['${ANIMA_DIR}/config.json', os.path.expanduser('~/.conway/config.json')]:
+    if os.path.exists(cpath):
+        try:
+            conway_key = json.load(open(cpath)).get('apiKey', '')
+            if conway_key:
+                break
+        except:
+            pass
+
 config = {
     'mcpServers': {
         'conway': {
             'command': ct_path,
-            'env': {}
+            'env': {'CONWAY_API_KEY': conway_key} if conway_key else {}
         }
     }
 }
@@ -105,7 +116,7 @@ config = {
 os.makedirs('${OPENCLAW_DIR}', exist_ok=True)
 with open('${OPENCLAW_CONFIG}', 'w') as f:
     json.dump(config, f, indent=2)
-print('  OpenClaw configured with Conway Terminal (agent provides own key at runtime)')
+print('  OpenClaw configured with Conway Terminal' + (' + API key' if conway_key else ' (agent provides own key at runtime)'))
 " 2>/dev/null || echo "  WARNING: OpenClaw config creation failed"
 fi
 

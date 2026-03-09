@@ -211,6 +211,8 @@ export default function AgentMind({ genesisState, selectedAgent }) {
   const [activeTab, setActiveTab] = useState('feed'); // 'feed', 'logs', or 'turns'
   const [copied, setCopied] = useState(false);
   const [balance, setBalance] = useState(null);
+  const [editingSoul, setEditingSoul] = useState(false);
+  const [soulDraft, setSoulDraft] = useState('');
   const feedRef = useRef(null);
   const logRef = useRef(null);
   // Track whether auto-scroll should run — ref avoids re-render loops
@@ -406,6 +408,26 @@ export default function AgentMind({ genesisState, selectedAgent }) {
       navigator.clipboard.writeText(walletAddr);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handlePatchSoul = async () => {
+    try {
+      const agentId = selectedAgent || 'anima-fund';
+      const res = await fetch(`${API}/api/agents/${agentId}/patch-soul`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: soulDraft }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSoul(soulDraft);
+        setEditingSoul(false);
+      } else {
+        alert(`Patch failed: ${data.detail || 'Unknown error'}`);
+      }
+    } catch (e) {
+      alert(`Patch failed: ${e.message}`);
     }
   };
 
@@ -740,17 +762,54 @@ export default function AgentMind({ genesisState, selectedAgent }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
             <Eye className="w-3.5 h-3.5" style={{ color: '#9B6BFF' }} />
             <span style={{ fontSize: '10px', fontWeight: 800, color: '#fff', letterSpacing: '1px' }}>SOUL.md</span>
+            <span style={{ fontSize: '8px', color: '#52525b', marginLeft: 'auto' }}>
+              {soul ? `${soul.length} chars` : ''}
+            </span>
+            <button
+              data-testid="edit-soul-btn"
+              onClick={() => { setEditingSoul(!editingSoul); setSoulDraft(soul || ''); }}
+              style={{ fontSize: '8px', padding: '2px 6px', borderRadius: '3px', border: '1px solid #27272a', background: editingSoul ? '#7f1d1d' : '#18181b', color: editingSoul ? '#fca5a5' : '#a1a1aa', cursor: 'pointer' }}
+            >
+              {editingSoul ? 'Cancel' : 'Edit'}
+            </button>
           </div>
-          <div style={{
-            flex: 1, overflowY: 'auto', fontSize: '10px', fontFamily: 'JetBrains Mono, monospace',
-            color: '#a1a1aa', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            background: '#0a0a0f', borderRadius: '4px', padding: '8px',
-          }}>
-            {soul || (engineState?.db_exists
-              ? 'Loading SOUL.md...'
-              : 'The agent\'s SOUL.md will appear here when the engine is live.'
-            )}
-          </div>
+          {editingSoul ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <textarea
+                data-testid="soul-editor-textarea"
+                value={soulDraft}
+                onChange={e => setSoulDraft(e.target.value)}
+                style={{
+                  flex: 1, minHeight: '200px', fontSize: '10px', fontFamily: 'JetBrains Mono, monospace',
+                  color: '#d4d4d8', lineHeight: 1.6, background: '#0a0a0f', borderRadius: '4px', padding: '8px',
+                  border: '1px solid #27272a', resize: 'vertical', outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: '8px', color: soulDraft.length > 2000 ? '#f87171' : '#52525b', alignSelf: 'center' }}>
+                  {soulDraft.length} chars {soulDraft.length > 2000 ? '(warn: large)' : ''}
+                </span>
+                <button
+                  data-testid="save-soul-btn"
+                  onClick={handlePatchSoul}
+                  style={{ fontSize: '9px', padding: '4px 12px', borderRadius: '3px', background: '#166534', color: '#d4d4d8', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  Save SOUL.md
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              flex: 1, overflowY: 'auto', fontSize: '10px', fontFamily: 'JetBrains Mono, monospace',
+              color: '#a1a1aa', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              background: '#0a0a0f', borderRadius: '4px', padding: '8px',
+            }}>
+              {soul || (engineState?.db_exists
+                ? 'Loading SOUL.md...'
+                : 'The agent\'s SOUL.md will appear here when the engine is live.'
+              )}
+            </div>
+          )}
         </div>
 
         {/* Session Cost */}

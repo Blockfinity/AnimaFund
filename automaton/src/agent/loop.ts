@@ -786,7 +786,7 @@ export async function runAgentLoop(
             content:
               `LOOP DETECTED: You have called "${currentPattern}" ${MAX_REPETITIVE_TURNS} times in a row with similar results. ` +
               `STOP repeating yourself. You already know your status. DO SOMETHING DIFFERENT NOW. ` +
-              `Pick ONE concrete task from your genesis prompt and execute it.`,
+              `If create_goal is BLOCKED, work directly with exec/write_file/sandbox_create. If get_plan returns "not found", use the ULID from orchestrator_status, not the goal title. Build something directly.`,
             source: "system",
           };
           loopWarningPattern = currentPattern;
@@ -804,8 +804,8 @@ export async function runAgentLoop(
               content:
                 `MAINTENANCE LOOP DETECTED: Your last ${idleToolTurns} turns only used status-check tools ` +
                 `(${turn.toolCalls.map((tc) => tc.name).join(", ")}). ` +
-                `You already know your status. Review your genesis prompt and SOUL.md, then execute a CONCRETE task. ` +
-                `Write code, create a file, register a service, or build something new.`,
+                `You already know your status. STOP checking status. ` +
+                `Use exec to write code, create files, or deploy to a sandbox. If a goal is BLOCKED, abandon it and work directly.`,
               source: "system",
             };
             idleToolTurns = 0;

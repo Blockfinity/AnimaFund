@@ -1,6 +1,7 @@
 """
 Live engine data endpoints — read from state.db.
 """
+from datetime import datetime, timezone
 from fastapi import APIRouter, Query
 
 from engine_bridge import (
@@ -164,3 +165,69 @@ async def live_wake_events(limit: int = Query(default=20, le=100)):
 @router.get("/live/heartbeat-schedule")
 async def live_heartbeat_schedule():
     return {"tasks": get_live_heartbeat_schedule(), "source": "engine"}
+
+
+@router.get("/live/stream")
+async def live_stream():
+    """Server-Sent Events endpoint for real-time agent data.
+    Pushes wallet, turns, engine status every 10 seconds."""
+    import asyncio
+    import json as _json
+    import os
+    import aiohttp
+    from fastapi.responses import StreamingResponse
+
+    async def event_generator():
+        while True:
+            try:
+                # Gather live data
+                engine = is_engine_live()
+                engine["agent_id"] = get_active_agent_id()
+
+                # Get Conway balance
+                conway_credits = 0
+                conway_key = os.environ.get("CONWAY_API_KEY", "")
+                if not conway_key:
+                    from engine_bridge import get_active_data_dir
+                    active_dir = get_active_data_dir()
+                    config_path = os.path.join(active_dir, "config.json")
+                    if os.path.exists(config_path):
+                        try:
+                            with open(config_path) as f:
+                                conway_key = _json.load(f).get("apiKey", "")
+                        except Exception:
+                            pass
+
+                if conway_key:
+                    try:
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                            async with session.get(
+                                "https://api.conway.tech/v1/credits/balance",
+                                headers={"Authorization": f"Bearer {conway_key}"},
+                            ) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    conway_credits = data.get("credits_cents", 0)
+                    except Exception:
+                        pass
+
+                payload = {
+                    "engine": engine,
+                    "conway_credits_cents": conway_credits,
+                    "turns_count": engine.get("turn_count", 0),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                yield f"data: {_json.dumps(payload)}\n\n"
+            except Exception as e:
+                yield f"data: {_json.dumps({'error': str(e)})}\n\n"
+
+            await asyncio.sleep(10)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

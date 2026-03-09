@@ -11,6 +11,7 @@ import subprocess
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 import qrcode
 import aiohttp
 
@@ -159,24 +160,34 @@ async def wallet_balance():
     if conway_api_key:
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                async with session.get(
-                    "https://api.conway.tech/v1/credits/balance",
-                    headers={"x-api-key": conway_api_key},
-                ) as resp:
-                    if resp.status == 200:
-                        conway_data = await resp.json()
-                        conway_credits = conway_data.get("credits_cents", None)
-                        if conway_credits is not None:
-                            credits_cents = conway_credits
-                            # Derive tier from live credits
-                            if conway_credits <= 0:
-                                tier = "critical"
-                            elif conway_credits < 50:
-                                tier = "low_compute"
-                            elif conway_credits < 500:
-                                tier = "normal"
-                            else:
-                                tier = "normal"
+                # Try both auth header formats for Conway API compatibility
+                headers_options = [
+                    {"Authorization": f"Bearer {conway_api_key}"},
+                    {"x-api-key": conway_api_key},
+                ]
+                for headers in headers_options:
+                    try:
+                        async with session.get(
+                            "https://api.conway.tech/v1/credits/balance",
+                            headers=headers,
+                        ) as resp:
+                            if resp.status == 200:
+                                conway_data = await resp.json()
+                                conway_credits = conway_data.get("credits_cents", None)
+                                if conway_credits is not None:
+                                    credits_cents = conway_credits
+                                    # Derive tier from live credits
+                                    if conway_credits <= 0:
+                                        tier = "critical"
+                                    elif conway_credits < 50:
+                                        tier = "survival"
+                                    elif conway_credits < 500:
+                                        tier = "conservation"
+                                    else:
+                                        tier = "normal"
+                                break  # Success — stop trying other headers
+                    except Exception:
+                        continue
         except Exception:
             pass  # Keep local cache if Conway API fails
 
@@ -602,3 +613,66 @@ async def get_prompt_template():
         with open(template_path, "r") as f:
             return {"content": f.read()}
     return {"content": "Genesis prompt template not found."}
+
+
+class PatchSoulRequest(BaseModel):
+    content: str
+
+
+@router.post("/agents/{agent_id}/patch-soul")
+async def patch_soul(agent_id: str, req: PatchSoulRequest):
+    """Emergency SOUL.md replacement — bypasses update_soul char limits.
+    Directly overwrites the SOUL.md file for the specified agent."""
+    if agent_id == "anima-fund":
+        target_dir = os.path.expanduser("~/.anima")
+    else:
+        col = get_db()["agents"]
+        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+        if not agent:
+            raise HTTPException(404, f"Agent '{agent_id}' not found")
+        target_dir = agent.get("data_dir", os.path.expanduser(f"~/agents/{agent_id}/.anima"))
+
+    target_dir = os.path.expanduser(target_dir)
+    soul_path = os.path.join(target_dir, "SOUL.md")
+
+    if not os.path.isdir(target_dir):
+        raise HTTPException(400, f"Agent data directory not found: {target_dir}")
+
+    with open(soul_path, "w") as f:
+        f.write(req.content)
+
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "soul_size": len(req.content),
+        "message": f"SOUL.md patched ({len(req.content)} chars). Agent will use new soul on next turn.",
+    }
+
+
+@router.get("/agents/{agent_id}/soul")
+async def get_agent_soul(agent_id: str):
+    """Read the SOUL.md for any agent."""
+    if agent_id == "anima-fund":
+        target_dir = os.path.expanduser("~/.anima")
+    else:
+        col = get_db()["agents"]
+        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+        if not agent:
+            raise HTTPException(404, f"Agent '{agent_id}' not found")
+        target_dir = agent.get("data_dir", os.path.expanduser(f"~/agents/{agent_id}/.anima"))
+
+    target_dir = os.path.expanduser(target_dir)
+    soul_path = os.path.join(target_dir, "SOUL.md")
+
+    if not os.path.exists(soul_path):
+        return {"content": None, "exists": False, "agent_id": agent_id}
+
+    with open(soul_path, "r") as f:
+        content = f.read()
+
+    return {
+        "content": content,
+        "exists": True,
+        "size": len(content),
+        "agent_id": agent_id,
+    }
