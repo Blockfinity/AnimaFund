@@ -4,81 +4,62 @@
 Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fund". A multi-agent platform where new, independent AI agents can be created and managed from a single UI. Each agent has its own goals, skills, wallets, and revenue model, operating autonomously on the live internet via Conway Cloud.
 
 ## Architecture
-- **Frontend**: React (port 3000)
-- **Backend**: FastAPI (port 8001)
+- **Frontend**: React (port 3000), 13 pages + sidebar navigation
+- **Backend**: FastAPI (port 8001), 7 routers (agents, genesis, live, telegram, infrastructure, conway, openclaw)
 - **Database**: MongoDB (anima_fund)
 - **Agent Engine**: Conway Automaton (TypeScript, compiled to dist/bundle.mjs)
 - **Integrations**: Conway Cloud API, OpenClaw, Telegram Bot, Base chain (USDC/ETH)
 
 ## Two Genesis Prompt System
-1. **Anima Fund (The Catalyst)**: `/root/.anima/genesis-prompt.md` — VC fund founder AI with specific identity, personality, fund model, and revenue strategy
-2. **Generic Agent Template**: `/app/automaton/genesis-prompt.md` — Used by CreateAgentModal "Load Template" button. Generic template for new agents with `{{AGENT_NAME}}` and `{{TELEGRAM_BOT_TOKEN}}` placeholders
+1. **Anima Fund (The Catalyst)**: `/root/.anima/genesis-prompt.md` — VC fund founder with specific identity and fund model
+2. **Generic Agent Template**: `/app/automaton/genesis-prompt.md` — For new agents via CreateAgentModal
 3. **Both include identical mandatory boot sequence** (Steps 0-7)
+4. **Push-genesis skips anima-fund** to protect The Catalyst's custom prompt
 
-## What's Been Implemented
+## All Screens & Connections (13 pages)
+| Screen | Page | Backend APIs | Status |
+|---|---|---|---|
+| Agent Mind | AgentMind.js | /api/engine/live, /api/live/*, /api/wallet/balance | VERIFIED |
+| Fund HQ | FundHQ.js | /api/engine/live, /api/live/*, /api/telegram/health | VERIFIED |
+| Agents | Agents.js | /api/live/agents, /api/live/discovered | VERIFIED (prop fix) |
+| Infrastructure | Infrastructure.js | /api/infrastructure/* | VERIFIED |
+| **OpenClaw VM** | **OpenClawViewer.js** | **/api/openclaw/** | **NEW** |
+| Skills | Skills.js | /api/live/skills-full, /api/skills/available | VERIFIED |
+| Deal Flow | DealFlow.js | /api/live/memory | VERIFIED |
+| Portfolio | Portfolio.js | /api/live/memory | VERIFIED |
+| Financials | Financials.js | /api/live/financials, /api/live/transactions | VERIFIED |
+| Activity | Activity.js | /api/infrastructure/activity-feed | VERIFIED |
+| Memory | Memory.js | /api/live/memory, /api/live/kv | VERIFIED |
+| Configuration | Configuration.js | /api/constitution, /api/engine/status | VERIFIED |
+| Wallet & Logs | AgentMind.js | same as Agent Mind | VERIFIED |
 
-### Core Platform
-- Multi-agent dashboard with agent switching and data isolation
-- Agent creation/management API with welcome message, tool selector, Telegram per-agent
-- Real-time engine logs viewer
-- SOUL.md viewer and editor (Edit/Save buttons with emergency patch API)
-- Wallet QR code + balance display (Conway + on-chain)
-- Telegram bot integration for per-agent notifications
-- Conway Cloud integration for sandbox VMs, domains, payments
-- Agent sandboxing (environment variable isolation)
-- SSE live stream for real-time dashboard updates
+## New: OpenClaw VM Viewer
+- 4 tabs: Live View, Actions, Sandbox VMs, Browsing
+- Real-time auto-refresh every 5 seconds
+- Shows browsing sessions (browse_page calls), sandbox VMs (Conway API), all agent tool calls
+- Empty state messaging when agent is idle
+- Filter by action category (browsing, sandbox, payment, network, tools)
 
-### Critical Fixes (March 9-10, 2026)
-1. **SOUL.md Emergency Patch**: 30,666 bytes → 370 chars. Patch-soul API added.
-2. **Genesis Prompt Split**: Catalyst-specific vs generic template. Push-genesis skips anima-fund.
-3. **Soul Validator Limits Raised**: corePurpose 2000→4000, personality 1000→2000 chars
-4. **Loop Detection Improved**: Engine guides agent to use exec/write_file directly
-5. **Anti-Stuck Rules**: ULID guidance, forbidden loop patterns, 3-turn rule
-6. **Wallet Balance Auth Fix**: Conway API tries both Bearer and x-api-key headers
-7. **OpenClaw Config Fix**: bootstrap writes config.json (was openclaw.json), injects API key
-8. **Telegram Per-Agent**: Each agent has own token/chat_id, update works for .anima and .automaton
-9. **Automaton Bundle Rebuilt**: All source changes compiled to dist/
-
-### Test Results
-- Unit tests: 21 passed, 8 skipped (need live MongoDB) at `/app/backend/tests/test_api.py`
-- E2E tests: 16/16 passed (iteration_46)
-- Deployment check: PASS — no blockers
-- All 11 user-requested categories verified
-
-## Key API Endpoints
-- `POST /api/agents` — Create agent
-- `POST /api/agents/{id}/start` — Start agent
-- `POST /api/agents/{id}/select` — Switch active agent (data isolation)
-- `POST /api/agents/{id}/patch-soul` — Emergency SOUL.md overwrite
-- `GET /api/agents/{id}/soul` — Read agent's SOUL.md
-- `POST /api/agents/push-genesis` — Push template to all agents (skips anima-fund)
-- `GET /api/wallet/balance` — Real-time wallet balance
-- `GET /api/live/stream` — SSE for real-time updates
-- `GET /api/conway/balance` — Conway credits
-- `GET /api/telegram/health` — Telegram bot status per agent
-- `GET /api/genesis/prompt-template` — Generic agent template
+## Test Results
+- **Unit tests**: 21/21 passed at `/app/backend/tests/test_api.py`
+- **E2E iteration 47**: 18/19 backend + 100% frontend (all 12 feature categories verified)
+- **Deployment check**: PASS
 
 ## Remaining Tasks
 
 ### P0 (Critical)
-- Start the agent engine with new genesis prompt + condensed SOUL.md
-- Monitor first 10 turns to confirm boot sequence executes correctly and loop is broken
+- Start the agent engine and monitor first 10 turns
 
 ### P1 (High)
-- Verify Telegram messages sent every turn after agent restarts
-- Verify skills loading works
-- Verify wallet balance updates in real-time during agent operation
+- Verify Telegram messages, skills loading, wallet updates during live operation
+- OpenClaw data populates once agent starts using browse_page/sandbox tools
 
 ### P2 (Medium)
 - Real smart contracts (ERC-8004)
 - Android device control
-- Self-hosted agent engine migration
+- Self-hosted agent engine
 - Revenue tracking charts
 - Multi-agent communication dashboard
 
 ### Backlog
-- Domain trading automation
-- Agent marketplace
-- Cross-chain wallet support
-- Agent performance scoring
-- Historical analysis of agent turns/costs
+- Domain trading automation, agent marketplace, cross-chain wallets, performance scoring
