@@ -95,7 +95,7 @@ fi
 # ─── Step 5: Configure OpenClaw ──────────────────────────────────
 echo "[5/6] Configuring OpenClaw..."
 
-OPENCLAW_CONFIG="${OPENCLAW_DIR}/config.json"
+OPENCLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 if [ -f "${OPENCLAW_CONFIG}" ]; then
     echo "  OpenClaw config already exists"
 else
@@ -131,8 +131,35 @@ print('  OpenClaw configured with Conway Terminal')
 " 2>/dev/null || echo "  WARNING: OpenClaw config creation failed"
 fi
 
-# ─── Step 6: Verify Environment ─────────────────────────────────
-echo "[6/6] Verifying environment..."
+# ─── Step 6: Install Conway Terminal skills & commands ───────────
+echo "[6/7] Installing Conway Terminal skills and commands..."
+
+# Conway Automaton skill (for the engine)
+CT_SKILLS="$(npm root -g 2>/dev/null)/conway-terminal/plugin/skills"
+CT_COMMANDS="$(npm root -g 2>/dev/null)/conway-terminal/plugin/commands"
+
+if [ -d "$CT_SKILLS/conway-automaton" ]; then
+    mkdir -p "${ANIMA_DIR}/skills/conway-automaton"
+    cp "$CT_SKILLS/conway-automaton/SKILL.md" "${ANIMA_DIR}/skills/conway-automaton/SKILL.md"
+    echo "  Installed: conway-automaton skill"
+fi
+
+# Conway OpenClaw skill
+if [ -d "$CT_SKILLS/conway-openclaw" ]; then
+    mkdir -p "${OPENCLAW_DIR}/skills/conway"
+    cp "$CT_SKILLS/conway-openclaw/SKILL.md" "${OPENCLAW_DIR}/skills/conway/SKILL.md"
+    echo "  Installed: conway-openclaw skill"
+fi
+
+# Conway commands
+if [ -d "$CT_COMMANDS" ]; then
+    mkdir -p "${ANIMA_DIR}/commands"
+    cp "$CT_COMMANDS"/*.md "${ANIMA_DIR}/commands/" 2>/dev/null
+    echo "  Installed: Conway commands (conway, conway-status, conway-deploy)"
+fi
+
+# ─── Step 7: Verify Environment ─────────────────────────────────
+echo "[7/7] Verifying environment..."
 
 echo "  Agent HOME: ${AGENT_HOME}"
 
