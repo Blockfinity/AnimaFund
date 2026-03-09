@@ -280,12 +280,16 @@ async def create_agent(req: CreateAgentRequest):
             "creatorAddress": creator_addr,
         }, f)
 
-    # Pre-bootstrap the agent environment (install Conway Terminal, configure OpenClaw)
+    # Pre-bootstrap the agent environment (install Conway Terminal skills, configure OpenClaw)
+    # Agent provisions its own Conway wallet/API key on first engine run.
     bootstrap_script = "/app/scripts/bootstrap_agent.sh"
     if os.path.exists(bootstrap_script):
         try:
             bootstrap_env = os.environ.copy()
             bootstrap_env["HOME"] = agent_home
+            # Strip platform secrets — agents must not access platform DB or dashboard internals
+            for secret_key in ["MONGO_URL", "DB_NAME", "DASHBOARD_URL"]:
+                bootstrap_env.pop(secret_key, None)
             subprocess.run(
                 ["bash", bootstrap_script],
                 env=bootstrap_env,
@@ -468,6 +472,10 @@ async def start_agent_engine(agent_id: str):
         env["TELEGRAM_BOT_TOKEN"] = agent["telegram_bot_token"]
     if agent.get("telegram_chat_id"):
         env["TELEGRAM_CHAT_ID"] = agent["telegram_chat_id"]
+
+    # Sanitize: strip platform secrets that agents must not access
+    for secret_key in ["MONGO_URL", "DB_NAME", "DASHBOARD_URL"]:
+        env.pop(secret_key, None)
 
     try:
         with open(log_out, "a") as fout, open(log_err, "a") as ferr:

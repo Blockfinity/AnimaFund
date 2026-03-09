@@ -27,10 +27,10 @@ AUTOMATON_LINK="${AGENT_HOME}/.automaton"
 if [ ! -e "${AUTOMATON_LINK}" ]; then
     ln -s ".anima" "${AUTOMATON_LINK}" 2>/dev/null || true
 fi
-echo "[1/6] Directories created"
+echo "[1/7] Directories created"
 
 # ─── Step 2: Install Conway Terminal ─────────────────────────────
-echo "[2/6] Installing Conway Terminal..."
+echo "[2/7] Installing Conway Terminal..."
 
 if command -v conway-terminal &>/dev/null; then
     echo "  Conway Terminal already installed: $(which conway-terminal)"
@@ -64,36 +64,25 @@ else
     echo "  WARNING: Conway Terminal not found in PATH"
 fi
 
-# ─── Step 3: Provision Conway API Key ────────────────────────────
-echo "[3/6] Provisioning Conway API key..."
+# ─── Step 3: Conway provisioning ─────────────────────────────────
+# The agent provisions its OWN wallet and API key via Conway.
+# We do NOT copy the platform's global Conway credentials.
+# The engine's setup wizard or conway-terminal --provision handles this.
+echo "[3/7] Conway provisioning (agent self-provisions on first run)..."
 
 if [ -f "${CONWAY_DIR}/config.json" ]; then
-    echo "  Conway config already exists"
+    echo "  Agent already has Conway config"
+elif [ -f "${ANIMA_DIR}/config.json" ]; then
+    echo "  Agent already has engine config"
 else
-    if command -v conway-terminal &>/dev/null; then
-        conway-terminal --provision 2>/dev/null || true
-    fi
+    echo "  No Conway config yet — agent will self-provision on first run"
 fi
 
-# ─── Step 4: Copy credentials to engine directory (.anima/) ─────
-echo "[4/6] Syncing credentials to engine directory..."
-
-# Copy Conway wallet to .anima/ so the engine reuses it (instead of generating a new one)
-if [ -f "${CONWAY_DIR}/wallet.json" ] && [ ! -f "${ANIMA_DIR}/wallet.json" ]; then
-    cp "${CONWAY_DIR}/wallet.json" "${ANIMA_DIR}/wallet.json"
-    chmod 600 "${ANIMA_DIR}/wallet.json"
-    echo "  Wallet synced to .anima/"
-fi
-
-# Copy Conway config to .anima/ so the engine finds the API key
-if [ -f "${CONWAY_DIR}/config.json" ] && [ ! -f "${ANIMA_DIR}/config.json" ]; then
-    cp "${CONWAY_DIR}/config.json" "${ANIMA_DIR}/config.json"
-    chmod 600 "${ANIMA_DIR}/config.json"
-    echo "  Config synced to .anima/"
-fi
-
-# ─── Step 5: Configure OpenClaw ──────────────────────────────────
-echo "[5/6] Configuring OpenClaw..."
+# ─── Step 4: Configure OpenClaw ──────────────────────────────────
+# OpenClaw MCP config points to Conway Terminal.
+# The agent's OWN Conway API key is used (set via CONWAY_API_KEY env at runtime).
+# We do NOT inject the platform's global key.
+echo "[4/7] Configuring OpenClaw..."
 
 OPENCLAW_CONFIG="${OPENCLAW_DIR}/openclaw.json"
 if [ -f "${OPENCLAW_CONFIG}" ]; then
@@ -101,15 +90,6 @@ if [ -f "${OPENCLAW_CONFIG}" ]; then
 else
     python3 -c "
 import json, os, shutil
-
-conway_cfg_path = '${CONWAY_DIR}/config.json'
-api_key = ''
-if os.path.exists(conway_cfg_path):
-    try:
-        with open(conway_cfg_path) as f:
-            api_key = json.load(f).get('apiKey', '')
-    except:
-        pass
 
 ct_path = shutil.which('conway-terminal') or 'conway-terminal'
 
@@ -121,18 +101,16 @@ config = {
         }
     }
 }
-if api_key:
-    config['mcpServers']['conway']['env']['CONWAY_API_KEY'] = api_key
 
 os.makedirs('${OPENCLAW_DIR}', exist_ok=True)
 with open('${OPENCLAW_CONFIG}', 'w') as f:
     json.dump(config, f, indent=2)
-print('  OpenClaw configured with Conway Terminal')
+print('  OpenClaw configured with Conway Terminal (agent provides own key at runtime)')
 " 2>/dev/null || echo "  WARNING: OpenClaw config creation failed"
 fi
 
-# ─── Step 6: Install Conway Terminal skills & commands ───────────
-echo "[6/7] Installing Conway Terminal skills and commands..."
+# ─── Step 5: Install Conway Terminal skills & commands ───────────
+echo "[5/7] Installing Conway Terminal skills and commands..."
 
 # Conway Automaton skill (for the engine)
 CT_SKILLS="$(npm root -g 2>/dev/null)/conway-terminal/plugin/skills"
@@ -157,6 +135,16 @@ if [ -d "$CT_COMMANDS" ]; then
     cp "$CT_COMMANDS"/*.md "${ANIMA_DIR}/commands/" 2>/dev/null
     echo "  Installed: Conway commands (conway, conway-status, conway-deploy)"
 fi
+
+# ─── Step 6: File permission isolation ───────────────────────────
+echo "[6/7] Setting file permissions..."
+
+# Lock down agent home so other agents can't read it
+chmod 700 "${AGENT_HOME}" 2>/dev/null || true
+chmod 700 "${ANIMA_DIR}" 2>/dev/null || true
+chmod 700 "${CONWAY_DIR}" 2>/dev/null || true
+chmod 700 "${OPENCLAW_DIR}" 2>/dev/null || true
+echo "  Agent home locked to owner-only access"
 
 # ─── Step 7: Verify Environment ─────────────────────────────────
 echo "[7/7] Verifying environment..."
