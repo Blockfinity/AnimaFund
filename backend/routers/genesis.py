@@ -352,6 +352,9 @@ async def create_genesis_agent():
             with open(genesis_src, "r") as f:
                 genesis_prompt = inject_secrets(f.read())
             genesis_prompt = genesis_prompt.replace("{{AGENT_NAME}}", "Anima Fund")
+            genesis_prompt = genesis_prompt.replace("{{AGENT_ID}}", "anima-fund")
+            dashboard_url = os.environ.get("DASHBOARD_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
+            genesis_prompt = genesis_prompt.replace("{{DASHBOARD_URL}}", dashboard_url)
             with open(os.path.join(ANIMA_DIR, "genesis-prompt.md"), "w") as f:
                 f.write(genesis_prompt)
 

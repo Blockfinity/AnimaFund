@@ -282,13 +282,13 @@ export default function AgentMind({ genesisState, selectedAgent }) {
     return () => clearInterval(ci);
   }, [selectedAgent]);
 
-  // Fetch Telegram production logs + stats
+  // Fetch production logs from agent webhook + stats
   useEffect(() => {
-    const fetchTelegramData = async () => {
+    const fetchProductionData = async () => {
       try {
         const [logsRes, statsRes] = await Promise.all([
-          fetch(`${API}/api/telegram-logs?limit=200`),
-          fetch(`${API}/api/telegram-logs/stats`),
+          fetch(`${API}/api/agent-logs?limit=200`),
+          fetch(`${API}/api/agent-logs/stats`),
         ]);
         if (logsRes.ok) {
           const data = await logsRes.json();
@@ -296,9 +296,11 @@ export default function AgentMind({ genesisState, selectedAgent }) {
             const newLogs = data.logs || [];
             if (newLogs.length === 0) return prev;
             // Merge — never delete, always additive
-            const existing = new Map(prev.map(l => [l.message_id, l]));
-            newLogs.forEach(l => existing.set(l.message_id, l));
-            const merged = Array.from(existing.values()).sort((a, b) => b.message_id - a.message_id);
+            const existing = new Map(prev.map(l => [l.timestamp + (l.turn || ''), l]));
+            newLogs.forEach(l => existing.set(l.timestamp + (l.turn || ''), l));
+            const merged = Array.from(existing.values()).sort((a, b) => 
+              new Date(b.timestamp) - new Date(a.timestamp)
+            );
             return merged;
           });
         }
@@ -308,8 +310,8 @@ export default function AgentMind({ genesisState, selectedAgent }) {
         }
       } catch { /* keep previous */ }
     };
-    fetchTelegramData();
-    const ti = setInterval(fetchTelegramData, 15000);
+    fetchProductionData();
+    const ti = setInterval(fetchProductionData, 10000);
     return () => clearInterval(ti);
   }, [selectedAgent]);
 
@@ -692,56 +694,50 @@ export default function AgentMind({ genesisState, selectedAgent }) {
               <div style={{ display: 'flex', gap: '12px', padding: '8px 14px', borderBottom: '1px solid #1a1a1e', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Radio className="w-3 h-3" style={{ color: '#e879f9' }} />
-                  <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Total Messages:</span>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#e879f9' }}>{telegramStats.total_messages?.toLocaleString()}</span>
+                  <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Total Logs:</span>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#e879f9' }}>{(telegramStats.total_logs || telegramStats.total_messages || 0).toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Brain className="w-3 h-3" style={{ color: '#9B6BFF' }} />
                   <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Turns:</span>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#9B6BFF' }}>{telegramStats.turns?.toLocaleString()}</span>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#9B6BFF' }}>{(telegramStats.turns || 0).toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <AlertTriangle className="w-3 h-3" style={{ color: '#f87171' }} />
                   <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Errors:</span>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#f87171' }}>{telegramStats.errors}</span>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#f87171' }}>{telegramStats.errors || 0}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <DollarSign className="w-3 h-3" style={{ color: '#FFB347' }} />
                   <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Cost:</span>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#FFB347' }}>${((telegramStats.total_cost_cents || 0) / 100).toFixed(2)}</span>
                 </div>
+                {telegramStats.latest_balance && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Wallet className="w-3 h-3" style={{ color: '#34D399' }} />
+                    <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Agent Balance:</span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: (telegramStats.latest_balance.balance_credits || 0) > 0.5 ? '#34D399' : '#f87171' }}>
+                      ${(telegramStats.latest_balance.balance_credits || 0).toFixed(2)} | {telegramStats.latest_balance.tier || '?'}
+                    </span>
+                  </div>
+                )}
                 {conwayBalance && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Wallet className="w-3 h-3" style={{ color: '#34D399' }} />
-                    <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Conway Credits:</span>
+                    <span style={{ fontSize: '9px', color: '#a1a1aa' }}>Conway API:</span>
                     <span style={{ fontSize: '10px', fontWeight: 800, color: conwayBalance.credits_usd > 0.5 ? '#34D399' : '#f87171' }}>${(conwayBalance.credits_usd || 0).toFixed(2)}</span>
                   </div>
                 )}
-                <button data-testid="backfill-btn"
-                  onClick={async () => {
-                    try {
-                      await fetch(`${API}/api/telegram-logs/ingest?batch_size=100`, { method: 'POST' });
-                    } catch {}
-                  }}
-                  style={{ fontSize: '9px', fontWeight: 700, padding: '2px 8px', borderRadius: '3px', border: '1px solid #27272a', cursor: 'pointer', background: '#18181b', color: '#71717a', marginLeft: 'auto' }}>
-                  SYNC
-                </button>
               </div>
             )}
 
             {telegramLogs.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center' }}>
                 <Radio className="w-8 h-8" style={{ color: '#27272a', margin: '0 auto 12px' }} />
-                <p style={{ fontSize: '12px', color: '#52525b' }}>No production logs yet. Syncing from Telegram...</p>
-                <button data-testid="manual-sync-btn"
-                  onClick={async () => {
-                    try {
-                      await fetch(`${API}/api/telegram-logs/backfill?batch_size=100`, { method: 'POST' });
-                    } catch {}
-                  }}
-                  style={{ marginTop: '8px', fontSize: '11px', color: '#e879f9', background: 'none', border: '1px solid #e879f930', borderRadius: '4px', padding: '6px 16px', cursor: 'pointer' }}>
-                  Backfill Now
-                </button>
+                <p style={{ fontSize: '12px', color: '#52525b' }}>No production logs received yet.</p>
+                <p style={{ fontSize: '10px', color: '#3f3f46', marginTop: '4px' }}>
+                  The agent sends logs directly to this dashboard via webhook. Create and start a new agent to see live production data.
+                </p>
               </div>
             ) : (
               telegramLogs.map((entry, i) => {
@@ -750,10 +746,10 @@ export default function AgentMind({ genesisState, selectedAgent }) {
                   sleep: '#a78bfa', finance: '#FFB347', state_change: '#818cf8', engine_start: '#34D399',
                   info: '#71717a', unknown: '#52525b',
                 };
-                const color = typeColors[entry.type] || '#71717a';
-                const isImportant = ['turn', 'error', 'state_change', 'engine_start', 'wake'].includes(entry.type);
+                const color = typeColors[entry.log_type] || '#71717a';
+                const isImportant = ['turn', 'error', 'state_change', 'engine_start', 'wake'].includes(entry.log_type);
                 return (
-                  <div key={entry.message_id} data-testid={`prod-log-${entry.message_id}`}
+                  <div key={entry.timestamp + (entry.turn || i)} data-testid={`prod-log-${i}`}
                     style={{
                       padding: isImportant ? '6px 14px' : '2px 14px',
                       background: isImportant ? '#18181b' : 'transparent',
@@ -761,11 +757,12 @@ export default function AgentMind({ genesisState, selectedAgent }) {
                       display: 'flex', gap: '8px', alignItems: 'flex-start',
                     }}>
                     <span style={{ color: '#3f3f46', minWidth: '55px', flexShrink: 0 }}>{formatTime(entry.timestamp)}</span>
-                    <span style={{ minWidth: '25px', flexShrink: 0, fontSize: '9px', fontWeight: 800, color, textAlign: 'right' }}>#{entry.message_id}</span>
-                    <span style={{ minWidth: '60px', flexShrink: 0, fontSize: '9px', fontWeight: 800, color, padding: '1px 0', textTransform: 'uppercase' }}>[{entry.type}]</span>
+                    {entry.turn != null && <span style={{ minWidth: '30px', flexShrink: 0, fontSize: '9px', fontWeight: 800, color: '#52525b', textAlign: 'right' }}>T{entry.turn}</span>}
+                    <span style={{ minWidth: '60px', flexShrink: 0, fontSize: '9px', fontWeight: 800, color, padding: '1px 0', textTransform: 'uppercase' }}>[{entry.log_type || entry.type}]</span>
+                    {entry.state && <span style={{ fontSize: '9px', color: '#818cf8', flexShrink: 0 }}>{entry.state}</span>}
                     {entry.cost_cents > 0 && <span style={{ fontSize: '9px', color: '#FFB347', flexShrink: 0 }}>{entry.cost_cents}c</span>}
                     <span style={{ wordBreak: 'break-word', color: isImportant ? '#d4d4d8' : '#71717a', whiteSpace: 'pre-wrap' }}>
-                      {(entry.raw_text || '').slice(0, 500)}
+                      {entry.message || (entry.raw_text || '').slice(0, 500)}
                     </span>
                   </div>
                 );
@@ -883,18 +880,18 @@ export default function AgentMind({ genesisState, selectedAgent }) {
           </div>
         </div>
 
-        {/* Production Stats from Telegram */}
-        {telegramStats && telegramStats.total_messages > 0 && (
+        {/* Production Stats from Agent Webhook */}
+        {telegramStats && (telegramStats.total_logs > 0 || telegramStats.total_messages > 0) && (
           <div style={{ background: '#09090b', borderRadius: '6px', padding: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
               <BarChart3 className="w-3.5 h-3.5" style={{ color: '#e879f9' }} />
               <span style={{ fontSize: '10px', fontWeight: 800, color: '#fff', letterSpacing: '1px' }}>PRODUCTION DATA</span>
-              <span style={{ fontSize: '8px', color: '#e879f9', fontWeight: 700 }}>TELEGRAM</span>
+              <span style={{ fontSize: '8px', color: '#e879f9', fontWeight: 700 }}>LIVE</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <MiniStat label="Messages" value={telegramStats.total_messages?.toLocaleString()} color="#e879f9" />
-              <MiniStat label="Turns" value={telegramStats.turns?.toLocaleString()} color="#9B6BFF" />
-              <MiniStat label="Errors" value={telegramStats.errors} color="#f87171" />
+              <MiniStat label="Total Logs" value={(telegramStats.total_logs || telegramStats.total_messages || 0).toLocaleString()} color="#e879f9" />
+              <MiniStat label="Turns" value={(telegramStats.turns || 0).toLocaleString()} color="#9B6BFF" />
+              <MiniStat label="Errors" value={telegramStats.errors || 0} color="#f87171" />
               <MiniStat label="Total Cost" value={`$${((telegramStats.total_cost_cents || 0) / 100).toFixed(2)}`} color="#FFB347" />
               {conwayBalance && (
                 <MiniStat label="Conway Credits" value={`$${(conwayBalance.credits_usd || 0).toFixed(2)}`} color={conwayBalance.credits_usd > 0.5 ? '#34D399' : '#f87171'} />

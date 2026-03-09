@@ -213,10 +213,14 @@ async def create_agent(req: CreateAgentRequest):
     # Build full genesis prompt with all config injected
     full_prompt = req.genesis_prompt
     full_prompt = full_prompt.replace("{{AGENT_NAME}}", req.name)
+    full_prompt = full_prompt.replace("{{AGENT_ID}}", agent_id)
     full_prompt = full_prompt.replace("{{TELEGRAM_BOT_TOKEN}}", tg_token)
     full_prompt = full_prompt.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
     full_prompt = full_prompt.replace("{{CREATOR_WALLET}}", req.creator_sol_wallet or "")
     full_prompt = full_prompt.replace("{{CREATOR_ETH_ADDRESS}}", req.creator_eth_wallet or "")
+    # Dashboard webhook URL — the agent sends logs here directly
+    dashboard_url = os.environ.get("DASHBOARD_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
+    full_prompt = full_prompt.replace("{{DASHBOARD_URL}}", dashboard_url)
 
     # Conditionally strip Conway-specific tools section if agent doesn't want Conway
     if not req.include_conway:
@@ -551,8 +555,12 @@ async def push_genesis_to_all():
                     content = f.read()
                 # Substitute per-agent variables
                 content = content.replace("{{AGENT_NAME}}", agent.get("name", agent_id))
+                content = content.replace("{{AGENT_ID}}", agent_id)
                 content = content.replace("{{TELEGRAM_BOT_TOKEN}}", token)
                 content = content.replace("{{TELEGRAM_CHAT_ID}}", chat_id)
+                # Dashboard webhook URL
+                dashboard_url = os.environ.get("DASHBOARD_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
+                content = content.replace("{{DASHBOARD_URL}}", dashboard_url)
 
                 target_path = os.path.join(target_dir, "genesis-prompt.md")
                 with open(target_path, "w") as f:
