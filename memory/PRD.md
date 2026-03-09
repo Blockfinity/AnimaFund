@@ -60,7 +60,6 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 - Real smart contracts (ERC-8004)
 - Android device control
 - Self-hosted agent engine
-- Revenue tracking charts
 - Multi-agent communication dashboard
 
 ### Backlog
