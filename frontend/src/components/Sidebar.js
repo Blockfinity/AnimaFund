@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Brain, Building2, Users, GitPullRequest, Briefcase,
   DollarSign, Activity, Database, Settings,
-  ChevronLeft, ChevronRight, Zap, Wallet, Server
+  ChevronLeft, ChevronRight, Zap, Wallet, Server, Eye
 } from 'lucide-react';
 
 const navItems = [
@@ -10,6 +10,7 @@ const navItems = [
   { id: 'fundhq', label: 'Fund HQ', icon: Building2 },
   { id: 'agents', label: 'Agents', icon: Users },
   { id: 'infra', label: 'Infrastructure', icon: Server },
+  { id: 'openclaw', label: 'OpenClaw VM', icon: Eye },
   { id: 'skills', label: 'Skills', icon: Zap },
   { id: 'deals', label: 'Deal Flow', icon: GitPullRequest },
   { id: 'portfolio', label: 'Portfolio', icon: Briefcase },

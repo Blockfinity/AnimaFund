@@ -15,6 +15,7 @@ import Memory from './pages/Memory';
 import Configuration from './pages/Configuration';
 import Skills from './pages/Skills';
 import Infrastructure from './pages/Infrastructure';
+import OpenClawViewer from './pages/OpenClawViewer';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -356,13 +357,14 @@ function App() {
     switch (currentPage) {
       case 'fundhq': return <FundHQ fundName={fundName} selectedAgent={selectedAgent} />;
       case 'mind': return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
-      case 'agents': return <Agents />;
+      case 'agents': return <Agents selectedAgent={selectedAgent} />;
       case 'infra': return <Infrastructure selectedAgent={selectedAgent} />;
       case 'skills': return <Skills selectedAgent={selectedAgent} />;
       case 'deals': return <DealFlow selectedAgent={selectedAgent} />;
       case 'portfolio': return <Portfolio selectedAgent={selectedAgent} />;
       case 'financials': return <Financials selectedAgent={selectedAgent} />;
       case 'activity': return <Activity selectedAgent={selectedAgent} />;
+      case 'openclaw': return <OpenClawViewer selectedAgent={selectedAgent} />;
       case 'memory': return <Memory selectedAgent={selectedAgent} />;
       case 'config': return <Configuration identity={identity} engineState={engineState} genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'wallet': return <AgentMind genesisState={genesisState} showWalletView={true} selectedAgent={selectedAgent} />;
