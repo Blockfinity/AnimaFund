@@ -5,6 +5,7 @@ import { useSSE } from '../hooks/useSSE';
 const API = process.env.REACT_APP_BACKEND_URL;
 
 const pageLabels = {
+  animavm: 'Anima VM',
   mind: 'Agent Mind',
   fundhq: 'Fund HQ',
   agents: 'Agents',

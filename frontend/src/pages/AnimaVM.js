@@ -78,6 +78,8 @@ export default function AnimaVM({ selectedAgent }) {
   const [ocStatus, setOcStatus] = useState(null);
   const [agentLogs, setAgentLogs] = useState(null);
   const [monitorTab, setMonitorTab] = useState('live');
+  const [terminalUrl, setTerminalUrl] = useState(null);
+  const [terminalLoading, setTerminalLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   /* ─── Data fetching ─────────────────────────────────────── */
@@ -178,6 +180,28 @@ export default function AnimaVM({ selectedAgent }) {
       const data = await res.json();
       if (data.success) setAgentLogs(data);
     } catch {}
+  };
+
+  // Pick up terminal URL from provision status if already created
+  useEffect(() => {
+    if (provStatus?.sandbox?.terminal_url && !terminalUrl) {
+      setTerminalUrl(provStatus.sandbox.terminal_url);
+    }
+  }, [provStatus, terminalUrl]);
+
+  const connectTerminal = async () => {
+    setTerminalLoading(true);
+    try {
+      const res = await fetch(`${API}/api/provision/web-terminal`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.terminal_url) {
+        setTerminalUrl(data.terminal_url);
+        toast.success('Terminal session created');
+      } else {
+        toast.error(data.error || 'Failed to create terminal');
+      }
+    } catch (e) { toast.error(e.message); }
+    setTerminalLoading(false);
   };
 
   if (loading) {
@@ -351,10 +375,11 @@ export default function AnimaVM({ selectedAgent }) {
       </div>
 
       {/* ═══════════ MONITOR TABS ═══════════ */}
-      <div className="flex items-center gap-1 bg-white border border-border rounded-sm p-1">
+      <div className="flex items-center gap-1 bg-white border border-border rounded-sm p-1 overflow-x-auto">
         {[
           { id: 'live', label: 'Live Feed', icon: Eye, count: actions.length },
-          { id: 'console', label: 'VM Console', icon: Terminal, count: execLog.length },
+          { id: 'terminal', label: 'Terminal', icon: Terminal, count: null },
+          { id: 'console', label: 'Exec Log', icon: ScrollText, count: execLog.length },
           { id: 'logs', label: 'Agent Logs', icon: ScrollText, count: null },
           { id: 'browsing', label: 'Browsing', icon: Globe, count: sessions.length },
           { id: 'sandboxes', label: 'VMs', icon: Server, count: (sandboxData?.total_live || 0) + (sandboxData?.total_created || 0) },
@@ -377,6 +402,7 @@ export default function AnimaVM({ selectedAgent }) {
 
       {/* ═══════════ TAB CONTENT ═══════════ */}
       {monitorTab === 'live' && <LiveFeed actions={actions} categories={categories} sandboxData={sandboxData} sessions={sessions} oc={oc} />}
+      {monitorTab === 'terminal' && <LiveTerminal terminalUrl={terminalUrl} onConnect={connectTerminal} loading={terminalLoading} hasSandbox={hasSandbox} />}
       {monitorTab === 'console' && <ConsoleView execLog={execLog} />}
       {monitorTab === 'logs' && <AgentLogsView agentLogs={agentLogs} onRefresh={fetchAgentLogs} deployed={tools['engine']?.deployed} />}
       {monitorTab === 'browsing' && <BrowsingView sessions={sessions} />}
@@ -398,6 +424,71 @@ function StatusPill({ label, ok }) {
         ? <CheckCircle2 className="w-3 h-3 text-emerald-600" />
         : <div className="w-3 h-3 rounded-full border border-zinc-300 bg-zinc-100" />}
       <span className={ok ? 'text-foreground font-medium' : 'text-muted-foreground'}>{label}</span>
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   LIVE TERMINAL TAB
+   ═══════════════════════════════════════════════════════════ */
+
+function LiveTerminal({ terminalUrl, onConnect, loading, hasSandbox }) {
+  if (!hasSandbox) {
+    return (
+      <div data-testid="terminal-no-sandbox" className="flex flex-col items-center justify-center h-64 text-center bg-white border border-border rounded-sm">
+        <Terminal className="w-8 h-8 text-zinc-200 mb-2" />
+        <p className="text-sm font-medium text-foreground mb-1">No sandbox provisioned</p>
+        <p className="text-[10px] text-muted-foreground">Create a sandbox first to access the live terminal.</p>
+      </div>
+    );
+  }
+
+  if (!terminalUrl) {
+    return (
+      <div data-testid="terminal-connect" className="flex flex-col items-center justify-center h-64 text-center bg-white border border-border rounded-sm">
+        <Terminal className="w-8 h-8 text-zinc-200 mb-3" />
+        <p className="text-sm font-medium text-foreground mb-1">Live Terminal</p>
+        <p className="text-[10px] text-muted-foreground mb-4">Open an interactive shell session into the agent's sandbox VM.</p>
+        <button
+          data-testid="connect-terminal-btn"
+          onClick={onConnect}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-foreground text-white rounded hover:bg-foreground/90 disabled:opacity-50 transition-colors"
+        >
+          {loading ? <><Loader2 className="w-3 h-3 animate-spin" /> Connecting...</> : <><Terminal className="w-3 h-3" /> Connect</>}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="terminal-view" className="bg-white border border-border rounded-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-zinc-950">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[10px] font-mono text-zinc-300">sandbox shell</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <a href={terminalUrl} target="_blank" rel="noopener noreferrer"
+            data-testid="terminal-external-link"
+            className="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors">
+            <ExternalLink className="w-3 h-3" /> Open in new tab
+          </a>
+          <button data-testid="reconnect-terminal-btn" onClick={onConnect} disabled={loading}
+            className="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors">
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Reconnect
+          </button>
+        </div>
+      </div>
+      <iframe
+        data-testid="terminal-iframe"
+        src={terminalUrl}
+        title="Sandbox Terminal"
+        className="w-full bg-zinc-950 border-0"
+        style={{ height: '520px' }}
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      />
     </div>
   );
 }

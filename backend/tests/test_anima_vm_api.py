@@ -1,10 +1,11 @@
 """
-Test AnimaVM Backend APIs - Iteration 6
+Test AnimaVM Backend APIs - Iteration 7
 
-Tests for the new unified AnimaVM page:
-- /api/provision/status - Returns provisioning status
+Tests for the AnimaVM page features:
+- /api/provision/status - Returns provisioning status (now includes terminal_url in sandbox)
 - /api/provision/phase-state - Returns phase state
 - /api/openclaw/status - Returns OpenClaw monitoring status
+- /api/provision/web-terminal - NEW: Creates web terminal session for sandbox
 """
 import pytest
 import requests
@@ -231,6 +232,44 @@ class TestOpenClawExecLog:
         assert isinstance(data["log"], list), "log should be a list"
         
         print(f"SUCCESS: exec-log has {len(data['log'])} entries")
+
+
+class TestWebTerminal:
+    """Tests for POST /api/provision/web-terminal endpoint (NEW in iteration 7)"""
+    
+    def test_web_terminal_returns_200_or_error(self):
+        """POST /api/provision/web-terminal returns 200 with success or error"""
+        response = requests.post(f"{BASE_URL}/api/provision/web-terminal")
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        
+        data = response.json()
+        # Either success=true with terminal_url or success=false with error (no sandbox)
+        if data.get("success"):
+            assert "terminal_url" in data, "success=true but missing terminal_url"
+            print(f"SUCCESS: web-terminal returns terminal_url={data.get('terminal_url')[:50]}...")
+        else:
+            assert "error" in data, "success=false but missing error"
+            print(f"OK: No terminal (expected - no sandbox): {data.get('error')}")
+    
+    def test_web_terminal_error_without_sandbox(self):
+        """POST /api/provision/web-terminal returns error when no sandbox exists"""
+        # First check if sandbox exists
+        status_res = requests.get(f"{BASE_URL}/api/provision/status")
+        status_data = status_res.json()
+        
+        has_sandbox = status_data.get("sandbox", {}).get("status") == "active"
+        
+        response = requests.post(f"{BASE_URL}/api/provision/web-terminal")
+        data = response.json()
+        
+        if not has_sandbox:
+            # Should return error because no sandbox
+            assert data.get("success") == False, "Should return success=false without sandbox"
+            assert "error" in data, "Should have error message"
+            print(f"SUCCESS: web-terminal correctly returns error without sandbox")
+        else:
+            # Has sandbox - should try to create terminal
+            print(f"SKIP: Sandbox exists, terminal creation attempted")
 
 
 class TestNudgeEndpoints:
