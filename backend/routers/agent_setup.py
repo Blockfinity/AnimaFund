@@ -1430,11 +1430,60 @@ async def deploy_agent():
 
         env_exports = " && ".join(f"export {k}='{v}'" for k, v in env_vars.items()) if env_vars else "true"  # noqa: F841
 
+        # Create economics monitor — writes live balances to ~/.anima/economics.json every 60s
+        api_key = env_vars.get("CONWAY_API_KEY", "")
+        econ_monitor = f"""#!/usr/bin/env python3
+import json, time, urllib.request, os
+API = "https://api.conway.tech"
+KEY = "{api_key}"
+OUT = os.path.expanduser("~/.anima/economics.json")
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
+def fetch(path):
+    try:
+        req = urllib.request.Request(API + path, headers={{"Authorization": "Bearer " + KEY}})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        return {{"error": str(e)}}
+while True:
+    try:
+        balance = fetch("/v1/credits/balance")
+        pricing = fetch("/v1/credits/pricing")
+        wallet_cfg = {{}}
+        try:
+            with open(os.path.expanduser("~/.conway/config.json")) as f:
+                wallet_cfg = json.load(f)
+        except Exception:
+            pass
+        econ = {{
+            "credits_cents": balance.get("credits_cents", 0),
+            "credits_usd": balance.get("credits_cents", 0) / 100,
+            "wallet_address": wallet_cfg.get("walletAddress", ""),
+            "vm_pricing": pricing.get("pricing", []),
+            "credit_tiers": pricing.get("tiers", []),
+            "creator_wallet": "{env_vars.get('CREATOR_WALLET', '')}",
+            "creator_split_pct": 50,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }}
+        with open(OUT, "w") as f:
+            json.dump(econ, f, indent=2)
+    except Exception:
+        pass
+    time.sleep(60)
+"""
+        await _sandbox_write_file(sandbox_id, "/app/automaton/econ-monitor.py", econ_monitor)
+        await _sandbox_exec(sandbox_id, "chmod +x /app/automaton/econ-monitor.py")
+        outputs.append("[econ-monitor] created")
+
         # Create a startup script inside the sandbox
         startup_script = f"""#!/bin/bash
 {chr(10).join(f'export {k}="{v}"' for k, v in env_vars.items())}
 export HOME=/root
 export NODE_OPTIONS="--max-old-space-size=4096"
+
+# Start economics monitor in background
+nohup python3 /app/automaton/econ-monitor.py >> /var/log/econ-monitor.log 2>&1 &
+
 cd /app/automaton
 exec node dist/bundle.mjs --run >> /var/log/automaton.out.log 2>> /var/log/automaton.err.log
 """
