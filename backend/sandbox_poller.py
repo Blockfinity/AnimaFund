@@ -22,10 +22,10 @@ import aiohttp
 
 logger = logging.getLogger("sandbox_poller")
 
-CONWAY_API = "https://api.conway.tech"
+CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
 CONWAY_API_KEY = os.environ.get("CONWAY_API_KEY", "")
-USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-BASE_RPC = "https://mainnet.base.org"
+USDC_CONTRACT = os.environ.get("USDC_CONTRACT", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
+BASE_RPC = os.environ.get("BASE_RPC", "https://mainnet.base.org")
 
 _cache = {
     # ── On-chain wallet (source: Base RPC) ──

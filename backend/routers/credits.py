@@ -15,9 +15,9 @@ from typing import Optional
 
 from database import get_db
 
-router = APIRouter(prefix="/api/credits", tags=["credits"])
+from config import CONWAY_API
 
-CONWAY_API = "https://api.conway.tech"
+router = APIRouter(prefix="/api/credits", tags=["credits"])
 
 
 def _get_conway_api_key() -> str:

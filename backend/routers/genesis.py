@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api", tags=["genesis"])
 
 # ─── Helpers ────────────────────────────────────────────
 
-CONWAY_API = "https://api.conway.tech"
+CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
 CONWAY_API_KEY = os.environ.get("CONWAY_API_KEY", "")
 
 def _get_active_agent_id() -> str:

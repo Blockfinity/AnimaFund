@@ -17,8 +17,8 @@ from config import AUTOMATON_DIR, ANIMA_DIR
 
 router = APIRouter(prefix="/api/provision", tags=["provision"])
 
-CONWAY_API = "https://api.conway.tech"
-CONWAY_INFERENCE = "https://inference.conway.tech"
+CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
+CONWAY_INFERENCE = os.environ.get("CONWAY_INFERENCE", "https://inference.conway.tech")
 
 
 def _get_active_agent_id() -> str:

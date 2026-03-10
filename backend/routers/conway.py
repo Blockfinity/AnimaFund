@@ -8,6 +8,10 @@ from fastapi import APIRouter
 
 router = APIRouter(prefix="/api", tags=["conway"])
 
+CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
+CONWAY_DOMAINS_API = os.environ.get("CONWAY_DOMAINS_API", "https://api.conway.domains")
+CONWAY_INFERENCE_API = os.environ.get("CONWAY_INFERENCE", "https://inference.conway.tech")
+
 
 def _get_conway_api_key() -> str:
     """Conway API key — only from environment, never from host filesystem."""
@@ -25,7 +29,7 @@ async def get_conway_balance():
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(
-                "https://api.conway.tech/v1/credits/balance",
+                f"{CONWAY_API}/v1/credits/balance",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
@@ -38,7 +42,7 @@ async def get_conway_balance():
 
         try:
             async with session.get(
-                "https://api.conway.tech/v1/sandboxes",
+                f"{CONWAY_API}/v1/sandboxes",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
@@ -62,7 +66,7 @@ async def get_conway_sandboxes():
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(
-                "https://api.conway.tech/v1/sandboxes",
+                f"{CONWAY_API}/v1/sandboxes",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
@@ -83,7 +87,7 @@ async def get_conway_pricing():
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(
-                "https://api.conway.tech/v1/credits/pricing",
+                f"{CONWAY_API}/v1/credits/pricing",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
@@ -104,7 +108,7 @@ async def get_conway_credits_history():
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(
-                "https://api.conway.tech/v1/credits/history",
+                f"{CONWAY_API}/v1/credits/history",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
@@ -121,7 +125,7 @@ async def search_conway_domains(q: str = "animafund", tlds: str = "ai,com,io,xyz
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(
-                f"https://api.conway.domains/domains/search?q={q}&tlds={tlds}",
+                f"{CONWAY_DOMAINS_API}/domains/search?q={q}&tlds={tlds}",
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 if resp.status == 200:
@@ -137,7 +141,7 @@ async def check_conway_inference():
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(
-                "https://inference.conway.tech/health",
+                f"{CONWAY_INFERENCE_API}/health",
                 timeout=aiohttp.ClientTimeout(total=5),
             ) as resp:
                 if resp.status == 200:
@@ -153,9 +157,9 @@ async def check_conway_apis():
     results = {}
     async with aiohttp.ClientSession() as session:
         for name, url in [
-            ("cloud", "https://api.conway.tech/health"),
-            ("domains", "https://api.conway.domains/health"),
-            ("inference", "https://inference.conway.tech/health"),
+            ("cloud", f"{CONWAY_API}/health"),
+            ("domains", f"{CONWAY_DOMAINS_API}/health"),
+            ("inference", f"{CONWAY_INFERENCE_API}/health"),
         ]:
             try:
                 async with session.get(
