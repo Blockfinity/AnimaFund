@@ -18,7 +18,7 @@ import time
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 if not BASE_URL:
-    BASE_URL = 'https://anima-vm-dashboard.preview.emergentagent.com'
+    BASE_URL = 'https://ai-agent-platform-18.preview.emergentagent.com'
 
 # Test agent data
 TEST_AGENT_SUFFIX = f"_{int(time.time())}"
