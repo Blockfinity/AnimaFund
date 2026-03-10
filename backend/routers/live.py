@@ -247,15 +247,15 @@ async def live_heartbeat_schedule():
 async def live_stream():
     """SSE endpoint — streams real agent data from sandbox poller cache."""
     async def event_generator():
-        prev_hash = ""
         while True:
             try:
                 cache = get_cache()
                 econ = cache.get("economics", {})
                 phase = cache.get("phase_state", {})
                 revenue = cache.get("revenue_log", [])
+                decisions = cache.get("decisions_log", [])
 
-                # Conway credits from cache or direct API
+                # Conway credits — from cache or direct API fallback
                 credits_cents = econ.get("credits_cents", 0)
                 if not credits_cents and CONWAY_API_KEY:
                     try:
@@ -269,37 +269,41 @@ async def live_stream():
                         pass
 
                 total_earned = sum(r.get("gross_revenue", r.get("net", 0)) for r in revenue if isinstance(r, dict))
+                total_spent = sum(r.get("cost", 0) for r in revenue if isinstance(r, dict))
                 revenue_count = len(revenue) if isinstance(revenue, list) else 0
+                decision_count = len(decisions) if isinstance(decisions, list) else 0
 
                 payload = {
                     "engine": {
                         "live": cache["engine_running"],
                         "db_exists": cache["sandbox_id"] is not None,
                         "agent_state": "running" if cache["engine_running"] else ("sandbox" if cache["sandbox_id"] else ""),
-                        "turn_count": len(cache.get("decisions_log", [])) if isinstance(cache.get("decisions_log"), list) else 0,
+                        "turn_count": decision_count,
                         "agent_id": "anima-fund",
                     },
                     "conway_credits_cents": credits_cents,
+                    "economics": econ,
                     "phase": phase.get("current_phase", 0) if isinstance(phase, dict) else 0,
+                    "phase_state": phase,
                     "total_earned_usd": total_earned,
+                    "total_spent_usd": total_spent,
                     "revenue_actions": revenue_count,
+                    "decision_count": decision_count,
                     "wallet_address": econ.get("wallet_address", ""),
                     "sandbox_id": cache["sandbox_id"],
                     "poller_status": "ok" if not cache["poll_error"] else cache["poll_error"],
                     "last_poll": cache["last_poll"],
+                    "recent_revenue": (revenue[:5] if isinstance(revenue, list) else []),
+                    "recent_decisions": (decisions[:5] if isinstance(decisions, list) else []),
+                    "agent_stdout_tail": cache.get("agent_stdout", "")[-500:],
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
-                cur_hash = f"{cache['engine_running']}:{credits_cents}:{revenue_count}:{cache.get('last_poll')}"
-                if cur_hash != prev_hash:
-                    yield f"data: {_json.dumps(payload)}\n\n"
-                    prev_hash = cur_hash
-                else:
-                    yield ": heartbeat\n\n"
+                yield f"data: {_json.dumps(payload)}\n\n"
             except Exception as e:
                 yield f"data: {_json.dumps({'error': str(e)})}\n\n"
 
-            await asyncio.sleep(8)
+            await asyncio.sleep(4)
 
     return StreamingResponse(
         event_generator(),

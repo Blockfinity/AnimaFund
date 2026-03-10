@@ -7,7 +7,6 @@ import {
   Wifi, Users, CreditCard, Wrench, Shield, ScrollText,
   Radio, HardDrive
 } from 'lucide-react';
-import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -99,7 +98,44 @@ export default function AnimaVM({ selectedAgent }) {
     finally { setLoading(false); }
   }, []);
 
-  useSSETrigger(fetchAll, { fallbackMs: 6000, deps: [selectedAgent] });
+  // SSE: direct real-time updates from stream data
+  const [sseData, setSseData] = useState(null);
+  useEffect(() => {
+    fetchAll();
+    let es;
+    const connect = () => {
+      es = new EventSource(`${API}/api/live/stream`);
+      es.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (!d.error) {
+            setSseData(d);
+            if (d.conway_credits_cents !== undefined && provStatus) {
+              setProvStatus(prev => prev ? { ...prev, credits_cents: d.conway_credits_cents } : prev);
+            }
+            if (d.economics && Object.keys(d.economics).length > 0) {
+              setFinancials(prev => ({
+                ...prev,
+                credits_usd: d.economics.credits_usd || 0,
+                credits_cents: d.economics.credits_cents || 0,
+                wallet_address: d.economics.wallet_address || '',
+                total_earned_usd: d.total_earned_usd || 0,
+                total_spent_usd: d.total_spent_usd || 0,
+              }));
+            }
+            if (d.phase_state && Object.keys(d.phase_state).length > 0) {
+              setPhaseState(d.phase_state);
+            }
+          }
+        } catch {}
+      };
+      es.onerror = () => { es.close(); setTimeout(connect, 3000); };
+    };
+    connect();
+    // Full refresh every 15s as backup
+    const interval = setInterval(fetchAll, 15000);
+    return () => { es?.close(); clearInterval(interval); };
+  }, [fetchAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasSandbox = provStatus?.sandbox?.status === 'active';
   const tools = provStatus?.tools || {};
@@ -181,10 +217,13 @@ export default function AnimaVM({ selectedAgent }) {
             <StatusPill label="Engine" ok={tools['engine']?.deployed} />
           </div>
           <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-            {provStatus?.credits_cents > 0 && <span>Credits: <b className="text-foreground">${(provStatus.credits_cents / 100).toFixed(2)}</b></span>}
+            <span>Credits: <b className={(sseData?.conway_credits_cents || provStatus?.credits_cents) > 0 ? "text-foreground" : "text-red-500"}>${((sseData?.conway_credits_cents || provStatus?.credits_cents || 0) / 100).toFixed(2)}</b></span>
+            <span>Phase: <b className="text-foreground">{sseData?.phase ?? phaseState?.current_phase ?? 0}</b></span>
+            <span>Earned: <b className="text-emerald-600">${(sseData?.total_earned_usd || financials?.total_earned_usd || 0).toFixed(2)}</b></span>
+            <span>Turns: <b className="text-foreground">{sseData?.decision_count || sseData?.engine?.turn_count || 0}</b></span>
             <span>VMs: <b className="text-foreground">{sb.live_sandboxes || 0}</b></span>
-            <span>Ops: <b className="text-foreground">{sb.total_operations || 0}</b></span>
-            <span>Earned: <b className="text-emerald-600">${financials?.total_earned_usd?.toFixed(2) || '0.00'}</b></span>
+            {sseData?.last_poll && <span className="text-emerald-500">LIVE</span>}
+            {!sseData?.last_poll && sseData?.sandbox_id && <span className="text-amber-500">Connecting...</span>}
             <button data-testid="refresh-all-btn" onClick={fetchAll} className="p-1 rounded border border-border hover:bg-secondary transition-colors">
               <RefreshCw className="w-3 h-3 text-muted-foreground" />
             </button>

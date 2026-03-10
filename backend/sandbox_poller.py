@@ -171,7 +171,7 @@ async def _poll_loop():
             await _poll_once()
         except Exception as e:
             logger.error(f"Sandbox poller error: {e}")
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
 
 
 def start_poller():

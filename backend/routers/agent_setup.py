@@ -1553,7 +1553,7 @@ while True:
             json.dump(econ, f, indent=2)
     except Exception:
         pass
-    time.sleep(60)
+    time.sleep(10)
 """
         await _sandbox_write_file(sandbox_id, "/app/automaton/econ-monitor.py", econ_monitor)
         await _sandbox_exec(sandbox_id, "chmod +x /app/automaton/econ-monitor.py")
