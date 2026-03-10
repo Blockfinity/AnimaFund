@@ -27,11 +27,12 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - **No chicken-and-egg**: API key pays for VM creation, wallet comes later
 
 ## Onboarding Flow
-1. Open app → Genesis screen with 6-step provisioning stepper
-2. Create Sandbox → Install Terminal (wallet created here) → Install OpenClaw → Claude Code → Load Skills → Create Anima
-3. After wallet created → QR code displayed for funding
-4. After Create Anima → "Open Dashboard" button
-5. Dashboard → AnimaVM monitoring page (status bar + 7 tabs)
+1. Open app → Genesis screen with credits funding panel + 6-step provisioning stepper
+2. **Step 0: Fund Conway Credits** — Select tier ($5-$2500), get QR code for USDC on Base payment
+3. Create Sandbox (requires $25+ credits) → Install Terminal (wallet created here) → Install OpenClaw → Claude Code → Load Skills → Create Anima
+4. After wallet created → QR code displayed for agent wallet funding
+5. After Create Anima → "Open Dashboard" button
+6. Dashboard → AnimaVM monitoring page (status bar + 7 tabs)
 
 ## Disabled Endpoints (security: nothing on host)
 - `POST /api/genesis/create` → returns error "Use provisioning stepper"
@@ -44,13 +45,25 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - `GET /api/wallet/balance` → on-chain RPC check for sandbox wallet
 - `GET /api/engine/live` → sandbox exec to check if engine process running
 - `GET /api/engine/logs` → sandbox exec to read log files
+- `GET /api/credits/balance` → Conway credit balance for API key
+- `GET /api/credits/pricing` → VM pricing tiers and credit purchase tiers
+- `POST /api/credits/purchase` → x402 payment details (QR code, USDC address, amount)
 - All provision/* endpoints → Conway Cloud API
 - All domain/* endpoints → api.conway.domains (public) or sandbox exec (authenticated)
 
-## Testing: 14 iterations, all 100% pass rate
+## Testing: 15 iterations, all 100% pass rate
 - Iteration 14: Major refactor — all host operations removed — 17/17 backend, 100% frontend
+- Iteration 15: Conway Credits funding mechanism — 15/15 backend, 100% frontend
+
+## Completed (Mar 10 2026)
+### Conway Credits Funding Mechanism (P0)
+- Created `/app/backend/routers/credits.py` with 3 endpoints (balance, pricing, purchase)
+- Frontend: Credits panel on genesis screen with tier selector, QR code, payment instructions
+- x402 protocol integration: Conway returns USDC payment address on Base network
+- Auto-balance polling (5s) when payment panel is shown
+- Create Sandbox disabled until balance >= $25 (2500 cents)
 
 ## Backlog
-### P0: Fund Conway credits → full end-to-end provisioning test with real sandbox
+### P1: Update genesis-prompt.md — instruct agent to monitor/top-up Conway credits with x402 wallet
 ### P1: Live dashboard data from sandbox (replace empty defaults with real sandbox queries)
 ### P2: Smart contracts, Android device control, self-hosted engine
