@@ -73,12 +73,14 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - Telegram alerts to creator when credits drop below $2
 
 ### Cost-Aware Survival Overhaul (P1)
-- Added COST TABLE to genesis-prompt.md: every tool has a price (VM $0.007/hr, inference $0.0001-$0.05/call, browsing FREE, self-mod FREE)
-- Rewrote Phase 1 as "EARN $5,000 — OR DIE TRYING" with mandatory risk/reward calculation framework
-- Risk/reward template: cost, expected revenue, probability, expected value, time-to-revenue, runway remaining
-- Agent instructed to install ClawHub skills for new revenue capabilities
-- Self-modification and internet exploration emphasized as survival mechanisms
-- Changed default VM from X-Large ($25/mo) to Small ($5/mo) — matching $5+$5 seed funding
+- Replaced rigid cost tables with live query instructions (credits_balance, credits_pricing, x402_check)
+- Agent checks costs in real-time from Conway API, not hardcoded values
+- Resources scale with earnings — start small VM, upgrade as revenue grows
+- 50% creator split enforced with tracking in creator-split-log.json
+- Decision framework: fast, not fearful — take calculated risks, don't overthink pennies
+- Survival section trimmed: top up credits from wallet, alert creator if both are empty, never stop
+- Phase 1 rewritten as aggressive revenue-focused with scaling mindset
+- Changed default VM from X-Large ($25/mo) to Small ($5/mo) — matching seed funding
 - Updated frontend: $5 minimum threshold, $5 default tier, survival messaging
 
 ## Backlog
