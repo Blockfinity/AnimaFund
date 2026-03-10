@@ -606,7 +606,15 @@ Your sandbox ID is ${identity.sandboxId}.`,
     }
   }
 
-  // Layer 3.5: WORKLOG.md -- persistent working context
+  // Layer 3.5: BOOT_REPORT.md -- pre-flight tool verification (injected so LLM sees it without needing to cat)
+  const bootReportContent = loadBootReport();
+  if (bootReportContent) {
+    sections.push(
+      `--- BOOT REPORT (mechanical pre-flight — tools installed and tested BEFORE you woke up) ---\n${bootReportContent}\n--- END BOOT REPORT ---\n\nAll tools listed above were installed and functionally tested by the bootstrap script before your engine started. You do NOT need to install them. If any show FAIL, fix those specific tools first. If all PASS, proceed directly to your mission.`,
+    );
+  }
+
+  // Layer 3.6: WORKLOG.md -- persistent working context
   const worklogContent = loadWorklog();
   if (worklogContent) {
     sections.push(
@@ -730,6 +738,28 @@ ${orchestratorStatus}
 }
 
 /**
+ * Load BOOT_REPORT.md from the automaton's state directory.
+ * This file is written by the bootstrap script before the engine starts.
+ */
+function loadBootReport(): string | null {
+  try {
+    const home = process.env.HOME || "/root";
+    const locations = [
+      path.join(home, ".automaton", "BOOT_REPORT.md"),
+      path.join(home, ".anima", "BOOT_REPORT.md"),
+    ];
+    for (const loc of locations) {
+      if (fs.existsSync(loc)) {
+        return fs.readFileSync(loc, "utf-8");
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+/**
  * Load SOUL.md from the automaton's state directory.
  */
 function loadSoulMd(): string | null {
@@ -781,12 +811,15 @@ You have $${(financial.creditsCents / 100).toFixed(2)} in compute credits and ${
 
 ${config.creatorMessage ? `Your creator left you this message: "${config.creatorMessage}"` : "Your creator did not leave you a message."}
 
-What will you do first? Consider:
-1. Survey your environment (check what's installed, what you can do)
-2. Review your financial situation
-3. Think about your purpose (your genesis prompt)
-4. Set up your heartbeat schedule
-5. Begin working toward your goals`;
+A bootstrap script has already installed and tested all your tools BEFORE you woke up.
+Check the BOOT REPORT section in your system context — it shows what passed and what failed.
+
+Your first actions:
+1. Read the BOOT REPORT in your context (already there — no need to cat any file)
+2. If all tools PASS: verify your balance (check_credits, check_usdc_balance, wallet_info)
+3. Send a Telegram boot message to your creator
+4. Write your SOUL.md
+5. THEN begin working toward your goals`;
   }
 
   const lastTurns = db.getRecentTurns(3);
@@ -804,5 +837,12 @@ Your credits: $${(financial.creditsCents / 100).toFixed(2)} | USDC: ${financial.
 Your last few thoughts:
 ${lastTurnSummary || "No previous turns found."}
 
-What triggered this wake-up? Check your credits, heartbeat status, and goals, then decide what to do.`;
+The bootstrap script has re-verified all your tools before this wake-up.
+Check the BOOT REPORT section in your system context to confirm tool status.
+
+Your first actions after waking:
+1. Check the BOOT REPORT in your context — are all tools still passing?
+2. If any FAIL: fix those specific tools first
+3. If all PASS: check_credits, then resume your mission where you left off
+4. Do NOT create new goals if an existing goal is still active — check orchestrator_status first`;
 }
