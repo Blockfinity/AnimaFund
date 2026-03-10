@@ -20,7 +20,7 @@ import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
 import {
   Server, Terminal, Eye, Cpu, FileText, Rocket,
   CheckCircle2, Loader2, ChevronDown, Play, RotateCcw, Shield, Zap,
-  Wallet, RefreshCw, ExternalLink, KeyRound
+  Wallet, ExternalLink, KeyRound
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -57,6 +57,7 @@ function AppInner() {
   const [agentList, setAgentList] = useState([]);
   const [selectedAgent, setSelectedAgent] = useState('anima-fund');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [pendingAgentConfig, setPendingAgentConfig] = useState(null); // Config from Create Agent modal, used by step 6
 
   // Provisioning stepper state (for genesis screen)
   const [provStatus, setProvStatus] = useState(null);
@@ -146,19 +147,9 @@ function AppInner() {
     } catch { /* ignore */ }
   }, []);
 
-  // Fetch pricing tiers on mount + initial balance
+  // Fetch credit balance on mount
   useEffect(() => {
     fetchCreditBalance();
-    (async () => {
-      try {
-        const res = await fetch(`${API}/api/credits/pricing`);
-        if (res.ok) {
-          const data = await res.json();
-          setCreditTiers(data.tiers || []);
-          setVmPricing(data.pricing || []);
-        }
-      } catch { /* ignore */ }
-    })();
   }, [fetchCreditBalance]);
 
   // SSE drives credit balance updates — no separate polling loop needed
@@ -185,19 +176,22 @@ function AppInner() {
         setIdentity(null);
         setEngineState(null);
         setEngineStarted(false);
-        setProvStatus(null);
-        setStepOutputs({});
-        setView('loading');
+        // Re-fetch provisioning status for the new agent (don't wipe — let the fetch populate)
+        fetchProvStatus();
+        checkKeyStatus();
         toast.success(`Switched to ${data.active_agent || agentId}`);
       }
     } catch (e) { toast.error(e.message); }
   };
 
-  const handleAgentCreated = async (agent) => {
+  const handleAgentCreated = async (agentConfig) => {
+    // Agent created in DB — now go to genesis to provision its VM
+    setPendingAgentConfig(agentConfig);
     await fetchAgents();
     setShowCreateModal(false);
-    toast.success(`Agent "${agent.name}" created — provision it now`);
-    await handleSelectAgent(agent.agent_id);
+    await handleSelectAgent(agentConfig.agent_id);
+    setView('genesis');
+    toast.success(`Agent "${agentConfig.name}" created — now provision its VM`);
   };
 
   // Use a ref for view to avoid re-creating checkStatus when view changes
@@ -367,6 +361,16 @@ function AppInner() {
     return (
       <div style={{ minHeight: '100vh', background: '#09090b', fontFamily: 'Manrope, sans-serif' }}>
         <Toaster position="top-right" richColors />
+
+        {/* Top bar: Go to Dashboard */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 20px 0' }}>
+          <button data-testid="genesis-to-dashboard-btn"
+            onClick={() => { setView('dashboard'); setCurrentPage('mind'); }}
+            style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+              background: 'transparent', color: '#a1a1aa', border: '1px solid #27272a' }}>
+            Go to Dashboard
+          </button>
+        </div>
 
         {/* Agent switcher bar */}
         {agentList.length > 1 && (
@@ -659,7 +663,7 @@ function AppInner() {
           )}
 
           {/* Open Dashboard button */}
-          <button data-testid="go-to-dashboard-btn" onClick={() => { setCurrentPage('animavm'); setView('dashboard'); }}
+          <button data-testid="go-to-dashboard-btn" onClick={() => { setCurrentPage('mind'); setView('dashboard'); }}
             style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer', marginBottom: '8px' }}>
             Open Dashboard
           </button>
