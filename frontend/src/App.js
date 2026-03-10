@@ -25,9 +25,18 @@ import {
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
+/* ─── Conway VM Tiers ─── */
+const VM_TIERS = [
+  { id: 'small',    label: 'Small',    vcpu: 1, memory_mb: 512,  disk_gb: 5,  price: 5   },
+  { id: 'medium',   label: 'Medium',   vcpu: 1, memory_mb: 1024, disk_gb: 10, price: 8   },
+  { id: 'large',    label: 'Large',    vcpu: 2, memory_mb: 2048, disk_gb: 20, price: 15  },
+  { id: 'xlarge',   label: 'X-Large',  vcpu: 2, memory_mb: 4096, disk_gb: 40, price: 25  },
+  { id: '2xlarge',  label: '2X-Large', vcpu: 4, memory_mb: 8192, disk_gb: 80, price: 45  },
+];
+
 /* ─── Provisioning Steps (used on genesis screen) ─── */
 const PROVISION_STEPS = [
-  { id: 'sandbox', label: 'Create Sandbox', desc: 'Conway Cloud VM (1 vCPU, 512MB, 5GB) — $5/mo', action: '/api/provision/create-sandbox', icon: Server },
+  { id: 'sandbox', label: 'Create Sandbox', desc: null, action: '/api/provision/create-sandbox', icon: Server },
   { id: 'terminal', label: 'Install Terminal', desc: 'Conway Terminal + wallet + API key + all MCPs', action: '/api/provision/install-terminal', icon: Terminal },
   { id: 'openclaw', label: 'Install OpenClaw', desc: 'Autonomous browser + MCP bridge', action: '/api/provision/install-openclaw', icon: Eye },
   { id: 'claudecode', label: 'Install Claude Code', desc: 'Self-modification via MCP', action: '/api/provision/install-claude-code', icon: Cpu },
@@ -57,6 +66,9 @@ function AppInner() {
 
   // Credits state (kept for SSE updates)
   const [creditBalance, setCreditBalance] = useState(null);
+
+  // VM tier selection
+  const [selectedTier, setSelectedTier] = useState('small');
 
   // Fetch agent list
   const fetchAgents = useCallback(async () => {
@@ -291,7 +303,13 @@ function AppInner() {
   const runStep = async (step) => {
     setRunningStep(step.id);
     try {
-      const res = await fetch(`${API}${step.action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+      // Pass VM tier specs when creating sandbox
+      if (step.id === 'sandbox') {
+        const tier = VM_TIERS.find(t => t.id === selectedTier) || VM_TIERS[0];
+        opts.body = JSON.stringify({ vcpu: tier.vcpu, memory_mb: tier.memory_mb, disk_gb: tier.disk_gb });
+      }
+      const res = await fetch(`${API}${step.action}`, opts);
       const data = await res.json();
       if (data.output) {
         setStepOutputs(prev => ({ ...prev, [step.id]: data.output }));
@@ -390,25 +408,28 @@ function AppInner() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <KeyRound style={{ width: '14px', height: '14px', color: keyStatus?.configured && keyStatus?.valid ? '#34D399' : '#a1a1aa' }} />
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Connect Your VM</span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Conway Account</span>
               </div>
               {keyStatus?.configured && keyStatus?.valid && (
-                <span style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: '#34D399' }}>
-                  {keyStatus.key_prefix}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: '#34D399' }}>
+                    ${keyStatus.credits_cents !== undefined ? (keyStatus.credits_cents / 100).toFixed(2) : '...'}
+                  </span>
+                  <span style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: '#71717a' }}>
+                    {keyStatus.key_prefix}
+                  </span>
+                </div>
               )}
             </div>
 
             {keyStatus?.configured && keyStatus?.valid ? (
-              <div style={{ padding: '10px 14px', background: '#052e16' }}>
-                <div style={{ fontSize: '11px', color: '#34D399', lineHeight: 1.6 }}>
-                  VM connected. Credits: ${keyStatus.credits_cents !== undefined ? (keyStatus.credits_cents / 100).toFixed(2) : '...'}
-                </div>
+              <div style={{ padding: '8px 14px', background: '#052e16' }}>
+                <div style={{ fontSize: '11px', color: '#34D399' }}>Connected</div>
               </div>
             ) : (
               <div style={{ padding: '12px 14px' }}>
                 <div style={{ fontSize: '11px', color: '#a1a1aa', lineHeight: 1.6, marginBottom: '10px' }}>
-                  Enter your Conway API key to connect your sandbox VM to this agent.
+                  Enter your Conway API key to enable sandbox creation.
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <input
@@ -449,6 +470,39 @@ function AppInner() {
               </div>
             )}
           </div>
+
+          {/* ═══════ VM TIER SELECTOR ═══════ */}
+          {hasConnectedKey && !hasSandbox && (
+            <div data-testid="vm-tier-selector" style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Select VM</span>
+              </div>
+              <div style={{ padding: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                {VM_TIERS.map(tier => {
+                  const selected = selectedTier === tier.id;
+                  const memLabel = tier.memory_mb >= 1024 ? `${tier.memory_mb / 1024}GB` : `${tier.memory_mb}MB`;
+                  return (
+                    <button key={tier.id} data-testid={`vm-tier-${tier.id}`}
+                      onClick={() => setSelectedTier(tier.id)}
+                      style={{
+                        padding: '10px 12px', borderRadius: '6px', cursor: 'pointer', textAlign: 'left',
+                        background: selected ? '#1a1a2e' : '#09090b',
+                        border: `1px solid ${selected ? '#fff' : '#27272a'}`,
+                        transition: 'all 0.15s',
+                      }}>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: selected ? '#fff' : '#a1a1aa' }}>{tier.label}</div>
+                      <div style={{ fontSize: '10px', color: '#71717a', marginTop: '2px' }}>
+                        {tier.vcpu} vCPU &middot; {memLabel} &middot; {tier.disk_gb}GB
+                      </div>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: selected ? '#34D399' : '#71717a', marginTop: '4px' }}>
+                        ${tier.price}.00<span style={{ fontWeight: 400, fontSize: '9px' }}>/mo</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ═══════ PROVISIONING STEPPER ═══════ */}
           <div data-testid="provision-stepper" style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
@@ -492,7 +546,11 @@ function AppInner() {
                     {/* Label + desc */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '12px', fontWeight: 700, color: done ? '#34D399' : '#fff' }}>{step.label}</div>
-                      <div style={{ fontSize: '10px', color: '#52525b' }}>{step.desc}</div>
+                      <div style={{ fontSize: '10px', color: '#52525b' }}>
+                        {step.id === 'sandbox'
+                          ? (() => { const t = VM_TIERS.find(t => t.id === selectedTier) || VM_TIERS[0]; const m = t.memory_mb >= 1024 ? `${t.memory_mb/1024}GB` : `${t.memory_mb}MB`; return `${t.label} VM (${t.vcpu} vCPU, ${m}, ${t.disk_gb}GB) — $${t.price}/mo`; })()
+                          : step.desc}
+                      </div>
                     </div>
                     {/* Output toggle */}
                     {hasOutput && (
