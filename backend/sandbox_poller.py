@@ -23,9 +23,26 @@ import aiohttp
 logger = logging.getLogger("sandbox_poller")
 
 CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
-CONWAY_API_KEY = os.environ.get("CONWAY_API_KEY", "")
 USDC_CONTRACT = os.environ.get("USDC_CONTRACT", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
 BASE_RPC = os.environ.get("BASE_RPC", "https://mainnet.base.org")
+
+
+def _get_conway_api_key() -> str:
+    """Get Conway API key for the active agent — reads per-agent provisioning status first."""
+    agent_id = _get_active_agent_id()
+    home = os.path.expanduser("~")
+    if agent_id == "anima-fund":
+        prov_path = os.path.join(home, ".anima", "provisioning-status.json")
+    else:
+        prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
+    try:
+        with open(prov_path, "r") as f:
+            key = json.load(f).get("conway_api_key", "")
+            if key:
+                return key
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return os.environ.get("CONWAY_API_KEY", "")
 
 _cache = {
     # ── On-chain wallet (source: Base RPC) ──
@@ -172,14 +189,15 @@ async def _check_onchain_balance(wallet_address: str) -> dict:
 
 
 async def _fetch_conway_credits() -> dict:
-    """Fetch Conway API credits balance."""
-    if not CONWAY_API_KEY:
+    """Fetch Conway API credits balance for the active agent's key."""
+    api_key = _get_conway_api_key()
+    if not api_key:
         return {"credits_cents": 0, "error": "No API key"}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
             async with session.get(
                 f"{CONWAY_API}/v1/credits/balance",
-                headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}
+                headers={"Authorization": f"Bearer {api_key}"}
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -243,12 +261,13 @@ async def _noop_wallet():
 # ═══════════════════════════════════════════════════════════
 
 async def _sandbox_exec(sandbox_id, command):
-    if not CONWAY_API_KEY:
+    api_key = _get_conway_api_key()
+    if not api_key:
         return ""
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
             async with s.post(f"{CONWAY_API}/v1/sandboxes/{sandbox_id}/exec",
-                headers={"Authorization": f"Bearer {CONWAY_API_KEY}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={"command": command}) as r:
                 if r.status == 200:
                     return (await r.json()).get("stdout", "")

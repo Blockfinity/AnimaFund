@@ -3,6 +3,7 @@ Anima Fund API — Main Server
 All agent operations happen inside Conway Cloud sandboxes. Nothing runs on the host.
 """
 import os
+import json
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -39,23 +40,50 @@ async def lifespan(app: FastAPI):
 
 
 async def _restore_conway_key_from_db():
-    """On startup, check MongoDB for a persisted Conway API key.
-    If the env var is empty but DB has one, restore it — fixes redeployment gap."""
-    current_key = os.environ.get("CONWAY_API_KEY", "")
+    """On startup, restore Conway API keys from MongoDB agent docs to provisioning-status.json files.
+    This ensures keys survive redeployments without needing .env."""
     try:
         db = get_db()
-        doc = await db.platform_config.find_one({"key": "conway_api_key"}, {"_id": 0})
-        if doc and doc.get("value"):
-            db_key = doc["value"]
-            if not current_key:
-                os.environ["CONWAY_API_KEY"] = db_key
-                logging.info("Conway API key restored from MongoDB")
-            elif current_key != db_key:
-                # DB has a different key (maybe updated in sandbox) — use DB version
-                os.environ["CONWAY_API_KEY"] = db_key
-                logging.info("Conway API key updated from MongoDB (sandbox-synced key)")
+        async for agent in db.agents.find({"conway_api_key": {"$exists": True, "$ne": ""}}, {"_id": 0, "agent_id": 1, "conway_api_key": 1}):
+            agent_id = agent.get("agent_id", "")
+            key = agent.get("conway_api_key", "")
+            if not agent_id or not key:
+                continue
+
+            # Write key to the agent's provisioning-status.json
+            home = os.path.expanduser("~")
+            if agent_id == "anima-fund":
+                prov_path = os.path.join(home, ".anima", "provisioning-status.json")
+            else:
+                prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
+
+            try:
+                prov = {}
+                if os.path.exists(prov_path):
+                    with open(prov_path) as f:
+                        prov = json.load(f)
+                if prov.get("conway_api_key") != key:
+                    prov["conway_api_key"] = key
+                    os.makedirs(os.path.dirname(prov_path), exist_ok=True)
+                    with open(prov_path, "w") as f:
+                        json.dump(prov, f, indent=2)
+                    logging.info(f"Conway API key restored for agent '{agent_id}'")
+            except Exception:
+                pass
+
+        # Also set env var for the active agent
+        active_id = "anima-fund"
+        try:
+            with open("/tmp/anima_active_agent_id", "r") as f:
+                active_id = f.read().strip() or "anima-fund"
+        except FileNotFoundError:
+            pass
+        active_agent = await db.agents.find_one({"agent_id": active_id, "conway_api_key": {"$exists": True, "$ne": ""}}, {"_id": 0, "conway_api_key": 1})
+        if active_agent and active_agent.get("conway_api_key"):
+            os.environ["CONWAY_API_KEY"] = active_agent["conway_api_key"]
+            logging.info(f"Active agent '{active_id}' Conway key loaded into env")
     except Exception as e:
-        logging.warning(f"Could not restore Conway key from DB: {e}")
+        logging.warning(f"Could not restore Conway keys from DB: {e}")
 
 
 app = FastAPI(title="Anima Fund API", lifespan=lifespan)

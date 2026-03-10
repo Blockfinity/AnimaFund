@@ -293,21 +293,36 @@ async def create_agent(req: CreateAgentRequest):
 
 @router.post("/agents/{agent_id}/select")
 async def select_agent(agent_id: str):
-    """Switch the dashboard to view a different agent's data."""
+    """Switch the dashboard to view a different agent's data.
+    Also switches the active Conway API key to that agent's key."""
     col = get_db()["agents"]
 
-    if agent_id == "anima-fund":
-        # Write active agent ID for per-agent provisioning status
-        with open("/tmp/anima_active_agent_id", "w") as f:
-            f.write("anima-fund")
-        return {"success": True, "active_agent": agent_id}
-
-    agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
-    if not agent:
-        raise HTTPException(404, f"Agent '{agent_id}' not found")
-
+    # Write active agent ID
     with open("/tmp/anima_active_agent_id", "w") as f:
         f.write(agent_id)
+
+    if agent_id == "anima-fund":
+        # Load the default agent's key
+        home = os.path.expanduser("~")
+        prov_path = os.path.join(home, ".anima", "provisioning-status.json")
+    else:
+        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+        if not agent:
+            raise HTTPException(404, f"Agent '{agent_id}' not found")
+        home = os.path.expanduser("~")
+        prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
+
+    # Switch Conway API key to the selected agent's key
+    try:
+        if os.path.exists(prov_path):
+            with open(prov_path) as f:
+                prov = json.load(f)
+                agent_key = prov.get("conway_api_key", "")
+                if agent_key:
+                    os.environ["CONWAY_API_KEY"] = agent_key
+    except Exception:
+        pass
+
     return {"success": True, "active_agent": agent_id}
 
 

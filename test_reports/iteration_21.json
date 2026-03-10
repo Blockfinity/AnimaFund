@@ -1,0 +1,87 @@
+{
+  "summary": "Iteration 21: Per-Agent Conway API Key Architecture Testing - All backend tests pass (15/15). Frontend verified: Agent switcher works on Genesis screen and Dashboard header, Conway API Key panel shows 'connected and valid' with key prefix, switching agents changes active agent context correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_21_per_agent_keys.py",
+    "/app/test_reports/pytest/pytest_iteration21.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Per-agent key storage: _get_conway_api_key() in credits.py, sandbox_poller.py, and agent_setup.py reads from active agent's provisioning-status.json",
+    "Agent selection: POST /api/agents/{id}/select writes active agent ID to /tmp/anima_active_agent_id and loads that agent's Conway key into env",
+    "MongoDB persistence: Conway keys stored on agent documents, restored on server startup via _restore_conway_key_from_db()",
+    "Data isolation verified: Switching agents changes provision status agent_id and key context",
+    "SSE stream endpoint accessible at /api/live/stream",
+    "Frontend agent switcher: Genesis screen has buttons at top, Dashboard has dropdown in header with status indicators",
+    "Key prefix (cnwy_k_HUFTe...) displayed correctly on both agents after switch"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_21_per_agent_keys.py"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 tests passed)",
+    "frontend": "100% (Agent switching and Conway key display verified)"
+  },
+  "test_credentials": {
+    "CONWAY_API_KEY": "cnwy_k_HUFTefVvBakA_QMFbzeb9ps8rKXYIaGe",
+    "note": "Valid key with 0 credits (expected for test environment)"
+  },
+  "seed_data_creation": "",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 21 verified the per-agent Conway API key architecture. Key changes: (1) Conway key is stored per-agent in provisioning-status.json and MongoDB agent docs, (2) _get_conway_api_key() functions in credits.py, sandbox_poller.py, agent_setup.py all read from active agent's files, (3) POST /api/agents/{id}/select switches active agent and loads that agent's key, (4) server startup restores all agent keys from MongoDB. Two agents exist: 'anima-fund' (default) and 'TestSkills'. Agent switcher works on both Genesis screen (buttons) and Dashboard header (dropdown with status).",
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (status=ok)",
+    "GET /api/agents - 200 OK (returns array with anima-fund and TestSkills)",
+    "POST /api/agents/anima-fund/select - 200 OK (success=true, active_agent=anima-fund)",
+    "POST /api/agents/TestSkills/select - 200 OK (success=true, active_agent=TestSkills)",
+    "POST /api/agents/TEST_nonexistent/select - 404 Not Found",
+    "POST /api/credits/set-key - 200 OK (stores key per-agent, returns credits_cents, key_prefix)",
+    "GET /api/credits/key-status - 200 OK (configured=true, valid=true, key_prefix=cnwy_k_HUFTe...)",
+    "GET /api/credits/balance - 200 OK (uses active agent's key)",
+    "POST /api/credits/verify - 200 OK (uses active agent's key)",
+    "GET /api/provision/status - 200 OK (returns agent_id of active agent)",
+    "GET /api/live/stream - 200 OK (SSE endpoint accessible)"
+  ],
+  "frontend_features_verified": {
+    "genesis_screen": {
+      "agent_switcher_buttons": "PASS - 'Anima Fund' and 'TestSkills' buttons at top",
+      "agent_switch_anima_to_testskills": "PASS - Header changes to 'TestSkills' after click",
+      "agent_switch_testskills_to_anima": "PASS - Header changes back to 'Anima Fund'",
+      "conway_key_panel": "PASS - Shows 'connected and valid' with key prefix",
+      "conway_key_prefix_after_switch": "PASS - Same key prefix shown after switching agents"
+    },
+    "dashboard": {
+      "header_agent_dropdown": "PASS - Shows dropdown with both agents and status indicators",
+      "agent_status_indicator": "PASS - Green dot for 'running', text status for 'created'",
+      "create_new_agent_option": "PASS - '+Create New Agent' in dropdown",
+      "agent_switch_via_dropdown": "PASS - Clicking TestSkills switches context"
+    }
+  },
+  "architecture_verified": {
+    "per_agent_key_storage": {
+      "provisioning_status_json": "Each agent has its own ~/.anima/provisioning-status.json or ~/agents/{id}/.anima/provisioning-status.json",
+      "mongodb_agent_document": "conway_api_key field on agent document",
+      "runtime_env_var": "CONWAY_API_KEY env var updated when switching agents"
+    },
+    "key_reading_functions": {
+      "credits.py": "_get_conway_api_key() reads from active agent's prov-status.json",
+      "sandbox_poller.py": "_get_conway_api_key() reads dynamically per poll cycle",
+      "agent_setup.py": "_get_conway_api_key() reads from active agent's prov-status.json"
+    },
+    "agent_switching": {
+      "select_endpoint": "POST /api/agents/{id}/select writes /tmp/anima_active_agent_id",
+      "key_loading": "On select, reads agent's prov-status.json and sets env var",
+      "status_isolation": "GET /api/provision/status returns agent_id of active agent"
+    },
+    "startup_restoration": "_restore_conway_key_from_db() in server.py restores all agent keys from MongoDB"
+  }
+}

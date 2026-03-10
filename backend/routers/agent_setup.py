@@ -44,7 +44,20 @@ def _get_prov_status_file() -> str:
 
 
 def _get_conway_api_key() -> str:
-    """Get Conway API key — checks env first, then local config, then MongoDB."""
+    """Get Conway API key for the ACTIVE agent.
+    Priority: agent's provisioning-status.json → env var fallback."""
+    # 1. Check the active agent's provisioning status
+    prov_file = _get_prov_status_file()
+    if os.path.exists(prov_file):
+        try:
+            with open(prov_file) as f:
+                prov = json.load(f)
+                key = prov.get("conway_api_key", "")
+                if key:
+                    return key
+        except Exception:
+            pass
+    # 2. Fallback to env var (for the default agent or initial setup)
     key = os.environ.get("CONWAY_API_KEY", "")
     if not key:
         config_path = os.path.join(ANIMA_DIR, "config.json")
@@ -57,55 +70,36 @@ def _get_conway_api_key() -> str:
     return key
 
 
-async def _persist_conway_key(api_key: str):
-    """Persist a Conway API key discovered from the sandbox into the platform.
-    Updates: runtime env var, local config file, and MongoDB."""
+async def _persist_conway_key(api_key: str, agent_id: str = None):
+    """Persist a Conway API key for a specific agent.
+    Updates: agent's provisioning-status.json, MongoDB agent doc, and runtime env."""
     if not api_key:
         return
-    # 1. Runtime env var (immediate effect for poller + credits router)
-    os.environ["CONWAY_API_KEY"] = api_key
-    # 2. Local config file
-    config_path = os.path.join(ANIMA_DIR, "config.json")
-    try:
-        existing = {}
-        if os.path.exists(config_path):
-            with open(config_path) as f:
-                existing = json.load(f)
-        existing["apiKey"] = api_key
-        with open(config_path, "w") as f:
-            json.dump(existing, f, indent=2)
-    except Exception:
-        pass
-    # 3. MongoDB (survives redeploys)
+    if not agent_id:
+        agent_id = _get_active_agent_id()
+
+    # 1. Store in the agent's provisioning-status.json (per-agent, sync-readable)
+    prov = _load_prov_status()
+    prov["conway_api_key"] = api_key
+    _save_prov_status(prov)
+
+    # 2. Store on the agent's MongoDB document (survives redeployments)
     try:
         from database import get_db
         db = get_db()
-        await db.platform_config.update_one(
-            {"key": "conway_api_key"},
-            {"$set": {"key": "conway_api_key", "value": api_key, "updated_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True,
+        await db.agents.update_one(
+            {"agent_id": agent_id},
+            {"$set": {
+                "conway_api_key": api_key,
+                "conway_key_updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=False,
         )
     except Exception:
         pass
-    # 4. Update backend .env file for persistence across restarts
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
-    try:
-        lines = []
-        found = False
-        if os.path.exists(env_path):
-            with open(env_path) as f:
-                for line in f:
-                    if line.startswith("CONWAY_API_KEY="):
-                        lines.append(f"CONWAY_API_KEY={api_key}\n")
-                        found = True
-                    else:
-                        lines.append(line)
-        if not found:
-            lines.append(f"CONWAY_API_KEY={api_key}\n")
-        with open(env_path, "w") as f:
-            f.writelines(lines)
-    except Exception:
-        pass
+
+    # 3. Update runtime env var (for the currently active agent)
+    os.environ["CONWAY_API_KEY"] = api_key
 
 
 # ═══════════════════════════════════════════════════════════
@@ -480,7 +474,7 @@ async def install_terminal():
     # This closes the loop: sandbox creates key → platform auto-discovers it
     if sandbox_api_key and sandbox_api_key != api_key:
         await _persist_conway_key(sandbox_api_key)
-        outputs.append(f"[key-sync] Conway API key auto-synced from sandbox to platform")
+        outputs.append("[key-sync] Conway API key auto-synced from sandbox to platform")
 
     # 5. Verify
     r_ver = await _sandbox_exec(sandbox_id, "conway-terminal --version 2>&1")

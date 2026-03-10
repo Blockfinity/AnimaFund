@@ -5,6 +5,7 @@ Includes audit trail in MongoDB for all purchases and balance checks.
 """
 import os
 import io
+import json
 import base64
 import aiohttp
 import qrcode
@@ -20,7 +21,29 @@ from config import CONWAY_API
 router = APIRouter(prefix="/api/credits", tags=["credits"])
 
 
+def _get_active_agent_id() -> str:
+    try:
+        with open("/tmp/anima_active_agent_id", "r") as f:
+            return f.read().strip() or "anima-fund"
+    except FileNotFoundError:
+        return "anima-fund"
+
+
 def _get_conway_api_key() -> str:
+    """Get Conway API key for the active agent."""
+    agent_id = _get_active_agent_id()
+    home = os.path.expanduser("~")
+    if agent_id == "anima-fund":
+        prov_path = os.path.join(home, ".anima", "provisioning-status.json")
+    else:
+        prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
+    try:
+        with open(prov_path, "r") as f:
+            key = json.load(f).get("conway_api_key", "")
+            if key:
+                return key
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
     return os.environ.get("CONWAY_API_KEY", "")
 
 
@@ -53,43 +76,41 @@ async def set_conway_api_key(req: SetKeyRequest):
         except Exception as e:
             return {"success": False, "error": f"Could not reach Conway API: {e}"}
 
-    # Key is valid — persist everywhere
+    # Key is valid — persist to the active agent
+    agent_id = _get_active_agent_id()
+
     # 1. Runtime env var (immediate effect)
     os.environ["CONWAY_API_KEY"] = key
 
-    # 2. MongoDB (survives redeployments)
+    # 2. Store in the agent's provisioning-status.json (per-agent, sync-readable)
+    home = os.path.expanduser("~")
+    if agent_id == "anima-fund":
+        prov_path = os.path.join(home, ".anima", "provisioning-status.json")
+    else:
+        prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
     try:
-        db = get_db()
-        await db.platform_config.update_one(
-            {"key": "conway_api_key"},
-            {"$set": {
-                "key": "conway_api_key",
-                "value": key,
-                "credits_cents_at_set": credits_cents,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=True,
-        )
+        prov = {}
+        if os.path.exists(prov_path):
+            with open(prov_path) as f:
+                prov = json.load(f)
+        prov["conway_api_key"] = key
+        os.makedirs(os.path.dirname(prov_path), exist_ok=True)
+        with open(prov_path, "w") as f:
+            json.dump(prov, f, indent=2)
     except Exception:
         pass
 
-    # 3. Update .env file for local restarts
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    # 3. Store on the agent's MongoDB document (survives redeployments)
     try:
-        lines = []
-        found = False
-        if os.path.exists(env_path):
-            with open(env_path) as f:
-                for line in f:
-                    if line.startswith("CONWAY_API_KEY="):
-                        lines.append(f"CONWAY_API_KEY={key}\n")
-                        found = True
-                    else:
-                        lines.append(line)
-        if not found:
-            lines.append(f"CONWAY_API_KEY={key}\n")
-        with open(env_path, "w") as f:
-            f.writelines(lines)
+        db = get_db()
+        await db.agents.update_one(
+            {"agent_id": agent_id},
+            {"$set": {
+                "conway_api_key": key,
+                "conway_key_updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
     except Exception:
         pass
 
