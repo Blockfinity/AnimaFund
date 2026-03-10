@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 import aiohttp
 
-from sandbox_poller import get_cache
+from sandbox_poller import get_cache, get_update_event
 
 router = APIRouter(prefix="/api", tags=["live"])
 
@@ -166,8 +166,8 @@ async def live_soul():
 @router.get("/live/heartbeat")
 async def live_heartbeat(limit: int = Query(default=20, le=100)):
     cache = get_cache()
-    if cache["last_poll"]:
-        return {"history": [{"timestamp": cache["last_poll"], "engine_running": cache["engine_running"]}], "total": 1, "source": "sandbox"}
+    if cache["last_update"]:
+        return {"history": [{"timestamp": cache["last_update"], "engine_running": cache["engine_running"]}], "total": 1, "source": "sandbox"}
     return {"history": [], "total": 0, "source": "sandbox"}
 
 @router.get("/live/modifications")
@@ -245,7 +245,9 @@ async def live_heartbeat_schedule():
 
 @router.get("/live/stream")
 async def live_stream():
-    """SSE endpoint — streams real agent data from sandbox poller cache."""
+    """SSE — pushes the instant a webhook arrives, no sleep delay."""
+    update_event = get_update_event()
+
     async def event_generator():
         while True:
             try:
@@ -255,7 +257,6 @@ async def live_stream():
                 revenue = cache.get("revenue_log", [])
                 decisions = cache.get("decisions_log", [])
 
-                # Conway credits — from cache or direct API fallback
                 credits_cents = econ.get("credits_cents", 0)
                 if not credits_cents and CONWAY_API_KEY:
                     try:
@@ -263,22 +264,19 @@ async def live_stream():
                             async with session.get("https://api.conway.tech/v1/credits/balance",
                                 headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}) as resp:
                                 if resp.status == 200:
-                                    data = await resp.json()
-                                    credits_cents = data.get("credits_cents", 0)
+                                    credits_cents = (await resp.json()).get("credits_cents", 0)
                     except Exception:
                         pass
 
                 total_earned = sum(r.get("gross_revenue", r.get("net", 0)) for r in revenue if isinstance(r, dict))
                 total_spent = sum(r.get("cost", 0) for r in revenue if isinstance(r, dict))
-                revenue_count = len(revenue) if isinstance(revenue, list) else 0
-                decision_count = len(decisions) if isinstance(decisions, list) else 0
 
                 payload = {
                     "engine": {
                         "live": cache["engine_running"],
                         "db_exists": cache["sandbox_id"] is not None,
                         "agent_state": "running" if cache["engine_running"] else ("sandbox" if cache["sandbox_id"] else ""),
-                        "turn_count": decision_count,
+                        "turn_count": len(decisions) if isinstance(decisions, list) else 0,
                         "agent_id": "anima-fund",
                     },
                     "conway_credits_cents": credits_cents,
@@ -287,23 +285,26 @@ async def live_stream():
                     "phase_state": phase,
                     "total_earned_usd": total_earned,
                     "total_spent_usd": total_spent,
-                    "revenue_actions": revenue_count,
-                    "decision_count": decision_count,
+                    "revenue_actions": len(revenue) if isinstance(revenue, list) else 0,
+                    "decision_count": len(decisions) if isinstance(decisions, list) else 0,
                     "wallet_address": econ.get("wallet_address", ""),
                     "sandbox_id": cache["sandbox_id"],
-                    "poller_status": cache.get("update_source", "waiting"),
+                    "update_source": cache.get("update_source", "waiting"),
                     "last_update": cache["last_update"],
                     "recent_revenue": (revenue[:5] if isinstance(revenue, list) else []),
                     "recent_decisions": (decisions[:5] if isinstance(decisions, list) else []),
                     "agent_stdout_tail": cache.get("agent_stdout", "")[-500:],
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
-
                 yield f"data: {_json.dumps(payload)}\n\n"
             except Exception as e:
                 yield f"data: {_json.dumps({'error': str(e)})}\n\n"
 
-            await asyncio.sleep(4)
+            # Wait for next webhook OR timeout after 5s (heartbeat)
+            try:
+                await asyncio.wait_for(update_event.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pass
 
     return StreamingResponse(
         event_generator(),

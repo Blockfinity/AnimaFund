@@ -5,7 +5,7 @@ import {
   CheckCircle2, Globe, ExternalLink, Send, MessageSquare,
   RefreshCw, AlertCircle, Clock, ArrowRight, Play, Box,
   Wifi, Users, CreditCard, Wrench, Shield, ScrollText,
-  Radio, HardDrive
+  Radio, HardDrive, Loader2
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -222,8 +222,8 @@ export default function AnimaVM({ selectedAgent }) {
             <span>Earned: <b className="text-emerald-600">${(sseData?.total_earned_usd || financials?.total_earned_usd || 0).toFixed(2)}</b></span>
             <span>Turns: <b className="text-foreground">{sseData?.decision_count || sseData?.engine?.turn_count || 0}</b></span>
             <span>VMs: <b className="text-foreground">{sb.live_sandboxes || 0}</b></span>
-            {sseData?.last_poll && <span className="text-emerald-500">LIVE</span>}
-            {!sseData?.last_poll && sseData?.sandbox_id && <span className="text-amber-500">Connecting...</span>}
+            {sseData?.last_update && <span className="text-emerald-500">LIVE</span>}
+            {!sseData?.last_update && sseData?.sandbox_id && <span className="text-amber-500">Connecting...</span>}
             <button data-testid="refresh-all-btn" onClick={fetchAll} className="p-1 rounded border border-border hover:bg-secondary transition-colors">
               <RefreshCw className="w-3 h-3 text-muted-foreground" />
             </button>

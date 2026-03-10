@@ -1520,128 +1520,87 @@ async def deploy_agent():
         backend_url = os.environ.get("WEBHOOK_URL", "")
         if not backend_url:
             # Construct from known deployment pattern
-            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "https://agent-capital-hub.preview.emergentagent.com")
+            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "https://ai-venture-capital.preview.emergentagent.com")
 
         webhook_daemon = f"""#!/usr/bin/env python3
-import json, time, os, hashlib, urllib.request
+import json, time, os, subprocess, urllib.request, threading
 CONWAY_API = "https://api.conway.tech"
 CONWAY_KEY = "{api_key}"
 WEBHOOK_URL = "{backend_url}/api/webhook/agent-update"
 CREATOR_WALLET = "{env_vars.get('CREATOR_WALLET', '')}"
+ANIMA_DIR = os.path.expanduser("~/.anima")
+os.makedirs(ANIMA_DIR, exist_ok=True)
 FILES = {{
-    "economics": os.path.expanduser("~/.anima/economics.json"),
-    "revenue_log": os.path.expanduser("~/.anima/revenue-log.json"),
-    "decisions_log": os.path.expanduser("~/.anima/decisions-log.json"),
-    "creator_split_log": os.path.expanduser("~/.anima/creator-split-log.json"),
-    "phase_state": os.path.expanduser("~/.anima/phase-state.json"),
+    "economics": ANIMA_DIR + "/economics.json",
+    "revenue_log": ANIMA_DIR + "/revenue-log.json",
+    "decisions_log": ANIMA_DIR + "/decisions-log.json",
+    "creator_split_log": ANIMA_DIR + "/creator-split-log.json",
+    "phase_state": ANIMA_DIR + "/phase-state.json",
 }}
 LOG_FILES = {{
     "agent_stdout": "/var/log/automaton.out.log",
     "agent_stderr": "/var/log/automaton.err.log",
 }}
-os.makedirs(os.path.expanduser("~/.anima"), exist_ok=True)
-prev_hashes = {{}}
+prev_hash = ""
 def read_json(path):
     try:
-        with open(path) as f:
-            return json.load(f)
-    except Exception:
-        return None
-def read_tail(path, lines=80):
+        with open(path) as f: return json.load(f)
+    except: return None
+def read_tail(path, n=80):
     try:
-        with open(path) as f:
-            return "\\n".join(f.readlines()[-lines:])
-    except Exception:
-        return ""
-def file_hash(path):
-    try:
-        with open(path, "rb") as f:
-            return hashlib.md5(f.read()).hexdigest()
-    except Exception:
-        return ""
-def fetch_conway(path):
-    try:
-        req = urllib.request.Request(CONWAY_API + path, headers={{"Authorization": "Bearer " + CONWAY_KEY}})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            return json.loads(r.read())
-    except Exception as e:
-        return {{"error": str(e)}}
+        with open(path) as f: return "\\n".join(f.readlines()[-n:])
+    except: return ""
 def check_engine():
-    try:
-        import subprocess
-        r = subprocess.run(["pgrep", "-f", "bundle.mjs"], capture_output=True, timeout=3)
-        return r.returncode == 0
-    except Exception:
-        return False
+    try: return subprocess.run(["pgrep","-f","bundle.mjs"],capture_output=True,timeout=3).returncode==0
+    except: return False
 def send_webhook(payload):
     try:
         data = json.dumps(payload).encode()
-        req = urllib.request.Request(WEBHOOK_URL, data=data, headers={{"Content-Type": "application/json"}}, method="POST")
-        with urllib.request.urlopen(req, timeout=8) as r:
-            pass
-    except Exception:
-        pass
-# Also write economics.json for the agent to read
+        req = urllib.request.Request(WEBHOOK_URL, data=data, headers={{"Content-Type":"application/json"}}, method="POST")
+        urllib.request.urlopen(req, timeout=8)
+    except: pass
+def fetch_conway(path):
+    try:
+        req = urllib.request.Request(CONWAY_API+path, headers={{"Authorization":"Bearer "+CONWAY_KEY}})
+        with urllib.request.urlopen(req, timeout=8) as r: return json.loads(r.read())
+    except: return {{}}
 def update_economics():
     try:
-        balance = fetch_conway("/v1/credits/balance")
-        pricing = fetch_conway("/v1/credits/pricing")
-        wallet_cfg = {{}}
+        bal = fetch_conway("/v1/credits/balance")
+        pri = fetch_conway("/v1/credits/pricing")
+        wcfg = {{}}
         try:
-            with open(os.path.expanduser("~/.conway/config.json")) as f:
-                wallet_cfg = json.load(f)
-        except Exception:
-            pass
-        econ = {{
-            "credits_cents": balance.get("credits_cents", 0),
-            "credits_usd": balance.get("credits_cents", 0) / 100,
-            "wallet_address": wallet_cfg.get("walletAddress", ""),
-            "vm_pricing": pricing.get("pricing", []),
-            "credit_tiers": pricing.get("tiers", []),
-            "creator_wallet": CREATOR_WALLET,
-            "creator_split_pct": 50,
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }}
-        with open(os.path.expanduser("~/.anima/economics.json"), "w") as f:
-            json.dump(econ, f, indent=2)
-        return econ
-    except Exception:
-        return {{}}
-econ_counter = 0
+            with open(os.path.expanduser("~/.conway/config.json")) as f: wcfg = json.load(f)
+        except: pass
+        econ = {{"credits_cents":bal.get("credits_cents",0),"credits_usd":bal.get("credits_cents",0)/100,
+                 "wallet_address":wcfg.get("walletAddress",""),"vm_pricing":pri.get("pricing",[]),
+                 "credit_tiers":pri.get("tiers",[]),"creator_wallet":CREATOR_WALLET,
+                 "creator_split_pct":50,"updated_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())}}
+        with open(ANIMA_DIR+"/economics.json","w") as f: json.dump(econ,f,indent=2)
+    except: pass
+# Economics updater on its own timer (every 15s)
+def econ_loop():
+    while True:
+        update_economics()
+        time.sleep(15)
+threading.Thread(target=econ_loop, daemon=True).start()
+# Main loop: check files every 2s, send webhook on any change
+import hashlib
 while True:
     try:
-        changed = False
-        current_hashes = {{}}
-        for key, path in FILES.items():
-            h = file_hash(path)
-            current_hashes[key] = h
-            if h and h != prev_hashes.get(key):
-                changed = True
-        # Check logs too
-        for key, path in LOG_FILES.items():
-            h = file_hash(path)
-            current_hashes[key] = h
-            if h and h != prev_hashes.get(key):
-                changed = True
-        # Update economics every 10 cycles (~20s)
-        econ_counter += 1
-        econ = {{}}
-        if econ_counter >= 10:
-            econ = update_economics()
-            econ_counter = 0
-        if changed or econ:
-            payload = {{"source": "sandbox"}}
-            for key, path in FILES.items():
-                payload[key] = read_json(path)
-            for key, path in LOG_FILES.items():
-                payload[key] = read_tail(path)
+        h = ""
+        for p in list(FILES.values()) + list(LOG_FILES.values()):
+            try:
+                with open(p,"rb") as f: h += hashlib.md5(f.read()).hexdigest()
+            except: pass
+        if h != prev_hash:
+            payload = {{"source":"sandbox"}}
+            for k,p in FILES.items(): payload[k] = read_json(p)
+            for k,p in LOG_FILES.items(): payload[k] = read_tail(p)
             payload["engine_running"] = check_engine()
-            if econ:
-                payload["economics"] = econ
             send_webhook(payload)
-            prev_hashes = current_hashes
-    except Exception:
-        pass
+            prev_hash = h
+    except: pass
     time.sleep(2)
 """
         await _sandbox_write_file(sandbox_id, "/app/automaton/webhook-daemon.py", webhook_daemon)

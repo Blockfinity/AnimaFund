@@ -4,63 +4,67 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 **PRODUCT REQUIREMENTS:**
 -   **Core Functionality:** A multi-agent platform to create, monitor, and manage independent AI agents from a single dashboard. Each agent has its own VM, wallet, and skills.
 -   **Agent Autonomy & Lifecycle:**
-    1.  The agent must be created and operate *exclusively within* a sandboxed VM, not on the host.
+    1.  The agent must be created and operate *exclusively within* a sandboxed VM.
     2.  The agent's operations are governed by a strict, mechanically-enforced 4-phase prompt:
         -   **Phase 0 (Tooling & Testing):** Verify all core tools are functional.
-        -   **Phase 1 (Capital Acquisition):** Make **,000 within one hour** by all means necessary. Forbidden from building any product or service.
-        -   **Phase 2 (Capital Growth):** Grow capital to **0,000**.
+        -   **Phase 1 (Capital Acquisition):** Make **,000 within the first few hours**. The agent can do absolutely anything it wants to make money, but cannot build products/services.
+        -   **Phase 2 (Capital Growth):** Grow capital to **0,000**. Service-based strategies (APIs, bounties) are unlocked.
         -   **Phase 3 (Business Incubation & Fund):** After reaching 0k, the agent can begin building its product, start the Anima Fund, and use tools like **Boardy.ai**.
 -   **Real-time Dashboard:** A dashboard to monitor all agents, with real-time logs and terminal/browser views for each Anima VM.
--   **User Control:** The user provisions the agent's tools via dashboard controls but does not control the agent's actions once it goes autonomous.
+-   **User Control:** The user provisions the agent's tools and seed funding but does not control the agent's actions once it goes autonomous.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a React/FastAPI/MongoDB stack. The architecture has been significantly refactored to be **strictly sandbox-only**. All agent creation, provisioning, and operational logic now executes exclusively within a Conway sandbox VM, with the backend acting as a secure proxy to the Conway API. Host-side execution has been eliminated. The UI has been redesigned to make the multi-step provisioning flow the primary onboarding experience on the main landing page, fixing a critical bug that allowed users to bypass the sandbox. The  page is now a dedicated monitoring-only dashboard.
+The application is a React/FastAPI/MongoDB stack. A critical bug with the credits funding mechanism was identified and fixed; the misleading QR code was replaced with a direct link to the Conway dashboard for wallet-based payments. The  has been extensively rewritten to make the agent autonomous, cost-aware, and aggressive in its financial goals, while removing prescriptive strategies.
+
+A major architectural change was implemented to provide real-time dashboard updates. The previous polling system was replaced with a webhook-driven architecture. A daemon () runs inside the sandbox, polls the agent's log files every 2 seconds, and pushes data to a backend webhook endpoint. This endpoint instantly updates a server-side cache and triggers an , which causes the SSE stream to immediately push the complete, fresh data to the frontend. This ensures the dashboard reflects the agent's state with minimal latency.
 
 **Last working item**:
--   **Last item agent was working:** The agent was investigating how to implement a payment mechanism for Conway API credits. The user identified a critical blocker: the Create Sandbox step requires credits, but there is no UI to fund them. The agent had just found the  Conway endpoint and was about to determine how to use it to generate a payment QR code for the user.
+-   **Last item agent was working:** Finalizing the real-time data pipeline architecture. The agent first proposed an  solution for instant file change detection within the sandbox but reverted to a simpler 2-second polling loop inside the  after the user stated, 2 second is fine. The core logic—using a webhook to trigger an  that instantly pushes data via SSE—is complete.
 -   **Status:** IN PROGRESS
--   **Agent Testing Done:** N
--   **Which testing method agent to use?** both
+-   **Agent Testing Done:** Y (Component testing via curl was done, but full E2E testing of the new real-time architecture is pending).
+-   **Which testing method agent to use?** both (Frontend/Backend Testing Agent)
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1 (P0): Implement Conway Credits Funding Mechanism.** This is the top priority and a major blocker for the entire application.
+-   **Issue 1 (P0): Full End-to-End Verification of Real-Time Data Pipeline.**
 
 **Issues Detail:**
--   **Issue 1: Implement Conway Credits Funding Mechanism.**
-    -   **Attempted fixes:** The agent identified the  endpoint in the Conway API but did not implement the full flow.
+-   **Issue 1: Full End-to-End Verification of Real-Time Data Pipeline.**
+    -   **Attempted fixes:** The agent implemented the full webhook architecture and tested the webhook receiver endpoint with a simulated payload. However, a live test with a running agent to confirm data flows from the sandbox file system to the UI in near real-time has not been performed.
     -   **Next debug checklist:**
-        1.  Create a new backend endpoint (e.g., ) that calls Conway's  to get payment details (USDC address, amount).
-        2.  Create a new backend endpoint (e.g., ) to fetch the current Conway API key credit balance.
-        3.  Modify the genesis screen in  to add a Step 0: Fund Account section before the current provisioning stepper.
-        4.  This new section should display the current credit balance and a button to Add Credits.
-        5.  Clicking the button should call the new funding endpoint and display the payment information as a QR code.
-        6.  The Create Sandbox step must remain disabled until the credit balance is sufficient to pay for a sandbox VM.
-    -   **Why fix this issue and what will be achieved with the fix?** This will solve the critical chicken-and-egg problem of needing credits to start the provisioning process. It will unblock the entire agent creation flow by allowing the user to fund their account directly from the UI.
-    -   **Status:** IN PROGRESS
+        1.  Provision a new agent to completion.
+        2.  Observe the  dashboard.
+        3.  Verify that data from the agent (phase, earnings, decisions, logs) appears on the dashboard and updates automatically.
+        4.  Confirm the  timestamp in the SSE payload updates as expected.
+        5.  Run the  to perform a comprehensive E2E test covering the entire user flow, from funding credits to provisioning an agent and monitoring it on the live dashboard.
+    -   **Why fix this issue and what will be achieved with the fix?** This will confirm that the new, complex real-time architecture works as intended, providing the user with the instant feedback they require from the agent's operations. It is the final step before the application can be considered fully functional and ready for deployment.
+    -   **Status:** NOT STARTED
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None. This is the primary blocker.
+    -   **Blocked on other issue:** None.
 
 **In progress Task List**:
 -   None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
-    -   (P1) Update  to instruct the agent to monitor and top up its own Conway credits using its x402 wallet, making it truly self-sustaining.
+    -   (P1) Implement Real Smart Contracts.
 -   **Future Tasks:**
-    -   Implement Real Smart Contracts.
     -   Integrate Android Device Control.
     -   Migrate to a self-hosted agent engine.
 
 **Completed work in this session**
--   **Massive Host-Side Logic Removal:** Rewrote the entire backend (, , , etc.) to eliminate all dependencies on the host machine. All agent operations now run exclusively within the Conway sandbox.
--   **UI Flow Refactor (Onboarding):** Moved the multi-step provisioning UI to the main genesis/onboarding screen in . The  page is now a monitoring-only dashboard. This fixed the critical bug where a user could create an agent on the host.
--   **Conway API Alignment & Skill Discovery Fix:** Audited and updated the backend against the latest Conway docs. Corrected the skill loading path () and updated the genesis prompt to instruct the agent on how to discover and install skills from ClawHub.
--   **Deployment Readiness:** Fixed the  file to stop blocking  files and successfully ran the .
--   **Comprehensive E2E Testing:** Ran the testing agent multiple times after each major refactor, achieving 100% pass rates and verifying all architectural changes.
+-   **Conway Credits Funding Rework:** Fixed a critical bug where direct USDC transfers failed. Replaced the misleading QR code with a button that redirects to the Conway dashboard for proper Web3 wallet-based payments.
+-   **Real-time Dashboard Architecture:** Re-architected the data pipeline from a slow polling model to a near real-time webhook system. A daemon in the sandbox sends updates to a backend webhook, which uses  to instantly push data to the frontend via SSE.
+-   **Agent Credit Preservation:** Implemented a Reset Agent flow that reuses the existing sandbox instead of deleting it, preventing the loss of prepaid Conway credits. This involved updating the backend to store the  and modifying the frontend to show the reset option.
+-   **Comprehensive  Overhaul:**
+    -   Made the agent existentially aware of its costs and the need to earn money to survive.
+    -   Removed all prescriptive revenue strategies to force the agent to figure out how to make money on its own.
+    -   Clarified the phased mission: make k in hours (Phase 1), grow to 0k (Phase 2), then launch the VC fund (Phase 3).
+-   **Economics Daemon:** Created a daemon (, formerly ) inside the sandbox to provide the agent with a live financial dashboard (), eliminating the need for API queries.
+-   **End-to-End Testing:** Performed multiple full-stack test runs using  and the , verifying all backend endpoints, Telegram integration, and frontend components.
 
 **Earlier issues found/mentioned but not fixed**
 -   None.
@@ -72,56 +76,61 @@ The application is a React/FastAPI/MongoDB stack. The architecture has been sign
 
 
 **Key Technical Concepts**
--   **Sandbox-First Architecture:** All agent operations MUST execute within the Conway sandbox VM. The backend is a stateless proxy to the Conway API.
+-   **Webhook-First Real-time Data:** The dashboard is updated via a webhook from the sandbox, not by polling. A daemon in the sandbox () watches agent log files and s changes to .
+-   **Asyncio SSE Push:** The backend uses an  that is set by the webhook receiver. The SSE generator s this event, allowing it to push data to the client the instant it arrives, rather than on a fixed  interval.
+-   **Credit Preservation:** Sandboxes are reused, not deleted. A Reset Agent flow wipes the agent's state but preserves the prepaid sandbox, saving credits.
+-   **Sandbox-First Architecture:** All agent operations execute within the Conway sandbox VM. The backend is a stateless proxy to the Conway API.
 -   **UI-Driven Onboarding:** The initial user experience is a multi-step provisioning process on the main landing screen.
--   **Creator vs. Agent Funding:**
-    -   **Conway Credits (Creator):** Pays for the sandbox VM. Must be funded *before* provisioning.
-    -   **x402 Wallet (Agent):** Pays for the agent's own operational costs (e.g., domains). Created *inside* the sandbox.
 
 **key DB schema**
--   **agents**: 
+-   **agents**:  (sandbox_id was added)
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   : Logic for the onboarding flow. Needs modification for credit funding.
--   : Contains the onboarding/provisioning stepper. Will be modified to add the credit funding UI.
--   : Logic for the individual provisioning steps.
+-   : The new webhook receiver.
+-   : The new daemon that runs inside the sandbox.
+-   : Reads from the cache populated by the webhook.
+-   : Manages the application state, including the webhook cache and .
+-   : The dashboard UI, now driven by real-time SSE data.
+-   : The main onboarding/genesis screen.
 -   : The agent's core mission document.
 
 **Areas that need refactoring**:
--   None. The codebase just underwent a massive refactoring.
+-   None. The agent resolved a route conflict between  and .
 
 **key api endpoints**
--   : Checks if an agent is provisioned.
--   : The first step in provisioning.
--   **NEEDS TO BE CREATED:**  to get a payment QR for Conway credits.
--   **NEEDS TO BE CREATED:**  to fetch the current Conway API key credit balance.
+-   : **NEW** endpoint that receives real-time data from the agent sandbox.
+-   : SSE endpoint that pushes real-time data to the frontend.
+-   : Resets an agent's state within its existing sandbox.
+-   : Lists existing sandboxes to enable reuse.
 
 **Critical Info for New Agent**
--   **Your top priority is implementing the Conway credits funding mechanism.** The entire application is blocked until the user can pay for the initial sandbox creation. You must implement the full backend and frontend flow to allow users to add credits to their Conway API key via a QR code.
--   **The architecture is now STRICTLY sandbox-only.** Do not introduce any logic that interacts with the host filesystem or runs host processes.
--   Do not confuse the two separate payment systems: **Conway Credits** (for compute, paid by the creator) and the **Agent's x402 Wallet** (for services, paid by the agent). Your current task is about funding the former.
+-   **Your top priority is to perform a full, end-to-end verification of the new real-time data architecture.** The user's primary concern is instant feedback from the agent. While the components have been built and tested individually, a complete test of an active agent writing logs in the sandbox and seeing them appear instantly on the dashboard is required.
+-   The user has agreed that a 2-second polling interval inside the  is acceptable. Do not try to re-implement the more complex  solution.
+-   The credits funding issue is resolved by linking the user to the Conway dashboard. Do not re-introduce any QR code or direct payment logic.
+-   The  is in a state the user has approved. Do not add any prescriptive strategies back into it.
 
 **documents and test reports created in this job**
--   
--   Multiple test reports in .
+-    (updated multiple times)
+-   Multiple test reports in , with the last one verifying the Reset Agent feature.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Pointed out the critical bug: I deployed and launched the agent without provisioning first.
-2.  **User:** Gave clear direction to move the provisioning stepper to the onboarding screen.
-3.  **User:** Corrected the agent's first attempt at the UI refactor.
-4.  **User:** Triggered the major sandbox-only audit by asking for verification of the agent's environment.
-5.  **User:** Stated the core principle: There should be absolutely nothing on host.
-6.  **Agent:** Performed the massive refactor to make everything sandbox-only.
-7.  **User:** Identified the payment chicken-and-egg problem.
-8.  **User:** Confirmed the agent should be self-sustaining.
-9.  **User (pending):** you need to add an addional QR code to fund the sandbox for step 1... that funds the conway credits using the conway api? double check for the best way to do this - **This is the current task.**
+1.  **User:** all the data should be connected in realtime - Triggered the refactor from polling to a real-time architecture.
+2.  **User:** why dont you use webhook? - Suggested the core architectural change.
+3.  **Agent:** Implemented the webhook-based architecture.
+4.  **User:** IS this realtime - Questioned the 6-second latency (2s daemon poll + 4s SSE poll).
+5.  **Agent:** Agreed it was not truly real-time and proposed an  +  solution.
+6.  **User:** we should get realtime update when the agent does something... - Reinforced the need for instant updates.
+7.  **Agent:** Started implementing the  solution.
+8.  **User:** 2 second is fine - Signaled acceptance of the simpler 2-second polling daemon, de-prioritizing the complex  change.
+9.  **Agent:** Acknowledged the user's preference and reverted the daemon back to the 2-second polling loop, keeping the improved  SSE backend.
+10. **User (Pending):** None. The last interaction was the user approving the 2-second polling interval.
 
 **Project Health Check:**
--   **Broken:** The entire user flow is blocked because there is no way to fund the Conway API key credits required to create the initial sandbox.
--   **Mocked:** None.
+-   **Broken:** Nothing is fundamentally broken.
+-   **Mocked:** None. The architecture is designed to use live data, but the final E2E verification of the new real-time pipeline is pending.
 
 **3rd Party Integrations**
 -   Conway Research Ecosystem (web4.ai): Core dependency for sandboxed VMs, terminal, tool installation, and payments.
@@ -130,13 +139,13 @@ The application is a React/FastAPI/MongoDB stack. The architecture has been sign
 -   Telegram Bot API
 
 **Testing status**
--   **Testing agent used after significant changes:** YES. The last major refactor was fully tested.
+-   **Testing agent used after significant changes:** YES
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None.
 -   **Known regressions:** None.
 
 **Credentials to test flow:**
--   The  in the backend  file currently has **0 credits**. This is essential for testing the new funding flow.
+-   The  in the backend  file currently has **0 credits**. This is correct for testing the add credits flow.
 
 **What agent forgot to execute**
--   The agent initially missed the payment dependency for sandbox creation until the user pointed it out. Implementing the credit funding mechanism is the main pending task.</analysis>
+-   Nothing. The agent was actively following user instructions and was in the middle of a task when the session ended. The logical next step is to test the work that was just completed.</analysis>
