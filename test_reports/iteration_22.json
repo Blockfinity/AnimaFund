@@ -1,0 +1,68 @@
+{
+  "summary": "Iteration 22: UI/Navigation Changes Testing Complete - All backend tests pass (11/11), All frontend features verified working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_22_ui_nav.py",
+    "/app/test_reports/pytest/pytest_iteration22.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_22_ui_nav.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 tests passed)",
+    "frontend": "100% (All 14 UI features verified)"
+  },
+  "test_credentials": {
+    "CONWAY_API_KEY": "cnwy_k_HUFTefVvBakA_QMFbzeb9ps8rKXYIaGe",
+    "App URL": "https://anima-audit.preview.emergentagent.com"
+  },
+  "seed_data_creation": "",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 22 verified all 6 UI/navigation changes requested by the user. Only one agent exists now (Anima Fund) after TestSkills was deleted. Key features: (1) Genesis screen has selectable agent buttons with Anima Fund selected by default, (2) + Create button opens Create Agent modal with 'Genesis' submit button, (3) Go to Dashboard button in top-right of genesis, (4) Conway Account panel clickable when connected to toggle to edit mode, (5) VM tier selector shows 5 tiers, (6) Dashboard header has Genesis and Wallet pill buttons, (7) LIVE/SSE indicator visible, (8) Agent dropdown shows correct selected agent.",
+  "features_verified": {
+    "genesis_screen": {
+      "agent_list_with_selectable_buttons": "PASS - Shows 'Anima Fund' button (only agent after TestSkills deletion)",
+      "anima_fund_selected_by_default": "PASS - White background indicates selection",
+      "create_button": "PASS - '+ Create' button opens Create Agent modal",
+      "go_to_dashboard_button": "PASS - Button in top-right navigates to dashboard",
+      "conway_account_connected_state": "PASS - Shows 'Connected' with '$0.00' and key prefix",
+      "conway_click_to_change_hint": "PASS - 'click to change' text visible",
+      "conway_key_edit_toggle": "PASS - Clicking 'Connected' area switches to input mode",
+      "vm_tier_selector": "PASS - Shows all 5 tiers (Small, Medium, Large, X-Large, 2X-Large)"
+    },
+    "dashboard_header": {
+      "genesis_pill_button": "PASS - Rocket icon + 'Genesis' text, navigates to genesis screen",
+      "wallet_pill_button": "PASS - Wallet icon + 'Wallet' text, navigates to wallet page",
+      "live_sse_indicator": "PASS - Wifi icon visible with 'LIVE' or 'POLL' status",
+      "agent_dropdown": "PASS - Shows 'Anima Fund' with green dot (running status)",
+      "agent_dropdown_options": "PASS - Shows agent options and '+ Create New Agent'"
+    },
+    "create_agent_modal": {
+      "opens_from_genesis": "PASS - Modal opens when clicking '+ Create' button",
+      "submit_button_text": "PASS - Button says 'Genesis' (not 'Create')",
+      "redirects_to_genesis": "PASS - After creation, redirects to genesis for provisioning"
+    },
+    "navigation_state_preservation": "PASS - Navigation between genesis and dashboard preserves selected agent state"
+  },
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (status=ok)",
+    "GET /api/credits/key-status - 200 OK (configured=true, valid=true, key_prefix=cnwy_k_HUFTe...)",
+    "POST /api/credits/set-key - Rejects invalid format, rejects invalid Conway keys, accepts valid key",
+    "POST /api/agents/anima-fund/select - 200 OK (success=true, active_agent=anima-fund)",
+    "POST /api/agents/nonexistent/select - 404 Not Found",
+    "GET /api/agents - 200 OK (returns array with anima-fund)",
+    "GET /api/credits/balance - 200 OK (credits_cents returned)",
+    "POST /api/credits/verify - 200 OK (verified=true)"
+  ]
+}

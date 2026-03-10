@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, CircleDot, ChevronDown, Plus, Wifi, WifiOff } from 'lucide-react';
+import { Menu, CircleDot, ChevronDown, Plus, Wifi, WifiOff, Rocket, Wallet } from 'lucide-react';
 import { useSSE } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -19,7 +19,7 @@ const pageLabels = {
   wallet: 'Wallet & Logs',
 };
 
-export default function Header({ overview, currentPage, onToggleSidebar, agentList, selectedAgent, onSelectAgent, onCreateAgent }) {
+export default function Header({ overview, currentPage, onToggleSidebar, agentList, selectedAgent, onSelectAgent, onCreateAgent, onGoGenesis, onGoWallet }) {
   const isLive = overview?.live || false;
   const dbExists = overview?.db_exists || false;
   const agentState = overview?.agent_state;
@@ -86,6 +86,20 @@ export default function Header({ overview, currentPage, onToggleSidebar, agentLi
         <h1 className="font-heading text-sm font-medium text-muted-foreground hidden md:block">{pageLabels[currentPage] || 'Dashboard'}</h1>
       </div>
       <div className="flex items-center gap-3 text-xs font-mono">
+        {/* Genesis + Wallet pills */}
+        <button data-testid="header-genesis-btn" onClick={onGoGenesis}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-border hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground"
+          title="Genesis — Agent Provisioning">
+          <Rocket className="w-3 h-3" />
+          <span className="text-[10px] font-semibold hidden sm:inline">Genesis</span>
+        </button>
+        <button data-testid="header-wallet-btn" onClick={onGoWallet}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-border hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground"
+          title="Agent Wallet">
+          <Wallet className="w-3 h-3" />
+          <span className="text-[10px] font-semibold hidden sm:inline">Wallet</span>
+        </button>
+
         <div className="flex items-center gap-1.5" title={sseConnected ? 'Real-time stream connected' : 'Polling (SSE reconnecting...)'}>
           {sseConnected
             ? <Wifi className="w-3 h-3 text-success" data-testid="sse-connected-icon" />

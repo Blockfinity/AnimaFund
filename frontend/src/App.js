@@ -94,8 +94,9 @@ function AppInner() {
 
   // Conway API key input state
   const [conwayKeyInput, setConwayKeyInput] = useState('');
-  const [keyStatus, setKeyStatus] = useState(null); // null | 'checking' | {configured, valid, ...}
+  const [keyStatus, setKeyStatus] = useState(null);
   const [settingKey, setSettingKey] = useState(false);
+  const [editingKey, setEditingKey] = useState(false);
 
   // Check if Conway API key is already configured
   const checkKeyStatus = useCallback(async () => {
@@ -127,6 +128,7 @@ function AppInner() {
         toast.success(data.message);
         setCreditBalance(data.credits_cents);
         setConwayKeyInput('');
+        setEditingKey(false);
         await checkKeyStatus();
         await fetchCreditBalance();
       } else {
@@ -185,13 +187,13 @@ function AppInner() {
   };
 
   const handleAgentCreated = async (agentConfig) => {
-    // Agent created in DB — now go to genesis to provision its VM
+    // Agent record created in DB — switch to it and go to genesis for provisioning
     setPendingAgentConfig(agentConfig);
     await fetchAgents();
     setShowCreateModal(false);
     await handleSelectAgent(agentConfig.agent_id);
     setView('genesis');
-    toast.success(`Agent "${agentConfig.name}" created — now provision its VM`);
+    toast.success(`Agent "${agentConfig.name}" created — provision its VM now`);
   };
 
   // Use a ref for view to avoid re-creating checkStatus when view changes
@@ -372,23 +374,27 @@ function AppInner() {
           </button>
         </div>
 
-        {/* Agent switcher bar */}
-        {agentList.length > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 20px 0' }}>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {agentList.map(a => (
-                <button key={a.agent_id} data-testid={`genesis-agent-switch-${a.agent_id}`}
-                  onClick={() => handleSelectAgent(a.agent_id)}
-                  style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-                    background: a.agent_id === selectedAgent ? '#fff' : '#18181b',
-                    color: a.agent_id === selectedAgent ? '#09090b' : '#a1a1aa',
-                    border: `1px solid ${a.agent_id === selectedAgent ? '#fff' : '#27272a'}` }}>
-                  {a.name}
-                </button>
-              ))}
-            </div>
+        {/* Agent switcher bar — shows all agents + Create button */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 20px 0' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {agentList.map(a => (
+              <button key={a.agent_id} data-testid={`genesis-agent-switch-${a.agent_id}`}
+                onClick={() => handleSelectAgent(a.agent_id)}
+                style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                  background: a.agent_id === selectedAgent ? '#fff' : '#18181b',
+                  color: a.agent_id === selectedAgent ? '#09090b' : '#a1a1aa',
+                  border: `1px solid ${a.agent_id === selectedAgent ? '#fff' : '#27272a'}` }}>
+                {a.name}
+              </button>
+            ))}
+            <button data-testid="genesis-create-agent-btn"
+              onClick={() => setShowCreateModal(true)}
+              style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                background: '#18181b', color: '#FBBF24', border: '1px dashed #FBBF24' }}>
+              + Create
+            </button>
           </div>
-        )}
+        </div>
 
         <div style={{ maxWidth: '580px', margin: '0 auto', padding: '40px 20px' }}>
           {/* Logo */}
@@ -426,9 +432,14 @@ function AppInner() {
               )}
             </div>
 
-            {keyStatus?.configured && keyStatus?.valid ? (
-              <div style={{ padding: '8px 14px', background: '#052e16' }}>
-                <div style={{ fontSize: '11px', color: '#34D399' }}>Connected</div>
+            {keyStatus?.configured && keyStatus?.valid && !editingKey ? (
+              <div style={{ padding: '8px 14px', background: '#052e16', cursor: 'pointer' }}
+                onClick={() => setEditingKey(true)} data-testid="edit-conway-key-btn"
+                title="Click to change API key">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '11px', color: '#34D399' }}>Connected</span>
+                  <span style={{ fontSize: '9px', color: '#166534' }}>click to change</span>
+                </div>
               </div>
             ) : (
               <div style={{ padding: '12px 14px' }}>
@@ -668,6 +679,7 @@ function AppInner() {
             Open Dashboard
           </button>
         </div>
+        {showCreateModal && <CreateAgentModal onClose={() => setShowCreateModal(false)} onCreated={handleAgentCreated} />}
       </div>
     );
   }
@@ -699,7 +711,7 @@ function AppInner() {
       <Toaster position="top-right" richColors />
       <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} fundName={fundName} />
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-200 ${sidebarOpen ? 'ml-60' : 'ml-16'}`}>
-        <Header overview={engineState} currentPage={currentPage} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} agentList={agentList} selectedAgent={selectedAgent} onSelectAgent={handleSelectAgent} onCreateAgent={() => setShowCreateModal(true)} />
+        <Header overview={engineState} currentPage={currentPage} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} agentList={agentList} selectedAgent={selectedAgent} onSelectAgent={handleSelectAgent} onCreateAgent={() => setShowCreateModal(true)} onGoGenesis={() => setView('genesis')} onGoWallet={() => setCurrentPage('wallet')} />
         <main className="flex-1 overflow-y-auto p-6">{renderPage()}</main>
       </div>
       {showCreateModal && <CreateAgentModal onClose={() => setShowCreateModal(false)} onCreated={handleAgentCreated} />}

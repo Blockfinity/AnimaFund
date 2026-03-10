@@ -113,7 +113,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus('Agent created! Redirecting to Anima VM for provisioning...');
+        setStatus('Agent created! Redirecting to Genesis for provisioning...');
         setTimeout(() => onCreated(data.agent), 1000);
       } else {
         setError(data.detail?.[0]?.msg || data.detail || 'Failed to create agent');
@@ -273,7 +273,7 @@ export default function CreateAgentModal({ onClose, onCreated }) {
           <button data-testid="create-agent-submit" onClick={handleCreate}
             disabled={loading || !name.trim() || !prompt.trim() || !tgBotToken.trim() || !tgChatId.trim()}
             className="px-4 py-2 text-sm bg-foreground text-background rounded-md hover:bg-foreground/90 transition-colors disabled:opacity-50">
-            {loading ? 'Creating & Starting...' : 'Create & Start Agent'}
+            {loading ? 'Creating...' : 'Genesis'}
           </button>
         </div>
       </div>
