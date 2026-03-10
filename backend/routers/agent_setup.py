@@ -503,6 +503,149 @@ async def create_web_terminal():
 
 
 # ═══════════════════════════════════════════════════════════
+# 4b. PTY SESSIONS (Interactive pseudo-terminals)
+# ═══════════════════════════════════════════════════════════
+
+class PtyCreateReq(BaseModel):
+    command: str = "bash"
+    cols: int = 120
+    rows: int = 40
+
+
+@router.post("/pty/create")
+async def pty_create(req: PtyCreateReq = PtyCreateReq()):
+    """Create a new PTY session in the sandbox for interactive programs."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox yet. Create one first."}
+
+    result = await _conway_request("POST", f"/v1/sandboxes/{sandbox_id}/pty", {
+        "command": req.command,
+        "cols": req.cols,
+        "rows": req.rows,
+    })
+
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+
+    return {"success": True, "session": result}
+
+
+class PtyWriteReq(BaseModel):
+    session_id: str
+    input: str
+
+
+@router.post("/pty/write")
+async def pty_write(req: PtyWriteReq):
+    """Send input to a PTY session. Use \\n for Enter, \\x03 for Ctrl+C."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+
+    result = await _conway_request("POST", f"/v1/sandboxes/{sandbox_id}/pty/{req.session_id}/write", {
+        "input": req.input,
+    })
+
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+
+    return {"success": True, "result": result}
+
+
+@router.get("/pty/read")
+async def pty_read(session_id: str = Query(...), full: bool = Query(default=False)):
+    """Read output from a PTY session."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+
+    full_param = "true" if full else "false"
+    result = await _conway_request("GET", f"/v1/sandboxes/{sandbox_id}/pty/{session_id}/read?full={full_param}")
+
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+
+    return {"success": True, "output": result.get("output", ""), "state": result.get("state", ""), "session_id": result.get("session_id", session_id)}
+
+
+class PtyResizeReq(BaseModel):
+    session_id: str
+    cols: int
+    rows: int
+
+
+@router.post("/pty/resize")
+async def pty_resize(req: PtyResizeReq):
+    """Resize a PTY session."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+
+    result = await _conway_request("POST", f"/v1/sandboxes/{sandbox_id}/pty/{req.session_id}/resize", {
+        "cols": req.cols,
+        "rows": req.rows,
+    })
+
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+
+    return {"success": True, "result": result}
+
+
+@router.delete("/pty/{session_id}")
+async def pty_close(session_id: str):
+    """Close a PTY session and terminate the process."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+
+    result = await _conway_request("DELETE", f"/v1/sandboxes/{sandbox_id}/pty/{session_id}")
+
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+
+    return {"success": True, "result": result}
+
+
+@router.get("/pty/list")
+async def pty_list():
+    """List all active PTY sessions for the sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+
+    result = await _conway_request("GET", f"/v1/sandboxes/{sandbox_id}/pty")
+
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+
+    return {"success": True, "sessions": result.get("sessions", []), "total": result.get("total", 0)}
+
+
+# ═══════════════════════════════════════════════════════════
+# 4c. GET PORT URL
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/port-url")
+async def get_port_url(port: int = Query(...)):
+    """Get the public URL for a specific port on the sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    short_id = status["sandbox"].get("short_id", "")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+    url = f"https://{port}-{short_id}.life.conway.tech" if short_id else ""
+    return {"success": True, "port": port, "public_url": url}
+
+
+# ═══════════════════════════════════════════════════════════
 # 5. CONWAY COMPUTE (Inference)
 # ═══════════════════════════════════════════════════════════
 
@@ -866,7 +1009,7 @@ async def deploy_agent():
             with open(constitution_src, "r") as f:
                 content = f.read()
             await _sandbox_write_file(sandbox_id, "/root/.anima/constitution.md", content)
-            outputs.append(f"[constitution] pushed")
+            outputs.append("[constitution] pushed")
 
         # 4. Initialize phase-state.json at Phase 0
         phase_state = {
@@ -911,7 +1054,7 @@ async def deploy_agent():
             if val:
                 env_vars[var] = val
 
-        env_exports = " && ".join(f"export {k}='{v}'" for k, v in env_vars.items()) if env_vars else "true"
+        env_exports = " && ".join(f"export {k}='{v}'" for k, v in env_vars.items()) if env_vars else "true"  # noqa: F841
 
         # Create a startup script inside the sandbox
         startup_script = f"""#!/bin/bash

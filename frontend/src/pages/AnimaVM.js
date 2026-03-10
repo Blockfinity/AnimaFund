@@ -434,61 +434,182 @@ function StatusPill({ label, ok }) {
    ═══════════════════════════════════════════════════════════ */
 
 function LiveTerminal({ terminalUrl, onConnect, loading, hasSandbox }) {
+  const [ptySessions, setPtySessions] = useState([]);
+  const [ptyLoading, setPtyLoading] = useState(false);
+  const [activePty, setActivePty] = useState(null);
+  const [ptyOutput, setPtyOutput] = useState('');
+  const [ptyInput, setPtyInput] = useState('');
+  const [ptyCreating, setPtyCreating] = useState(false);
+
+  const fetchPtySessions = async () => {
+    try {
+      const res = await fetch(`${API}/api/provision/pty/list`);
+      const data = await res.json();
+      if (data.success) setPtySessions(data.sessions || []);
+    } catch {}
+  };
+
+  const createPty = async (cmd = 'bash') => {
+    setPtyCreating(true);
+    try {
+      const res = await fetch(`${API}/api/provision/pty/create`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd, cols: 120, rows: 40 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActivePty(data.session);
+        await fetchPtySessions();
+        toast.success(`PTY session created (${cmd})`);
+      } else toast.error(data.error || 'Failed');
+    } catch (e) { toast.error(e.message); }
+    setPtyCreating(false);
+  };
+
+  const readPty = async (sessionId) => {
+    try {
+      const res = await fetch(`${API}/api/provision/pty/read?session_id=${sessionId}&full=true`);
+      const data = await res.json();
+      if (data.success) setPtyOutput(data.output || '');
+    } catch {}
+  };
+
+  const writePty = async () => {
+    if (!activePty || !ptyInput) return;
+    try {
+      await fetch(`${API}/api/provision/pty/write`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: activePty.session_id, input: ptyInput + '\n' }),
+      });
+      setPtyInput('');
+      setTimeout(() => readPty(activePty.session_id), 500);
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const closePty = async (sessionId) => {
+    try {
+      await fetch(`${API}/api/provision/pty/${sessionId}`, { method: 'DELETE' });
+      if (activePty?.session_id === sessionId) { setActivePty(null); setPtyOutput(''); }
+      await fetchPtySessions();
+      toast.success('PTY session closed');
+    } catch (e) { toast.error(e.message); }
+  };
+
+  // Load sessions on mount
+  useEffect(() => { if (hasSandbox) fetchPtySessions(); }, [hasSandbox]);
+
+  // Auto-read active PTY
+  useEffect(() => {
+    if (!activePty) return;
+    readPty(activePty.session_id);
+    const interval = setInterval(() => readPty(activePty.session_id), 3000);
+    return () => clearInterval(interval);
+  }, [activePty]);
+
   if (!hasSandbox) {
     return (
       <div data-testid="terminal-no-sandbox" className="flex flex-col items-center justify-center h-64 text-center bg-white border border-border rounded-sm">
         <Terminal className="w-8 h-8 text-zinc-200 mb-2" />
         <p className="text-sm font-medium text-foreground mb-1">No sandbox provisioned</p>
-        <p className="text-[10px] text-muted-foreground">Create a sandbox first to access the live terminal.</p>
-      </div>
-    );
-  }
-
-  if (!terminalUrl) {
-    return (
-      <div data-testid="terminal-connect" className="flex flex-col items-center justify-center h-64 text-center bg-white border border-border rounded-sm">
-        <Terminal className="w-8 h-8 text-zinc-200 mb-3" />
-        <p className="text-sm font-medium text-foreground mb-1">Live Terminal</p>
-        <p className="text-[10px] text-muted-foreground mb-4">Open an interactive shell session into the agent's sandbox VM.</p>
-        <button
-          data-testid="connect-terminal-btn"
-          onClick={onConnect}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-foreground text-white rounded hover:bg-foreground/90 disabled:opacity-50 transition-colors"
-        >
-          {loading ? <><Loader2 className="w-3 h-3 animate-spin" /> Connecting...</> : <><Terminal className="w-3 h-3" /> Connect</>}
-        </button>
+        <p className="text-[10px] text-muted-foreground">Create a sandbox first to access the terminal.</p>
       </div>
     );
   }
 
   return (
-    <div data-testid="terminal-view" className="bg-white border border-border rounded-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-zinc-950">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-mono text-zinc-300">sandbox shell</span>
+    <div data-testid="terminal-view" className="space-y-3">
+      {/* Web Terminal */}
+      <div className="bg-white border border-border rounded-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-zinc-950">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${terminalUrl ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-500'}`} />
+            <span className="text-[10px] font-mono text-zinc-300">web terminal (30-day sliding session)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {terminalUrl && (
+              <a href={terminalUrl} target="_blank" rel="noopener noreferrer"
+                data-testid="terminal-external-link"
+                className="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors">
+                <ExternalLink className="w-3 h-3" /> Pop out
+              </a>
+            )}
+            <button data-testid={terminalUrl ? 'reconnect-terminal-btn' : 'connect-terminal-btn'} onClick={onConnect} disabled={loading}
+              className="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors disabled:opacity-50">
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {terminalUrl ? 'Reconnect' : 'Connect'}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <a href={terminalUrl} target="_blank" rel="noopener noreferrer"
-            data-testid="terminal-external-link"
-            className="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors">
-            <ExternalLink className="w-3 h-3" /> Open in new tab
-          </a>
-          <button data-testid="reconnect-terminal-btn" onClick={onConnect} disabled={loading}
-            className="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors">
-            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Reconnect
-          </button>
-        </div>
+        {terminalUrl ? (
+          <iframe data-testid="terminal-iframe" src={terminalUrl} title="Sandbox Terminal" className="w-full bg-zinc-950 border-0" style={{ height: '420px' }}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+        ) : (
+          <div className="flex items-center justify-center h-32 bg-zinc-950">
+            <button onClick={onConnect} disabled={loading}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-zinc-200 bg-zinc-800 rounded hover:bg-zinc-700 disabled:opacity-50 transition-colors">
+              {loading ? <><Loader2 className="w-3 h-3 animate-spin" /> Connecting...</> : <><Terminal className="w-3 h-3" /> Open Web Terminal</>}
+            </button>
+          </div>
+        )}
       </div>
-      <iframe
-        data-testid="terminal-iframe"
-        src={terminalUrl}
-        title="Sandbox Terminal"
-        className="w-full bg-zinc-950 border-0"
-        style={{ height: '520px' }}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-      />
+
+      {/* PTY Sessions */}
+      <div className="bg-white border border-border rounded-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-heading font-bold text-foreground uppercase tracking-wider">PTY Sessions</span>
+            <span className="text-[9px] text-muted-foreground">(interactive: REPL, vim, shell)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {['bash', 'python3', 'node'].map(cmd => (
+              <button key={cmd} data-testid={`pty-create-${cmd}`} onClick={() => createPty(cmd)} disabled={ptyCreating}
+                className="text-[9px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50">
+                + {cmd}
+              </button>
+            ))}
+            <button data-testid="pty-refresh" onClick={fetchPtySessions} className="p-0.5 text-muted-foreground hover:text-foreground">
+              <RefreshCw className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
+        {ptySessions.length > 0 && (
+          <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border bg-secondary/30 overflow-x-auto">
+            {ptySessions.map(s => (
+              <div key={s.session_id} className="flex items-center gap-1">
+                <button data-testid={`pty-tab-${s.session_id}`}
+                  onClick={() => setActivePty(s)}
+                  className={`text-[9px] px-2 py-0.5 rounded font-mono transition-colors ${activePty?.session_id === s.session_id ? 'bg-foreground text-white' : 'bg-white border border-border text-muted-foreground hover:text-foreground'}`}>
+                  {s.command} ({s.state || 'running'})
+                </button>
+                <button data-testid={`pty-close-${s.session_id}`} onClick={() => closePty(s.session_id)}
+                  className="text-[9px] text-red-400 hover:text-red-600 p-0.5">x</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activePty ? (
+          <div>
+            <div className="bg-zinc-950 px-4 py-2 max-h-[250px] overflow-y-auto">
+              <pre data-testid="pty-output" className="text-[10px] font-mono text-green-400 whitespace-pre-wrap leading-relaxed">{ptyOutput || '(waiting for output...)'}</pre>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 border-t border-border bg-zinc-950">
+              <span className="text-[9px] font-mono text-zinc-500">$</span>
+              <input data-testid="pty-input" type="text" value={ptyInput} onChange={e => setPtyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && writePty()}
+                className="flex-1 bg-transparent border-0 text-[10px] font-mono text-green-400 placeholder:text-zinc-600 focus:outline-none"
+                placeholder="Type command and press Enter..." />
+              <button data-testid="pty-send" onClick={writePty} disabled={!ptyInput}
+                className="text-[9px] text-zinc-400 hover:text-zinc-200 disabled:opacity-30">Send</button>
+            </div>
+          </div>
+        ) : (
+          <div className="px-4 py-6 text-center text-[10px] text-muted-foreground">
+            {ptySessions.length === 0 ? 'No active PTY sessions. Create one above.' : 'Click a session tab above to interact.'}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
