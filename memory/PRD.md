@@ -7,50 +7,40 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform called "Ani
 - **Backend:** FastAPI + MongoDB + Conway Cloud API integration
 - **Frontend:** React with SSE-driven real-time data
 - **Data Pipeline:** Hybrid (webhook instant push + unified background poller)
-- **SSE:** Single EventSource via React Context (`SSEProvider`) — single source of truth for all real-time UI data
-- **Key Storage:** Conway API key persisted in MongoDB (`platform_config` collection) — survives redeployments
+- **SSE:** Single EventSource via React Context (`SSEProvider`) — single source of truth
+- **Key Storage:** Conway API key stored PER-AGENT (provisioning-status.json + MongoDB agent doc)
 
-## Key Technical Concepts
-1. **Hybrid Real-time Architecture:** Webhook pushes for instant sandbox updates + unified background poller for external data (wallet balance, Conway credits)
-2. **Unified Background Poller:** Single `asyncio` task fetches wallet balance (Base RPC) + Conway credits in parallel every 10s
-3. **Frontend Single Source of Truth:** `SSEProvider` → `useSSE()` / `useSSETrigger()` hooks → all components
-4. **Conway API Key Lifecycle:** User gets key from Conway → pastes in UI → validated against Conway API → persisted to MongoDB → auto-restored on startup/redeploy
+## Per-Agent Data Isolation
+Each agent has its own:
+- `provisioning-status.json` (file-based, fast sync reads)
+- MongoDB document with `conway_api_key` field
+- Sandbox/VM on Conway Cloud
+- When switching agents: the poller, SSE stream, and all Conway API calls automatically scope to that agent's credentials and sandbox
 
-## Agent Lifecycle (4 Phases)
-- Phase 0: Tooling & Testing — verify all core tools
-- Phase 1: Capital Acquisition — earn $5,000
-- Phase 2: Capital Growth — grow to $10,000
-- Phase 3: Business Incubation & Fund — build products, start fund
+## Conway API Key Flow
+1. User deploys platform → goes to Conway (app.conway.tech) → signs up → gets API key
+2. User pastes key in **Conway API Key** panel on genesis screen
+3. Key validated against Conway API
+4. Stored in: active agent's provisioning-status.json + MongoDB agent doc
+5. On redeploy: startup hook restores all agent keys from MongoDB
+6. On agent switch: active key switches automatically
+7. Same key can be shared across agents OR each agent can have a unique key — user's choice
 
-## Conway API Key Flow (FIXED)
-1. User deploys platform
-2. User goes to Conway (app.conway.tech) → signs up → gets API key
-3. User pastes key in **Conway API Key** panel on genesis screen
-4. Key validated against Conway API, stored in MongoDB
-5. On redeploy → startup hook auto-loads key from MongoDB → no re-entry needed
-6. Credits balance auto-updates via SSE stream
-
-## Payment System (Conway x402 Protocol)
-- Purchase: `/api/credits/purchase` → x402 USDC payment on Base chain
-- Verify: `/api/credits/verify` → Force-check balance + audit trail
-- History: `/api/credits/history` → MongoDB audit trail of all purchases
-- Set Key: `/api/credits/set-key` → Validate + persist Conway API key
-- Key Status: `/api/credits/key-status` → Check if key is configured and valid
-- Sandbox creation: Checks for existing VMs first (credit preservation)
+## Key Technical Decisions
+- Conway API key is NOT a global env var — it's per-agent
+- `_get_conway_api_key()` in credits.py, sandbox_poller.py, agent_setup.py all read from the ACTIVE agent's provisioning-status.json
+- Agent select (`/api/agents/{id}/select`) switches both the active agent ID AND the Conway key
+- Sandbox poller reads key dynamically each poll cycle (not at module load)
 
 ## What's Been Implemented
 - [x] Full SSE data pipeline (webhook + poller → SSE → React Context)
 - [x] Complete frontend audit — all 14 pages use consistent SSE-driven data fetching
-- [x] AnimaVM duplicate EventSource eliminated
-- [x] Configuration + AgentSetup migrated to SSE-driven updates
-- [x] Conway API Key input field on genesis screen
-- [x] Key validation against Conway API before storage
-- [x] MongoDB persistence for API key (survives redeployments)
-- [x] Server startup auto-restore from MongoDB
+- [x] Per-agent Conway API key storage (provisioning-status.json + MongoDB)
+- [x] Conway API Key input UI on genesis screen with validation
+- [x] Server startup auto-restore keys from MongoDB for all agents
+- [x] Agent switching loads correct key and scopes data
 - [x] Credit purchase audit trail (MongoDB: credit_purchases, credit_verifications)
-- [x] Credit verification endpoint
 - [x] Deployment readiness (env var fallbacks for all URLs)
-- [x] Sandbox creation with reuse + MongoDB persistence
 - [x] Auto key-sync from sandbox after install-terminal
 
 ## P1: Upcoming
