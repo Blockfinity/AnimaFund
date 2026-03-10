@@ -20,7 +20,28 @@ router = APIRouter(prefix="/api/provision", tags=["provision"])
 CONWAY_API = "https://api.conway.tech"
 CONWAY_INFERENCE = "https://inference.conway.tech"
 CONWAY_DOMAINS_API = "https://api.conway.domains"
-PROV_STATUS_FILE = os.path.join(ANIMA_DIR, "provisioning-status.json")
+
+
+def _get_active_agent_id() -> str:
+    """Read the active agent ID from the persisted file."""
+    try:
+        with open("/tmp/anima_active_agent_id", "r") as f:
+            aid = f.read().strip()
+            if aid:
+                return aid
+    except FileNotFoundError:
+        pass
+    return "anima-fund"
+
+
+def _get_prov_status_file() -> str:
+    """Resolve provisioning-status.json path for the currently active agent."""
+    agent_id = _get_active_agent_id()
+    if agent_id == "anima-fund" or not agent_id:
+        return os.path.join(ANIMA_DIR, "provisioning-status.json")
+    agent_dir = os.path.expanduser(f"~/agents/{agent_id}/.anima")
+    os.makedirs(agent_dir, exist_ok=True)
+    return os.path.join(agent_dir, "provisioning-status.json")
 
 
 def _get_conway_api_key() -> str:
@@ -41,9 +62,10 @@ def _get_conway_api_key() -> str:
 # ═══════════════════════════════════════════════════════════
 
 def _load_prov_status() -> dict:
-    if os.path.exists(PROV_STATUS_FILE):
+    prov_file = _get_prov_status_file()
+    if os.path.exists(prov_file):
         try:
-            with open(PROV_STATUS_FILE) as f:
+            with open(prov_file) as f:
                 return json.load(f)
         except Exception:
             pass
@@ -60,9 +82,11 @@ def _load_prov_status() -> dict:
 
 
 def _save_prov_status(status: dict):
-    os.makedirs(ANIMA_DIR, exist_ok=True)
+    prov_file = _get_prov_status_file()
+    os.makedirs(os.path.dirname(prov_file), exist_ok=True)
     status["last_updated"] = datetime.now(timezone.utc).isoformat()
-    with open(PROV_STATUS_FILE, "w") as f:
+    status["agent_id"] = _get_active_agent_id()
+    with open(prov_file, "w") as f:
         json.dump(status, f, indent=2)
 
 
@@ -148,7 +172,7 @@ async def _sandbox_read_file(sandbox_id: str, file_path: str) -> dict:
 
 @router.get("/status")
 async def get_provision_status():
-    """Full provisioning state."""
+    """Full provisioning state for the currently active agent."""
     status = _load_prov_status()
     credits_cents = 0
     try:
@@ -158,6 +182,7 @@ async def get_provision_status():
         pass
 
     return {
+        "agent_id": _get_active_agent_id(),
         "sandbox": status["sandbox"],
         "tools": status["tools"],
         "ports": status.get("ports", []),
@@ -891,7 +916,8 @@ async def run_code(req: RunCodeReq):
 
 @router.post("/load-skills")
 async def load_skills():
-    """Push skills from automaton source into the sandbox."""
+    """Push skills from automaton source AND agent-selected skills into the sandbox."""
+    from database import get_db
     status = _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
@@ -901,6 +927,7 @@ async def load_skills():
     skill_count = 0
     skill_names = []
 
+    # 1. Push local skills from automaton/skills/
     if os.path.isdir(skills_src):
         await _sandbox_exec(sandbox_id, "mkdir -p ~/.anima/skills")
         for skill_name in os.listdir(skills_src):
@@ -912,12 +939,40 @@ async def load_skills():
                 skill_count += 1
                 skill_names.append(skill_name)
 
-    status["skills_loaded"] = True
-    status["tools"]["skills"] = {"installed": True, "count": skill_count, "names": skill_names, "timestamp": datetime.now(timezone.utc).isoformat()}
-    _save_prov_status(status)
-    _add_nudge(f"Your creator loaded {skill_count} skills into your sandbox: {', '.join(skill_names[:10])}{'...' if len(skill_names) > 10 else ''}. Explore them in ~/.anima/skills/")
+    # 2. Load agent-selected priority skills from DB and write install manifest
+    agent_id = _get_active_agent_id()
+    selected_skills = []
+    try:
+        col = get_db()["agents"]
+        import asyncio
+        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0, "selected_skills": 1})
+        if agent and agent.get("selected_skills"):
+            selected_skills = agent["selected_skills"]
+            # Write priority-skills manifest inside sandbox so the agent knows what to install
+            manifest = "# Priority Skills — Install these FIRST\n\n"
+            for s in selected_skills:
+                manifest += f"- {s}\n"
+            manifest += "\nRun: clawhub search \"[skill-name]\" && clawhub install [skill-name]\n"
+            await _sandbox_write_file(sandbox_id, "/root/.anima/priority-skills.md", manifest)
+    except Exception:
+        pass
 
-    return {"success": True, "skill_count": skill_count, "skills": skill_names}
+    status["skills_loaded"] = True
+    status["tools"]["skills"] = {
+        "installed": True,
+        "count": skill_count,
+        "names": skill_names,
+        "priority_skills": selected_skills,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_prov_status(status)
+    msg = f"Your creator loaded {skill_count} skills into your sandbox: {', '.join(skill_names[:10])}{'...' if len(skill_names) > 10 else ''}."
+    if selected_skills:
+        msg += f" Priority skills to install from ClawHub: {', '.join(selected_skills[:5])}."
+    msg += " Explore them in ~/.anima/skills/"
+    _add_nudge(msg)
+
+    return {"success": True, "skill_count": skill_count, "skills": skill_names, "priority_skills": selected_skills}
 
 
 # ═══════════════════════════════════════════════════════════

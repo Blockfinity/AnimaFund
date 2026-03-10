@@ -113,13 +113,8 @@ export default function CreateAgentModal({ onClose, onCreated }) {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus('Starting engine...');
-        const startRes = await fetch(`${API}/api/agents/${data.agent.agent_id}/start`, { method: 'POST' });
-        const startData = await startRes.json();
-        if (startData.success) {
-          setStatus('Engine started! Agent is now autonomous.');
-        }
-        setTimeout(() => onCreated(data.agent), 1500);
+        setStatus('Agent created! Redirecting to Anima VM for provisioning...');
+        setTimeout(() => onCreated(data.agent), 1000);
       } else {
         setError(data.detail?.[0]?.msg || data.detail || 'Failed to create agent');
       }

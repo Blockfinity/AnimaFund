@@ -79,9 +79,10 @@ function AppInner() {
     // Re-fetch the full agent list from backend to ensure consistency
     await fetchAgents();
     setShowCreateModal(false);
-    toast.success(`Agent "${agent.name}" created`);
-    // Auto-select the new agent
+    toast.success(`Agent "${agent.name}" created — provision it in Anima VM`);
+    // Auto-select the new agent and navigate to AnimaVM for provisioning
     await handleSelectAgent(agent.agent_id);
+    setCurrentPage('animavm');
   };
 
   // Use a ref for view to avoid re-creating checkStatus when view changes

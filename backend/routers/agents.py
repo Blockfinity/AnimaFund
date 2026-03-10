@@ -306,6 +306,7 @@ async def create_agent(req: CreateAgentRequest):
         "data_dir": anima_dir,
         "welcome_message": welcome,
         "goals": req.goals,
+        "selected_skills": req.selected_skills,
         "creator_sol_wallet": req.creator_sol_wallet,
         "creator_eth_wallet": req.creator_eth_wallet,
         "revenue_share_percent": req.revenue_share_percent,
