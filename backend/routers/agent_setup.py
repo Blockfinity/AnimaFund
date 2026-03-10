@@ -201,9 +201,9 @@ async def get_provision_status():
 
 class CreateSandboxReq(BaseModel):
     name: str = "anima-agent"
-    vcpu: int = 2
-    memory_mb: int = 4096
-    disk_gb: int = 40
+    vcpu: int = 1
+    memory_mb: int = 512
+    disk_gb: int = 5
     region: str = "us-east"
 
 

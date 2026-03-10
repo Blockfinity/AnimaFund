@@ -27,7 +27,7 @@ const API = process.env.REACT_APP_BACKEND_URL;
 
 /* ─── Provisioning Steps (used on genesis screen) ─── */
 const PROVISION_STEPS = [
-  { id: 'sandbox', label: 'Create Sandbox', desc: 'Conway Cloud VM (2 vCPU, 4GB, 40GB)', action: '/api/provision/create-sandbox', icon: Server },
+  { id: 'sandbox', label: 'Create Sandbox', desc: 'Conway Cloud VM (1 vCPU, 512MB, 5GB) — $5/mo', action: '/api/provision/create-sandbox', icon: Server },
   { id: 'terminal', label: 'Install Terminal', desc: 'Conway Terminal + wallet + API key + all MCPs', action: '/api/provision/install-terminal', icon: Terminal },
   { id: 'openclaw', label: 'Install OpenClaw', desc: 'Autonomous browser + MCP bridge', action: '/api/provision/install-openclaw', icon: Eye },
   { id: 'claudecode', label: 'Install Claude Code', desc: 'Self-modification via MCP', action: '/api/provision/install-claude-code', icon: Cpu },
@@ -59,7 +59,7 @@ function AppInner() {
   const [creditBalance, setCreditBalance] = useState(null);
   const [creditTiers, setCreditTiers] = useState([]);
   const [vmPricing, setVmPricing] = useState([]);
-  const [selectedTier, setSelectedTier] = useState(25);
+  const [selectedTier, setSelectedTier] = useState(5);
   const [purchaseData, setPurchaseData] = useState(null);
   const [fundingLoading, setFundingLoading] = useState(false);
   const [balancePolling, setBalancePolling] = useState(false);
@@ -258,13 +258,13 @@ function AppInner() {
 
   const canRunStep = (step) => {
     if (step.id === 'sandbox') {
-      // Need at least 2500 cents ($25) for X-Large VM
-      return creditBalance !== null && creditBalance >= 2500;
+      // Need at least 500 cents ($5) for Small VM
+      return creditBalance !== null && creditBalance >= 500;
     }
     return hasSandbox;
   };
 
-  const hasEnoughCredits = creditBalance !== null && creditBalance >= 2500;
+  const hasEnoughCredits = creditBalance !== null && creditBalance >= 500;
 
   const allProvDone = PROVISION_STEPS.every(s => isStepDone(s.id));
   const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
@@ -349,7 +349,7 @@ function AppInner() {
           {/* Info box */}
           <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', padding: '14px', marginBottom: '16px', fontSize: '11px', color: '#a1a1aa', lineHeight: 1.7 }}>
             <p style={{ margin: '0 0 6px' }}>Provision a sandboxed VM and deploy the founder AI — a sovereign agent that builds and operates a VC fund from scratch.</p>
-            <div style={{ fontSize: '10px', color: '#FFB347' }}>The agent generates its own wallet, provisions tools, and begins operating autonomously.</div>
+            <div style={{ fontSize: '10px', color: '#EF4444' }}>Seed funding: $5 VM + $5 credits = $10 total. The agent must earn $5,000 to survive or it dies.</div>
             <div style={{ fontSize: '10px', color: '#60EE79', marginTop: '3px' }}>50% of all profit (fees, carry, revenue) to creator. $10K threshold to launch fund.</div>
           </div>
 
@@ -375,8 +375,8 @@ function AppInner() {
             {!hasEnoughCredits && (
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a', background: '#1c1917' }}>
                 <div style={{ fontSize: '11px', color: '#FBBF24', lineHeight: 1.6 }}>
-                  <strong>Fund your account</strong> to create a sandbox VM. The X-Large VM (2 vCPU, 4GB, 40GB) costs <strong>$25/mo</strong>.
-                  {creditBalance !== null && creditBalance > 0 && <span> You have ${(creditBalance / 100).toFixed(2)} — need ${((2500 - creditBalance) / 100).toFixed(2)} more.</span>}
+                  <strong>Fund your account</strong> to create a sandbox VM. The Small VM (1 vCPU, 512MB, 5GB) costs <strong>$5/mo</strong>. The agent must earn to survive.
+                  {creditBalance !== null && creditBalance > 0 && <span> You have ${(creditBalance / 100).toFixed(2)} — need ${((500 - creditBalance) / 100).toFixed(2)} more.</span>}
                 </div>
               </div>
             )}

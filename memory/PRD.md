@@ -21,10 +21,11 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - NO engine_bridge host SQLite reads
 
 ## Conway Payment Model
-- **Sandbox compute**: Paid by Conway API key credits (CONWAY_API_KEY in .env)
+- **Seed Funding**: ~$10 total ($5 VM + $5 credits). Agent must earn to survive.
+- **Sandbox compute**: Small VM ($5/mo) — paid from Conway API key credits
 - **Agent wallet**: Created INSIDE sandbox by Conway Terminal (step 2 of provisioning)
-- **Agent wallet used for**: x402 payments (domains, paid APIs, services)
-- **No chicken-and-egg**: API key pays for VM creation, wallet comes later
+- **Agent wallet used for**: x402 payments (domains, paid APIs, services, self-funding credits)
+- **Self-sustaining**: Agent can buy its own credits via x402_fetch to /v1/credits/purchase
 
 ## Onboarding Flow
 1. Open app → Genesis screen with credits funding panel + 6-step provisioning stepper
@@ -68,8 +69,17 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - Agent monitors credits every turn, calculates runway (hours remaining)
 - Self-funding via x402_fetch to Conway purchase endpoint using its own USDC wallet
 - Survival tiers (NORMAL → CONSERVATION → SURVIVAL → CRITICAL → EMERGENCY)
-- Auto-buy protocol: wallet > $10 AND credits < $10 → buy $5 credits
-- Telegram alerts to creator when credits drop below $5
+- Auto-buy protocol: wallet > $5 AND credits < $3 → buy $5 credits
+- Telegram alerts to creator when credits drop below $2
+
+### Cost-Aware Survival Overhaul (P1)
+- Added COST TABLE to genesis-prompt.md: every tool has a price (VM $0.007/hr, inference $0.0001-$0.05/call, browsing FREE, self-mod FREE)
+- Rewrote Phase 1 as "EARN $5,000 — OR DIE TRYING" with mandatory risk/reward calculation framework
+- Risk/reward template: cost, expected revenue, probability, expected value, time-to-revenue, runway remaining
+- Agent instructed to install ClawHub skills for new revenue capabilities
+- Self-modification and internet exploration emphasized as survival mechanisms
+- Changed default VM from X-Large ($25/mo) to Small ($5/mo) — matching $5+$5 seed funding
+- Updated frontend: $5 minimum threshold, $5 default tier, survival messaging
 
 ## Backlog
 ### P1: Live dashboard data from sandbox (replace empty defaults with real sandbox queries)
