@@ -20,7 +20,7 @@ import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
 import {
   Server, Terminal, Eye, Cpu, FileText, Rocket,
   CheckCircle2, Loader2, ChevronDown, Play, RotateCcw, Shield, Zap,
-  Wallet, RefreshCw, ExternalLink, Copy, DollarSign
+  Wallet, RefreshCw, ExternalLink
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -60,9 +60,6 @@ function AppInner() {
   const [creditTiers, setCreditTiers] = useState([]);
   const [vmPricing, setVmPricing] = useState([]);
   const [selectedTier, setSelectedTier] = useState(5);
-  const [purchaseData, setPurchaseData] = useState(null);
-  const [fundingLoading, setFundingLoading] = useState(false);
-  const [balancePolling, setBalancePolling] = useState(false);
 
   // Fetch agent list
   const fetchAgents = useCallback(async () => {
@@ -111,33 +108,11 @@ function AppInner() {
     })();
   }, [fetchCreditBalance]);
 
-  // Poll balance when funding panel is open
+  // Poll balance continuously — catches credits added from Conway dashboard
   useEffect(() => {
-    if (!balancePolling) return;
     const interval = setInterval(fetchCreditBalance, 5000);
     return () => clearInterval(interval);
-  }, [balancePolling, fetchCreditBalance]);
-
-  // Handle purchase — get payment QR from backend
-  const handlePurchase = async () => {
-    setFundingLoading(true);
-    try {
-      const res = await fetch(`${API}/api/credits/purchase`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: selectedTier }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPurchaseData(data);
-        setBalancePolling(true);
-        toast.success('Payment details ready — scan QR to send USDC');
-      } else {
-        toast.error(data.error || 'Failed to get payment details');
-      }
-    } catch (e) { toast.error(e.message); }
-    setFundingLoading(false);
-  };
+  }, [fetchCreditBalance]);
 
   const handleSelectAgent = async (agentId) => {
     try {
@@ -400,95 +375,54 @@ function AppInner() {
               </div>
             )}
 
-            {/* Tier selector + Purchase button */}
+            {/* Tier selector + Buy on Conway */}
             {!hasEnoughCredits && (
               <div style={{ padding: '12px 14px' }}>
-                {/* Tier buttons */}
+                {/* How much to buy */}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  {(creditTiers.length > 0 ? creditTiers : [{ amount: 5 }, { amount: 25 }, { amount: 100 }]).map(t => (
-                    <button key={t.amount} data-testid={`tier-${t.amount}`}
-                      onClick={() => { setSelectedTier(t.amount); setPurchaseData(null); }}
+                  {[5, 25, 100].map(amt => (
+                    <button key={amt} data-testid={`tier-${amt}`}
+                      onClick={() => setSelectedTier(amt)}
                       style={{
-                        padding: '6px 12px', borderRadius: '6px', border: `1px solid ${selectedTier === t.amount ? '#fff' : '#27272a'}`,
-                        background: selectedTier === t.amount ? '#fff' : '#09090b',
-                        color: selectedTier === t.amount ? '#09090b' : '#a1a1aa',
+                        padding: '6px 12px', borderRadius: '6px', border: `1px solid ${selectedTier === amt ? '#fff' : '#27272a'}`,
+                        background: selectedTier === amt ? '#fff' : '#09090b',
+                        color: selectedTier === amt ? '#09090b' : '#a1a1aa',
                         fontSize: '11px', fontWeight: 800, cursor: 'pointer',
                       }}>
-                      ${t.amount}
+                      ${amt}
                     </button>
                   ))}
                 </div>
 
-                {/* Get Payment Details button */}
-                {!purchaseData && (
-                  <button data-testid="get-payment-btn" onClick={handlePurchase} disabled={fundingLoading}
-                    style={{
-                      width: '100%', padding: '10px', borderRadius: '6px', border: 'none',
-                      background: fundingLoading ? '#27272a' : '#FBBF24', color: '#09090b',
-                      fontSize: '12px', fontWeight: 800, cursor: fundingLoading ? 'not-allowed' : 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    }}>
-                    {fundingLoading ? <><Loader2 style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} /> Loading...</> :
-                     <><DollarSign style={{ width: '12px', height: '12px' }} /> Add ${selectedTier} Credits</>}
-                  </button>
-                )}
+                {/* Buy Credits button — opens Conway dashboard */}
+                <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer"
+                  data-testid="buy-credits-btn"
+                  style={{
+                    width: '100%', padding: '10px', borderRadius: '6px', border: 'none',
+                    background: '#FBBF24', color: '#09090b',
+                    fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    textDecoration: 'none',
+                  }}>
+                  <Wallet style={{ width: '12px', height: '12px' }} />
+                  Buy ${selectedTier} Credits on Conway
+                  <ExternalLink style={{ width: '10px', height: '10px' }} />
+                </a>
 
-                {/* Payment QR + Instructions */}
-                {purchaseData && (
-                  <div data-testid="payment-details" style={{ background: '#09090b', borderRadius: '8px', border: '1px solid #27272a', padding: '16px', marginTop: '8px' }}>
-                    <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: 800, color: '#FBBF24', marginBottom: '8px' }}>
-                        Send {purchaseData.amount_usdc} USDC on Base
-                      </div>
-                      <img
-                        src={purchaseData.qr_code}
-                        alt="Payment QR"
-                        style={{ width: '180px', height: '180px', borderRadius: '8px', border: '2px solid #27272a', margin: '0 auto' }}
-                        data-testid="payment-qr"
-                      />
-                    </div>
+                {/* How it works */}
+                <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8, marginTop: '10px', padding: '10px', background: '#09090b', borderRadius: '6px', border: '1px solid #27272a' }}>
+                  <div style={{ fontWeight: 700, color: '#a1a1aa', marginBottom: '4px' }}>How to add credits:</div>
+                  <div>1. Click above to open Conway Cloud</div>
+                  <div>2. Connect your wallet (MetaMask, Coinbase, WalletConnect)</div>
+                  <div>3. Purchase credits with USDC on Base</div>
+                  <div>4. Balance updates here automatically</div>
+                </div>
 
-                    {/* Pay-to address */}
-                    <div style={{ marginBottom: '10px' }}>
-                      <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>PAY TO (USDC on Base)</div>
-                      <div data-testid="pay-to-address"
-                        onClick={() => { navigator.clipboard.writeText(purchaseData.pay_to); toast.success('Address copied'); }}
-                        style={{
-                          background: '#18181b', borderRadius: '6px', padding: '8px 10px',
-                          fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#FBBF24',
-                          wordBreak: 'break-all', border: '1px solid #27272a', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: '6px',
-                        }}>
-                        <span style={{ flex: 1 }}>{purchaseData.pay_to}</span>
-                        <Copy style={{ width: '12px', height: '12px', color: '#71717a', flexShrink: 0 }} />
-                      </div>
-                    </div>
-
-                    {/* Instructions */}
-                    <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8 }}>
-                      {(purchaseData.instructions || []).map((inst, i) => (
-                        <div key={i} style={{ display: 'flex', gap: '6px' }}>
-                          <span style={{ color: '#52525b' }}>{i + 1}.</span>
-                          <span>{inst}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Polling indicator */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px', padding: '8px', background: '#18181b', borderRadius: '6px' }}>
-                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FBBF24', animation: 'pulse 2s infinite' }} />
-                      <span style={{ fontSize: '10px', color: '#a1a1aa' }}>Watching for payment... balance updates every 5s</span>
-                    </div>
-
-                    {/* Link to Conway dashboard */}
-                    <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer"
-                      data-testid="conway-dashboard-link"
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '8px', fontSize: '10px', color: '#71717a', textDecoration: 'none' }}>
-                      <span>Or buy credits at app.conway.tech</span>
-                      <ExternalLink style={{ width: '10px', height: '10px' }} />
-                    </a>
-                  </div>
-                )}
+                {/* Auto-polling indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', padding: '6px 10px', background: '#18181b', borderRadius: '6px' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FBBF24', animation: 'pulse 2s infinite' }} />
+                  <span style={{ fontSize: '10px', color: '#a1a1aa' }}>Watching for credits... balance refreshes every 5s</span>
+                </div>
               </div>
             )}
           </div>
