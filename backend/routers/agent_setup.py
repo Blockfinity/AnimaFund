@@ -387,25 +387,35 @@ async def install_claude_code():
     r1 = await _sandbox_exec(sandbox_id, "npm install -g @anthropic-ai/claude-code 2>&1 | tail -10 || (curl -fsSL https://claude.ai/install.sh | sh 2>&1 | tail -10)")
     outputs.append(f"[install] exit={r1['exit_code']}\n{r1['stdout']}")
 
-    # Read the sandbox's Conway API key
+    # Read the sandbox's Conway API key (created by Conway Terminal setup in step 2)
     r_key = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('apiKey',''))\" 2>/dev/null || echo ''")
     sandbox_api_key = r_key["stdout"].strip()
     if not sandbox_api_key:
         sandbox_api_key = _get_conway_api_key()
 
-    # Add Conway as MCP server in Claude Code
+    # Add Conway as MCP server in Claude Code (per docs: claude mcp add conway conway-terminal -e CONWAY_API_KEY=...)
+    mcp_configured = False
     if sandbox_api_key:
         r2 = await _sandbox_exec(sandbox_id, f"claude mcp add conway conway-terminal -e CONWAY_API_KEY={sandbox_api_key} 2>&1 || echo 'claude mcp add not available'")
         outputs.append(f"[mcp-config] {r2['stdout']}")
+        mcp_configured = r2["exit_code"] == 0
 
+    # Verify Claude Code is installed
     r3 = await _sandbox_exec(sandbox_id, "claude --version 2>&1 || which claude 2>&1 || echo 'not found'")
-    outputs.append(f"[verify] {r3['stdout']}")
+    outputs.append(f"[verify-version] {r3['stdout']}")
+    installed = r3["exit_code"] == 0 or "claude" in r3["stdout"].lower()
 
-    status["tools"]["claude-code"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
-    _save_prov_status(status)
-    _add_nudge("Claude Code installed with Conway MCP. You can now self-modify code, debug, deploy apps, and use Claude's coding capabilities alongside all Conway tools.")
+    # Verify Conway MCP is registered
+    r4 = await _sandbox_exec(sandbox_id, "claude mcp list 2>&1 || echo 'mcp list not available'")
+    outputs.append(f"[verify-mcp] {r4['stdout']}")
 
-    return {"success": True, "output": "\n".join(outputs)}
+    if installed:
+        status["tools"]["claude-code"] = {"installed": True, "mcp_configured": mcp_configured, "timestamp": datetime.now(timezone.utc).isoformat()}
+        _save_prov_status(status)
+        _add_nudge("Claude Code installed with Conway MCP. You can now self-modify code, debug, deploy apps, and use Claude's coding capabilities alongside all Conway tools. Use PTY sessions for interactive work like REPLs and editors.")
+        return {"success": True, "output": "\n".join(outputs)}
+    else:
+        return {"success": False, "error": "Claude Code installation failed", "output": "\n".join(outputs)}
 
 
 # ═══════════════════════════════════════════════════════════
