@@ -61,6 +61,7 @@ export default function AnimaVM({ selectedAgent }) {
   const [execLog, setExecLog] = useState([]);
   const [ocStatus, setOcStatus] = useState(null);
   const [agentLogs, setAgentLogs] = useState(null);
+  const [financials, setFinancials] = useState(null);
   const [monitorTab, setMonitorTab] = useState('live');
   const [terminalUrl, setTerminalUrl] = useState(null);
   const [terminalLoading, setTerminalLoading] = useState(false);
@@ -69,7 +70,7 @@ export default function AnimaVM({ selectedAgent }) {
   /* ─── Data fetching ─────────────────────────────────────── */
   const fetchAll = useCallback(async () => {
     try {
-      const [statusRes, phaseRes, ocStatusRes, actionsRes, sandboxRes, browseRes, execRes] = await Promise.all([
+      const [statusRes, phaseRes, ocStatusRes, actionsRes, sandboxRes, browseRes, execRes, financialsRes] = await Promise.all([
         fetch(`${API}/api/provision/status`),
         fetch(`${API}/api/provision/phase-state`),
         fetch(`${API}/api/openclaw/status`),
@@ -77,6 +78,7 @@ export default function AnimaVM({ selectedAgent }) {
         fetch(`${API}/api/openclaw/sandboxes`),
         fetch(`${API}/api/openclaw/browsing?limit=50`),
         fetch(`${API}/api/openclaw/sandbox-exec-log?limit=50`),
+        fetch(`${API}/api/live/financials`),
       ]);
       if (statusRes.ok) setProvStatus(await statusRes.json());
       if (phaseRes.ok) {
@@ -92,6 +94,7 @@ export default function AnimaVM({ selectedAgent }) {
       if (sandboxRes.ok) setSandboxData(await sandboxRes.json());
       if (browseRes.ok) setSessions((await browseRes.json()).sessions || []);
       if (execRes.ok) setExecLog((await execRes.json()).log || []);
+      if (financialsRes.ok) setFinancials(await financialsRes.json());
     } catch (e) { console.error('AnimaVM fetch:', e); }
     finally { setLoading(false); }
   }, []);
@@ -181,6 +184,7 @@ export default function AnimaVM({ selectedAgent }) {
             {provStatus?.credits_cents > 0 && <span>Credits: <b className="text-foreground">${(provStatus.credits_cents / 100).toFixed(2)}</b></span>}
             <span>VMs: <b className="text-foreground">{sb.live_sandboxes || 0}</b></span>
             <span>Ops: <b className="text-foreground">{sb.total_operations || 0}</b></span>
+            <span>Earned: <b className="text-emerald-600">${financials?.total_earned_usd?.toFixed(2) || '0.00'}</b></span>
             <button data-testid="refresh-all-btn" onClick={fetchAll} className="p-1 rounded border border-border hover:bg-secondary transition-colors">
               <RefreshCw className="w-3 h-3 text-muted-foreground" />
             </button>

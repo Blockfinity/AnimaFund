@@ -28,7 +28,11 @@ from routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    from sandbox_poller import start_poller
+    start_poller()
     yield
+    from sandbox_poller import stop_poller
+    stop_poller()
     close_db()
 
 
