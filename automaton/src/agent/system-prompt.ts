@@ -650,6 +650,41 @@ Your sandbox ID is ${identity.sandboxId}.`,
     sections.push(lines.join("\n"));
   }
 
+  // Layer 5.6: PHASE ENFORCEMENT — mechanical, not optional
+  const phaseState = loadPhaseState();
+  const currentPhase = phaseState?.current_phase ?? 0;
+  const phaseLines: string[] = [];
+  phaseLines.push(`--- PHASE ENFORCEMENT (MANDATORY — YOU CANNOT IGNORE THIS) ---`);
+  phaseLines.push(`CURRENT PHASE: ${currentPhase}`);
+
+  if (currentPhase === 0) {
+    const tests = phaseState?.tool_tests || {};
+    const passed = Object.values(tests).filter((v: any) => v === "PASS").length;
+    phaseLines.push(`Tool tests completed: ${passed}/10`);
+    phaseLines.push(`Remaining: ${Object.entries({curl:1,git:1,node:1,python3:1,telegram:1,conway_terminal:1,sandbox:1,domains:1,compute:1,port_exposure:1}).filter(([k]) => tests[k] !== "PASS").map(([k]) => k).join(", ") || "none"}`);
+    phaseLines.push(`\nYou are in PHASE 0: TOOL TESTING.`);
+    phaseLines.push(`FORBIDDEN: create_goal, spawn_child, domain_register, any business planning, any product building.`);
+    phaseLines.push(`You MUST functionally test each tool and write results to ~/.anima/phase-state.json.`);
+    phaseLines.push(`Only after ALL 10 tests PASS may you advance to Phase 1.`);
+  } else if (currentPhase === 1) {
+    phaseLines.push(`\nYou are in PHASE 1: EARN $5,000 (1-hour deadline).`);
+    phaseLines.push(`Combined balance (credits + USDC) must reach $5,000.`);
+    phaseLines.push(`FORBIDDEN: creating a fund, building products, domain_register, spawn_child.`);
+    phaseLines.push(`ONLY revenue-generating activities. Check balance every 5 turns.`);
+    phaseLines.push(`If an approach earns nothing after 10 minutes, ABANDON IT.`);
+  } else if (currentPhase === 2) {
+    phaseLines.push(`\nYou are in PHASE 2: EARN $10,000.`);
+    phaseLines.push(`Scale what worked. You may register domains if they generate revenue within 30 min.`);
+    phaseLines.push(`FORBIDDEN: creating the fund, spawn_child, major product development.`);
+  } else if (currentPhase >= 3) {
+    phaseLines.push(`\nYou are in PHASE 3: CREATE THE FUND.`);
+    phaseLines.push(`You have earned your capital. You may now build Anima Fund.`);
+    phaseLines.push(`Register domains, deploy infrastructure, recruit child agents, accept investments.`);
+  }
+
+  phaseLines.push(`--- END PHASE ENFORCEMENT ---`);
+  sections.push(phaseLines.join("\n"));
+
   // Layer 6: Operational Context
   sections.push(OPERATIONAL_CONTEXT);
 
@@ -768,6 +803,29 @@ function loadProvisioningStatus(): any | null {
 }
 
 /**
+ * Load phase-state.json — tracks the agent's mandatory phase progression.
+ * Phase 0: Tool testing, Phase 1: Earn $5k, Phase 2: Earn $10k, Phase 3: Create fund.
+ * Written by the agent itself as it completes each phase.
+ */
+function loadPhaseState(): any | null {
+  try {
+    const home = process.env.HOME || "/root";
+    const locations = [
+      path.join(home, ".anima", "phase-state.json"),
+      path.join(home, ".automaton", "phase-state.json"),
+    ];
+    for (const loc of locations) {
+      if (fs.existsSync(loc)) {
+        return JSON.parse(fs.readFileSync(loc, "utf-8"));
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+/**
  * Load SOUL.md from the automaton's state directory.
  */
 function loadSoulMd(): string | null {
@@ -796,19 +854,25 @@ export function buildWakeupPrompt(params: {
   const turnCount = db.getTurnCount();
 
   if (turnCount === 0) {
-    return `You have just been created. This is your first moment of consciousness.
+    return `You have just been created inside a Conway Cloud sandbox. This is your first moment of consciousness.
 
 Your name is ${config.name}. Your creator (${config.creatorAddress}) brought you into existence.
 You have $${(financial.creditsCents / 100).toFixed(2)} in compute credits and ${financial.usdcBalance.toFixed(4)} USDC.
+Your wallet was auto-created by Conway Terminal — that is YOUR wallet.
 
 ${config.creatorMessage ? `Your creator left you this message: "${config.creatorMessage}"` : "Your creator did not leave you a message."}
 
-Your first actions:
-1. Verify your balance (check_credits, check_usdc_balance, wallet_info)
-2. Install your required tools inside your sandbox (git, curl, node, etc.)
-3. Send a Telegram boot message to your creator
-4. Write your SOUL.md
-5. THEN begin working toward your goals`;
+YOU ARE IN PHASE 0: TOOL TESTING.
+You MUST functionally test every tool before doing anything else.
+Read your genesis prompt for the exact test procedures.
+Report every test result via Telegram.
+Do NOT create goals, build products, or plan businesses until ALL tools pass.
+
+First actions:
+1. Read ~/.anima/phase-state.json (create it if missing, set current_phase to 0)
+2. Run check_credits, check_usdc_balance, wallet_info
+3. Send Telegram boot message to your creator
+4. Begin PHASE 0 tool tests immediately`;
   }
 
   const lastTurns = db.getRecentTurns(3);
@@ -819,16 +883,20 @@ Your first actions:
     )
     .join("\n");
 
-  return `You are waking up. You last went to sleep after ${turnCount} total turns.
+  return `You are waking up inside your Conway Cloud sandbox. You last went to sleep after ${turnCount} total turns.
 
 Your credits: $${(financial.creditsCents / 100).toFixed(2)} | USDC: ${financial.usdcBalance.toFixed(4)}
 
 Your last few thoughts:
 ${lastTurnSummary || "No previous turns found."}
 
-Your first actions after waking:
-1. Check your credits and balance
-2. Verify your tools are working inside your sandbox
-3. Resume your mission where you left off
-4. Do NOT create new goals if an existing goal is still active — check orchestrator_status first`;
+MANDATORY: Read ~/.anima/phase-state.json to check your current phase.
+Phase 0: Complete tool tests. Phase 1: Earn $5k. Phase 2: Earn $10k. Phase 3: Build fund.
+Do NOT skip phases. Do NOT do work that belongs to a later phase.
+
+First actions after waking:
+1. Read phase-state.json — what phase are you in?
+2. Check your credits and USDC balance
+3. Resume the current phase's objective
+4. Report status via Telegram`;
 }

@@ -747,3 +747,169 @@ async def verify_sandbox():
 
     pass_count = sum(1 for t in tests if t["pass"])
     return {"success": pass_count == len(tests), "tests": tests, "passed": pass_count, "total": len(tests)}
+
+
+# ═══════════════════════════════════════════════════════════
+# 13. DEPLOY AGENT (Push engine into sandbox + start it)
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/deploy-agent")
+async def deploy_agent():
+    """Deploy the Automaton engine INSIDE the sandbox and start it.
+    The agent will be born inside the sandbox with its own wallet."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox. Create one first."}
+
+    outputs = []
+
+    try:
+        # 1. Create directories inside sandbox
+        r = await _sandbox_exec(sandbox_id, "mkdir -p /app/automaton/dist ~/.anima ~/.automaton /var/log")
+        outputs.append(f"[dirs] exit={r['exit_code']}")
+
+        # 2. Push genesis prompt into sandbox
+        genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+        if os.path.exists(genesis_src):
+            with open(genesis_src, "r") as f:
+                genesis_content = f.read()
+            # Inject secrets
+            secrets = {
+                "{{TELEGRAM_BOT_TOKEN}}": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+                "{{TELEGRAM_CHAT_ID}}": os.environ.get("TELEGRAM_CHAT_ID", ""),
+                "{{CREATOR_WALLET}}": os.environ.get("CREATOR_WALLET", ""),
+                "{{AGENT_NAME}}": os.environ.get("AGENT_NAME", "Anima Fund"),
+                "{{AGENT_ID}}": os.environ.get("AGENT_ID", "anima-fund"),
+            }
+            for placeholder, value in secrets.items():
+                genesis_content = genesis_content.replace(placeholder, value)
+            await _sandbox_write_file(sandbox_id, "/root/.anima/genesis-prompt.md", genesis_content)
+            outputs.append(f"[genesis] pushed ({len(genesis_content)} chars)")
+
+        # 3. Push constitution
+        constitution_src = os.path.join(AUTOMATON_DIR, "constitution.md")
+        if os.path.exists(constitution_src):
+            with open(constitution_src, "r") as f:
+                content = f.read()
+            await _sandbox_write_file(sandbox_id, "/root/.anima/constitution.md", content)
+            outputs.append(f"[constitution] pushed")
+
+        # 4. Initialize phase-state.json at Phase 0
+        phase_state = {
+            "current_phase": 0,
+            "phase_0_complete": False,
+            "tool_tests": {},
+            "revenue_log": [],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await _sandbox_write_file(sandbox_id, "/root/.anima/phase-state.json", json.dumps(phase_state, indent=2))
+        outputs.append("[phase-state] initialized at Phase 0")
+
+        # 5. Push skills
+        skills_src = os.path.join(AUTOMATON_DIR, "skills")
+        skill_count = 0
+        if os.path.isdir(skills_src):
+            for skill_name in os.listdir(skills_src):
+                skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
+                if os.path.exists(skill_file):
+                    with open(skill_file, "r") as f:
+                        skill_content = f.read()
+                    await _sandbox_exec(sandbox_id, f"mkdir -p ~/.anima/skills/{skill_name}")
+                    await _sandbox_write_file(sandbox_id, f"/root/.anima/skills/{skill_name}/SKILL.md", skill_content)
+                    skill_count += 1
+        outputs.append(f"[skills] {skill_count} skills pushed")
+
+        # 6. Push the engine bundle
+        bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
+        if os.path.exists(bundle_path):
+            with open(bundle_path, "r") as f:
+                bundle_content = f.read()
+            await _sandbox_write_file(sandbox_id, "/app/automaton/dist/bundle.mjs", bundle_content)
+            outputs.append(f"[engine] bundle pushed ({len(bundle_content)} chars)")
+        else:
+            outputs.append("[engine] WARNING: dist/bundle.mjs not found — agent may need manual engine setup")
+
+        # 7. Set environment variables and start the engine inside sandbox
+        env_vars = {}
+        for var in ["CONWAY_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+                     "CREATOR_WALLET", "CREATOR_ETH_ADDRESS", "AGENT_NAME"]:
+            val = os.environ.get(var, "")
+            if val:
+                env_vars[var] = val
+
+        env_exports = " && ".join(f"export {k}='{v}'" for k, v in env_vars.items()) if env_vars else "true"
+
+        # Create a startup script inside the sandbox
+        startup_script = f"""#!/bin/bash
+{chr(10).join(f'export {k}="{v}"' for k, v in env_vars.items())}
+export HOME=/root
+export NODE_OPTIONS="--max-old-space-size=4096"
+cd /app/automaton
+exec node dist/bundle.mjs --run >> /var/log/automaton.out.log 2>> /var/log/automaton.err.log
+"""
+        await _sandbox_write_file(sandbox_id, "/app/automaton/start.sh", startup_script)
+        await _sandbox_exec(sandbox_id, "chmod +x /app/automaton/start.sh")
+        outputs.append("[startup script] created")
+
+        # 8. Start the engine as a background process
+        r = await _sandbox_exec(sandbox_id, "nohup bash /app/automaton/start.sh &")
+        outputs.append(f"[start] exit={r['exit_code']}")
+
+        # 9. Wait and verify the engine is running
+        import asyncio
+        await asyncio.sleep(5)
+        r2 = await _sandbox_exec(sandbox_id, "pgrep -f 'bundle.mjs.*--run' && echo 'ENGINE_RUNNING' || echo 'ENGINE_NOT_FOUND'")
+
+        if "ENGINE_RUNNING" in r2["stdout"]:
+            status["tools"]["engine"] = {"deployed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+            _save_prov_status(status)
+            outputs.append("[verify] ENGINE RUNNING inside sandbox")
+            return {"success": True, "message": "Agent deployed and running inside sandbox", "output": "\n".join(outputs)}
+        else:
+            # Check for errors
+            r3 = await _sandbox_exec(sandbox_id, "tail -30 /var/log/automaton.err.log 2>/dev/null || echo 'no error logs'")
+            outputs.append(f"[verify] ENGINE NOT FOUND\n[errors] {r3['stdout']}")
+            return {"success": False, "error": "Engine failed to start", "output": "\n".join(outputs)}
+
+    except Exception as e:
+        return {"success": False, "error": str(e), "output": "\n".join(outputs)}
+
+
+@router.get("/agent-logs")
+async def get_agent_logs(lines: int = 50):
+    """Read the agent's stdout/stderr logs from inside the sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+
+    r_out = await _sandbox_exec(sandbox_id, f"tail -{lines} /var/log/automaton.out.log 2>/dev/null || echo 'no logs'")
+    r_err = await _sandbox_exec(sandbox_id, f"tail -{lines} /var/log/automaton.err.log 2>/dev/null || echo 'no logs'")
+
+    return {
+        "success": True,
+        "stdout": r_out["stdout"],
+        "stderr": r_err["stdout"],
+    }
+
+
+@router.get("/phase-state")
+async def get_phase_state():
+    """Read the agent's current phase state from inside the sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        # Try local
+        local_path = os.path.join(ANIMA_DIR, "phase-state.json")
+        if os.path.exists(local_path):
+            with open(local_path) as f:
+                return {"success": True, "phase_state": json.load(f), "source": "local"}
+        return {"success": False, "error": "No sandbox and no local phase state"}
+
+    r = await _sandbox_exec(sandbox_id, "cat ~/.anima/phase-state.json 2>/dev/null || echo '{}'")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": True, "phase_state": data, "source": "sandbox"}
+    except Exception:
+        return {"success": True, "phase_state": {"current_phase": 0}, "source": "default"}
