@@ -335,11 +335,6 @@ async def delete_agent(agent_id: str):
 
     return {"success": True, "deleted": agent_id}
 
-    result = await col.delete_one({"agent_id": agent_id})
-    if result.deleted_count == 0:
-        raise HTTPException(404, f"Agent '{agent_id}' not found")
-    return {"success": True}
-
 
 class UpdateTelegramRequest(BaseModel):
     telegram_bot_token: str
