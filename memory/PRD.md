@@ -9,62 +9,40 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - **Frontend**: React (port 3000), 13 sidebar pages
 - **Backend**: FastAPI (port 8001)
 - **Database**: MongoDB (anima_fund)
-- **Agent Engine**: Conway Automaton (runs INSIDE sandbox)
+- **Agent Engine**: Conway Automaton (runs INSIDE sandbox only)
 
-## Conway Cloud API Coverage (Verified against docs Feb 2026)
+## Multi-Agent Data Isolation (Fixed Feb 2026)
+- Each agent gets its own provisioning-status.json at `~/agents/{agent_id}/.anima/`
+- Default agent (anima-fund) uses `~/.anima/provisioning-status.json`
+- Active agent tracked via `/tmp/anima_active_agent_id` (persisted across restarts)
+- When switching agents via Header dropdown, all provisioning endpoints automatically serve that agent's data
+- `/api/provision/status` now includes `agent_id` field confirming which agent's data is shown
 
-### Sandboxes (Linux VMs)
-- `POST /v1/sandboxes` — Create sandbox (name, vcpu 1-4, memory_mb 512-8192, disk_gb 1-50, region)
-- `GET /v1/sandboxes/:id` — Get sandbox info
-- `GET /v1/sandboxes` — List all sandboxes
-- `DELETE /v1/sandboxes/:id` — Delete sandbox (204 No Content)
+## Agent Creation Flow (Fixed Feb 2026)
+1. User clicks "Create New Agent" in Header dropdown
+2. CreateAgentModal: name, genesis prompt, goals, Telegram creds, skills, wallets
+3. Frontend verifies Telegram (getMe + sendMessage) before backend call
+4. Backend stores config + selected_skills in MongoDB (no host engine start)
+5. App auto-navigates to AnimaVM page for that agent
+6. User provisions via AnimaVM stepper: Sandbox → Terminal → OpenClaw → Claude Code → Skills → Deploy
+7. Skills step loads both local skills AND agent-selected priority skills from DB
 
-### Command Execution
-- `POST /v1/sandboxes/:id/exec` — Run shell command → {stdout, stderr, exitCode}
-- `POST /v1/sandboxes/:id/code` — Run code block → {result, exitCode}
+## Conway Cloud API Coverage (Verified Feb 2026)
+- Sandboxes: Create, Get, List, Delete
+- Execution: Exec command, Run code
+- Files: Upload, Download, List
+- Web Terminal: Create session (iframe-embeddable)
+- PTY: Create, Write, Read, Resize, Close, List
+- Ports: Expose (with subdomain), Unexpose, Get URL
 
-### Files
-- `POST /v1/sandboxes/:id/files` — Upload file (path + content)
-- `GET /v1/sandboxes/:id/files?path=` — Download file → {content}
-- `GET /v1/sandboxes/:id/files/list?path=` — List files → {files: [...]}
-
-### Web Terminal
-- `POST /v1/sandboxes/:id/terminal-session` — Create session → {terminal_url, token, expires_at}
-- 30-day sliding TTL, treat terminal_url like a password
-
-### PTY Sessions (Interactive Pseudo-Terminals)
-- `POST /v1/sandboxes/:id/pty` — Create PTY (command, cols, rows) → {session_id, state}
-- `POST /v1/sandboxes/:id/pty/:sessionId/write` — Write input (\\n for Enter, \\x03 for Ctrl+C)
-- `GET /v1/sandboxes/:id/pty/:sessionId/read` — Read output (full=true for scrollback)
-- `POST /v1/sandboxes/:id/pty/:sessionId/resize` — Resize (cols, rows)
-- `DELETE /v1/sandboxes/:id/pty/:sessionId` — Close session
-- `GET /v1/sandboxes/:id/pty` — List all active sessions
-
-### Ports
-- `POST /v1/sandboxes/:id/ports?port=N&subdomain=X` — Expose → {port, public_url, custom_url}
-- URL format: `https://{port}-{short_id}.life.conway.tech`
-- Custom subdomains: `https://{subdomain}.life.conway.tech`
-- `DELETE /v1/sandboxes/:id/ports/:port` — Unexpose port
-
-### MCP Tools (via Conway Terminal inside sandbox)
-- **Sandbox**: sandbox_create, sandbox_list, sandbox_exec, sandbox_write_file, sandbox_read_file, sandbox_expose_port, sandbox_delete, sandbox_get_url
-- **PTY**: sandbox_pty_create, sandbox_pty_write, sandbox_pty_read, sandbox_pty_close, sandbox_pty_list
-- **Inference**: chat_completions (GPT, Claude, Gemini, Kimi, Qwen)
-- **Domains**: domain_search, domain_list, domain_info, domain_register, domain_renew, domain_dns_list/add/update/delete, domain_pricing, domain_check, domain_privacy, domain_nameservers
-- **Credits**: credits_balance, credits_history, credits_pricing
-- **x402 Payments**: wallet_info, wallet_networks, x402_discover, x402_check, x402_fetch
-
-### Tool Installation (all inside sandbox VM)
-- Conway Terminal: `curl -fsSL https://conway.tech/terminal.sh | sh` — auto-creates wallet + API key + configures MCPs
-- OpenClaw MCP config: `{"mcpServers": {"conway": {"command": "conway-terminal", "env": {"CONWAY_API_KEY": "..."}}}}`
-- Claude Code MCP: `claude mcp add conway conway-terminal -e CONWAY_API_KEY=...`
+## MCP Tools (42+ tools via Conway Terminal inside sandbox)
+- Sandbox, PTY, Inference, Domains, Credits, x402, OpenClaw, Self-modification
 
 ## UI Architecture
-- Single "Anima VM" page with collapsing stepper + 7 monitor tabs
-- Stepper: Create Sandbox → Install Terminal → Install OpenClaw → Install Claude Code → Load Skills → Deploy Agent
-- Tabs: Live Feed, Terminal (web terminal iframe + PTY sessions), Exec Log, Agent Logs, Browsing, VMs, Message
-- PTY session management: Create bash/python3/node sessions, read/write, tab switching
-- Multi-agent: Header dropdown selector + CreateAgentModal
+- Single "Anima VM" page: collapsing stepper + 7 monitor tabs
+- Tabs: Live Feed, Terminal (web + PTY), Exec Log, Agent Logs, Browsing, VMs, Message
+- Header: Agent selector dropdown + create agent
+- Multi-agent: Full data isolation per agent
 
 ## 4-Phase System
 | Phase | Objective | Restrictions |
@@ -74,20 +52,23 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 | 2 | Earn $10,000 | No fund |
 | 3 | Create the Fund | Full autonomy |
 
-## Testing: 8 iterations, all 100% pass rate (29 backend tests in latest)
+## Testing: 9 iterations, all 100% pass rate
+- Deployment agent: PASS (ready for Kubernetes)
 
 ## Completed Work
 - Security breach remediation
 - Deploy-to-sandbox architecture
 - Comprehensive tooling (Conway Terminal, OpenClaw, Claude Code)
 - Mechanical 4-phase enforcement
-- UI/UX Refactor: merged into single Anima VM page with collapsing stepper
-- Real-time embedded web terminal (iframe)
-- Full PTY API (create/write/read/resize/close/list)
-- Port URL endpoint
-- Full Conway docs audit verification (Feb 2026)
+- UI/UX Refactor: single Anima VM page with collapsing stepper
+- Embedded web terminal + PTY sessions
+- Full Conway docs audit (all 9 pages verified)
+- **Per-agent provisioning isolation (Feb 2026)**
+- **Agent creation no longer starts engine on host**
+- **Skills flow: creation → DB → provisioning stepper**
+- **Deployment verification passed**
 
 ## Backlog
-### P0: Fund Conway credits → full end-to-end provisioning test
+### P0: Fund Conway credits → full end-to-end provisioning test with real sandbox
 ### P1: End-to-end phase progression testing
 ### P2: Smart contracts, Android device control, self-hosted engine
