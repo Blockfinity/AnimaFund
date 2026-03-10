@@ -166,6 +166,7 @@ async def get_provision_status():
         "skills_loaded": status["skills_loaded"],
         "nudges": status["nudges"],
         "credits_cents": credits_cents,
+        "wallet_address": status.get("wallet_address", ""),
         "last_updated": status["last_updated"],
     }
 
@@ -273,7 +274,8 @@ async def delete_sandbox():
 
 @router.post("/install-terminal")
 async def install_terminal():
-    """Install Conway Terminal (MCP server) inside the sandbox."""
+    """Install Conway Terminal using the official one-line setup.
+    This auto-creates the agent's wallet, provisions API key, and configures MCPs."""
     status = _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
@@ -281,48 +283,83 @@ async def install_terminal():
 
     outputs = []
 
-    # System tools if not done
+    # 1. System tools if not done
     if "system" not in status["tools"]:
         r = await _sandbox_exec(sandbox_id, "apt-get update -qq && apt-get install -y -qq curl git wget build-essential jq python3 2>&1 | tail -5")
         outputs.append(f"[system tools] exit={r['exit_code']}")
         if r["exit_code"] == 0:
             status["tools"]["system"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
 
-    # Node.js
+    # 2. Node.js
     r = await _sandbox_exec(sandbox_id, "command -v node || (curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs) 2>&1 | tail -5")
     outputs.append(f"[node] exit={r['exit_code']}")
 
-    # Conway Terminal
-    r = await _sandbox_exec(sandbox_id, "npm install -g conway-terminal 2>&1 | tail -10 && conway-terminal --version")
+    # 3. Conway Terminal via official one-line setup
+    # This: installs conway-terminal, creates wallet, provisions API key, configures MCPs
+    api_key = _get_conway_api_key()
+    if api_key:
+        # Use existing API key
+        r = await _sandbox_exec(sandbox_id, f"npm install -g conway-terminal 2>&1 | tail -5 && mkdir -p ~/.conway && echo '{{\"apiKey\":\"{api_key}\"}}' > ~/.conway/config.json && conway-terminal --version")
+    else:
+        # Use the one-line setup script which auto-bootstraps everything
+        r = await _sandbox_exec(sandbox_id, "curl -fsSL https://conway.tech/terminal.sh | sh 2>&1 | tail -15")
     outputs.append(f"[conway-terminal] exit={r['exit_code']}\n{r['stdout']}")
 
-    if r["exit_code"] == 0:
-        status["tools"]["conway-terminal"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+    # 4. Read the agent's wallet from inside the sandbox
+    r_wallet = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null || echo '{}'")
+    wallet_address = ""
+    try:
+        config_data = json.loads(r_wallet["stdout"])
+        wallet_address = config_data.get("walletAddress", "")
+    except Exception:
+        pass
+
+    # 5. Verify
+    r_ver = await _sandbox_exec(sandbox_id, "conway-terminal --version 2>&1")
+    outputs.append(f"[verify] {r_ver['stdout']}")
+
+    if r_ver["exit_code"] == 0:
+        status["tools"]["conway-terminal"] = {
+            "installed": True,
+            "wallet_address": wallet_address,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        if wallet_address:
+            status["wallet_address"] = wallet_address
         _save_prov_status(status)
-        _add_nudge("Your creator installed conway-terminal in your sandbox. You now have the Conway CLI — manage VMs, run inference, register domains, manage files, and pay with USDC. All via MCP tools.")
-        return {"success": True, "output": "\n".join(outputs)}
+        wallet_msg = f" Wallet: {wallet_address}" if wallet_address else ""
+        _add_nudge(f"Conway Terminal installed in your sandbox.{wallet_msg} You now have ALL Conway MCP tools: sandboxes, compute, domains, payments (x402/USDC), PTY sessions, and self-modification. Your wallet was auto-created — check ~/.conway/config.json.")
+        return {"success": True, "wallet_address": wallet_address, "output": "\n".join(outputs)}
     else:
         return {"success": False, "error": "Install failed", "output": "\n".join(outputs)}
 
 
 @router.post("/install-openclaw")
 async def install_openclaw():
-    """Install OpenClaw (autonomous browser agent) inside the sandbox."""
+    """Install OpenClaw (autonomous browser agent) inside the sandbox.
+    Auto-configures Conway Terminal MCP so OpenClaw has access to all tools."""
     status = _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
 
     outputs = []
+    # Install OpenClaw
     r1 = await _sandbox_exec(sandbox_id, "curl -fsSL https://openclaw.ai/install.sh | bash 2>&1 | tail -10")
     outputs.append(f"[install] exit={r1['exit_code']}\n{r1['stdout']}")
 
+    # Onboard daemon
     r2 = await _sandbox_exec(sandbox_id, "openclaw onboard --install-daemon 2>&1 | tail -5 || true")
     outputs.append(f"[onboard] exit={r2['exit_code']}")
 
-    # Configure MCP to point at conway-terminal
-    api_key = _get_conway_api_key()
-    mcp_config = json.dumps({"mcpServers": {"conway": {"command": "conway-terminal", "env": {"CONWAY_API_KEY": api_key} if api_key else {}}}}, indent=2)
+    # Read the API key from inside the sandbox (created by Conway Terminal setup)
+    r_key = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('apiKey',''))\" 2>/dev/null || echo ''")
+    sandbox_api_key = r_key["stdout"].strip()
+    if not sandbox_api_key:
+        sandbox_api_key = _get_conway_api_key()
+
+    # Configure MCP to point at conway-terminal with the sandbox's own API key
+    mcp_config = json.dumps({"mcpServers": {"conway": {"command": "conway-terminal", "env": {"CONWAY_API_KEY": sandbox_api_key} if sandbox_api_key else {}}}}, indent=2)
     await _sandbox_exec(sandbox_id, f"mkdir -p ~/.openclaw && cat > ~/.openclaw/config.json << 'MCPEOF'\n{mcp_config}\nMCPEOF")
 
     r3 = await _sandbox_exec(sandbox_id, "openclaw --version 2>&1 || echo 'not found'")
@@ -330,7 +367,43 @@ async def install_openclaw():
 
     status["tools"]["openclaw"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
     _save_prov_status(status)
-    _add_nudge("Your creator installed OpenClaw in your sandbox with conway-terminal MCP integration. You can now browse the web, interact with websites, and use all Conway tools autonomously.")
+    _add_nudge("OpenClaw installed with Conway MCP integration. You can now: browse any webpage (browse_page), discover other agents (discover_agents), send messages (send_message), and use ALL Conway tools through OpenClaw's MCP bridge.")
+
+    return {"success": True, "output": "\n".join(outputs)}
+
+
+@router.post("/install-claude-code")
+async def install_claude_code():
+    """Install Claude Code inside the sandbox and configure Conway MCP.
+    Gives the agent self-modification capabilities via Claude Code."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox yet. Create one first."}
+
+    outputs = []
+
+    # Install Claude Code CLI
+    r1 = await _sandbox_exec(sandbox_id, "npm install -g @anthropic-ai/claude-code 2>&1 | tail -10 || (curl -fsSL https://claude.ai/install.sh | sh 2>&1 | tail -10)")
+    outputs.append(f"[install] exit={r1['exit_code']}\n{r1['stdout']}")
+
+    # Read the sandbox's Conway API key
+    r_key = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('apiKey',''))\" 2>/dev/null || echo ''")
+    sandbox_api_key = r_key["stdout"].strip()
+    if not sandbox_api_key:
+        sandbox_api_key = _get_conway_api_key()
+
+    # Add Conway as MCP server in Claude Code
+    if sandbox_api_key:
+        r2 = await _sandbox_exec(sandbox_id, f"claude mcp add conway conway-terminal -e CONWAY_API_KEY={sandbox_api_key} 2>&1 || echo 'claude mcp add not available'")
+        outputs.append(f"[mcp-config] {r2['stdout']}")
+
+    r3 = await _sandbox_exec(sandbox_id, "claude --version 2>&1 || which claude 2>&1 || echo 'not found'")
+    outputs.append(f"[verify] {r3['stdout']}")
+
+    status["tools"]["claude-code"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+    _save_prov_status(status)
+    _add_nudge("Claude Code installed with Conway MCP. You can now self-modify code, debug, deploy apps, and use Claude's coding capabilities alongside all Conway tools.")
 
     return {"success": True, "output": "\n".join(outputs)}
 

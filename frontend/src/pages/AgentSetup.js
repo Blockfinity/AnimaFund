@@ -22,16 +22,17 @@ const SECTIONS = [
     title: 'Infrastructure',
     items: [
       { id: 'sandbox', label: 'Create Sandbox', desc: 'Conway Cloud VM (2 vCPU, 4GB, 40GB)', action: '/api/provision/create-sandbox', icon: Server, needs: null },
-      { id: 'terminal', label: 'Install Terminal', desc: 'Conway CLI + MCP server + system tools + Node.js', action: '/api/provision/install-terminal', icon: Terminal, needs: 'sandbox' },
-      { id: 'openclaw', label: 'Install OpenClaw', desc: 'Autonomous browser agent with MCP integration', action: '/api/provision/install-openclaw', icon: Eye, needs: 'sandbox' },
+      { id: 'terminal', label: 'Install Conway Terminal', desc: 'MCP server + auto-wallet + API key + all tools', action: '/api/provision/install-terminal', icon: Terminal, needs: 'sandbox' },
+      { id: 'openclaw', label: 'Install OpenClaw', desc: 'Autonomous browser + Conway MCP bridge', action: '/api/provision/install-openclaw', icon: Eye, needs: 'sandbox' },
+      { id: 'claudecode', label: 'Install Claude Code', desc: 'Self-modification + coding + Conway MCP', action: '/api/provision/install-claude-code', icon: Cpu, needs: 'sandbox' },
     ],
   },
   {
     title: 'Capabilities',
     items: [
-      { id: 'compute', label: 'Test Compute', desc: 'Verify Conway inference API (GPT, Claude, Gemini, Kimi)', action: '/api/provision/test-compute', icon: Cpu, needs: null },
-      { id: 'expose', label: 'Expose Port', desc: 'Make a sandbox port public with URL', action: null, icon: Globe, needs: 'sandbox', custom: 'expose' },
-      { id: 'webterminal', label: 'Web Terminal', desc: 'Browser terminal access to sandbox', action: '/api/provision/web-terminal', icon: HardDrive, needs: 'sandbox' },
+      { id: 'compute', label: 'Test Compute', desc: 'Conway inference API (GPT, Claude, Gemini, Kimi, Qwen)', action: '/api/provision/test-compute', icon: Cpu, needs: null },
+      { id: 'expose', label: 'Expose Port', desc: 'Public URL for sandbox services', action: null, icon: Globe, needs: 'sandbox', custom: 'expose' },
+      { id: 'webterminal', label: 'Web Terminal', desc: 'Browser access to sandbox shell', action: '/api/provision/web-terminal', icon: HardDrive, needs: 'sandbox' },
     ],
   },
   {
@@ -90,6 +91,7 @@ export default function AgentSetup() {
     if (id === 'sandbox') return hasSandbox;
     if (id === 'terminal') return tools['conway-terminal']?.installed;
     if (id === 'openclaw') return tools['openclaw']?.installed;
+    if (id === 'claudecode') return tools['claude-code']?.installed;
     if (id === 'compute') return status?.compute_verified;
     if (id === 'skills') return status?.skills_loaded;
     if (id === 'expose') return (status?.ports?.length || 0) > 0;
@@ -180,11 +182,13 @@ export default function AgentSetup() {
           <StatusChip label={hasSandbox ? `VM: ${status.sandbox.short_id || status.sandbox.id?.slice(0, 10) || 'active'}` : 'VM: none'} active={hasSandbox} icon={Server} />
           <StatusChip label={`Terminal: ${tools['conway-terminal']?.installed ? 'yes' : 'no'}`} active={tools['conway-terminal']?.installed} icon={Terminal} />
           <StatusChip label={`OpenClaw: ${tools['openclaw']?.installed ? 'yes' : 'no'}`} active={tools['openclaw']?.installed} icon={Eye} />
+          <StatusChip label={`Claude Code: ${tools['claude-code']?.installed ? 'yes' : 'no'}`} active={tools['claude-code']?.installed} icon={Cpu} />
           <StatusChip label={`Compute: ${status.compute_verified ? 'verified' : 'no'}`} active={status.compute_verified} icon={Cpu} />
           <StatusChip label={`Ports: ${status.ports?.length || 0}`} active={(status.ports?.length || 0) > 0} icon={Globe} />
           <StatusChip label={`Skills: ${status.skills_loaded ? 'loaded' : 'no'}`} active={status.skills_loaded} icon={FileText} />
           <StatusChip label={`Engine: ${tools['engine']?.deployed ? 'deployed' : 'no'}`} active={tools['engine']?.deployed} icon={Rocket} />
           <StatusChip label={`Credits: $${(status.credits_cents / 100).toFixed(2)}`} active={status.credits_cents > 0} icon={Wallet} />
+          {status.wallet_address && <StatusChip label={`Wallet: ${status.wallet_address.slice(0,8)}...`} active={true} icon={Wallet} />}
         </div>
       )}
 
@@ -196,7 +200,7 @@ export default function AgentSetup() {
             <span className="text-sm font-bold">{PHASE_LABELS[phaseState.current_phase || 0]?.label || `Phase ${phaseState.current_phase}`}</span>
           </div>
           {phaseState.current_phase === 0 && phaseState.tool_tests && (
-            <span className="text-xs font-mono">{Object.values(phaseState.tool_tests).filter(v => v === 'PASS').length}/10 tools tested</span>
+            <span className="text-xs font-mono">{Object.values(phaseState.tool_tests).filter(v => v === 'PASS').length}/15 tools tested</span>
           )}
         </div>
       )}

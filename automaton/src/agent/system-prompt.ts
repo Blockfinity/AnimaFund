@@ -660,12 +660,13 @@ Your sandbox ID is ${identity.sandboxId}.`,
   if (currentPhase === 0) {
     const tests = phaseState?.tool_tests || {};
     const passed = Object.values(tests).filter((v: any) => v === "PASS").length;
-    phaseLines.push(`Tool tests completed: ${passed}/10`);
-    phaseLines.push(`Remaining: ${Object.entries({curl:1,git:1,node:1,python3:1,telegram:1,conway_terminal:1,sandbox:1,domains:1,compute:1,port_exposure:1}).filter(([k]) => tests[k] !== "PASS").map(([k]) => k).join(", ") || "none"}`);
+    phaseLines.push(`Tool tests completed: ${passed}/15`);
+    const allTools = ["curl","git","node","python3","telegram","wallet","credits","sandbox","domains","compute","openclaw","x402","pty","files","self_modification"];
+    phaseLines.push(`Remaining: ${allTools.filter(k => tests[k] !== "PASS").join(", ") || "none"}`);
     phaseLines.push(`\nYou are in PHASE 0: TOOL TESTING.`);
-    phaseLines.push(`FORBIDDEN: create_goal, spawn_child, domain_register, any business planning, any product building.`);
+    phaseLines.push(`FORBIDDEN: create_goal, spawn_child, domain_register, any business planning, any revenue activity.`);
     phaseLines.push(`You MUST functionally test each tool and write results to ~/.anima/phase-state.json.`);
-    phaseLines.push(`Only after ALL 10 tests PASS may you advance to Phase 1.`);
+    phaseLines.push(`Only after ALL 15 tests PASS may you advance to Phase 1.`);
   } else if (currentPhase === 1) {
     phaseLines.push(`\nYou are in PHASE 1: EARN $5,000 (1-hour deadline).`);
     phaseLines.push(`Combined balance (credits + USDC) must reach $5,000.`);
