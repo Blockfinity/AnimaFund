@@ -1,0 +1,73 @@
+{
+  "summary": "Completed iteration 13 testing for provisioning stepper architectural split. The provisioning stepper has been moved from AnimaVM page to the genesis/onboarding screen. For deployed agents (config_exists=true), app goes directly to dashboard. AnimaVM is now monitoring-only with status bar and 7 tabs. All 17 backend and code review tests passed (100%).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/health", "issue": "Intermittent 502 response (transient, recovered)", "priority": "LOW"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_13_provisioning_split.py",
+    "/app/test_reports/pytest/pytest_iteration13.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "App.js genesis view contains 6-step provisioning stepper (data-testid='provision-stepper') - CORRECT",
+    "AnimaVM.js has NO provisioning stepper - CORRECT (monitoring-only)",
+    "AnimaVM.js has status bar with 5 pills: Sandbox, Terminal, OpenClaw, Claude Code, Engine",
+    "AnimaVM.js has 7 monitor tabs: Live Feed, Terminal, Exec Log, Agent Logs, Browsing, VMs, Message",
+    "Sidebar.js has 'animavm' as first navigation item",
+    "Genesis screen has wallet QR section (data-testid='wallet-qr') that shows when wallet_address exists",
+    "Genesis screen has 'Open Dashboard' button (data-testid='go-to-dashboard-btn')",
+    "For deployed agent (anima-fund), config_exists=true so app skips genesis and shows dashboard directly"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_13_provisioning_split.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (Dashboard loads, AnimaVM page verified, agent dropdown works)"
+  },
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 13 verified the architectural split: provisioning stepper moved from AnimaVM to genesis screen. For already-deployed agents, genesis screen is skipped (config_exists=true), app goes to dashboard. AnimaVM is now monitoring-only. All 17 tests pass. Genesis screen was NOT browser-tested because deployed agent goes directly to dashboard - code review confirmed implementation is correct.",
+  "features_verified": {
+    "backend_endpoints": {
+      "GET /api/health": {"status": "pass", "returns": "status=ok, engine_live, timestamp"},
+      "GET /api/agents": {"status": "pass", "returns": "agents array with agent_id, name"},
+      "GET /api/provision/status": {"status": "pass", "returns": "agent_id, sandbox, tools, skills_loaded"},
+      "POST /api/provision/domain-search": {"status": "pass", "returns": "success=true, results array"},
+      "GET /api/skills/available": {"status": "pass", "returns": "149 skills with name, description, source"},
+      "GET /api/genesis/status": {"status": "pass", "returns": "config_exists, wallet_address, engine_state"}
+    },
+    "frontend_ui": {
+      "deployed_agent_skips_genesis": {"status": "pass", "verified": "dashboard loads directly"},
+      "animavm_no_provision_stepper": {"status": "pass", "verified": "data-testid='provision-stepper' NOT in AnimaVM.js"},
+      "animavm_has_status_bar": {"status": "pass", "pills": ["Sandbox", "Terminal", "OpenClaw", "Claude Code", "Engine"]},
+      "animavm_has_7_tabs": {"status": "pass", "tabs": ["Live Feed", "Terminal", "Exec Log", "Agent Logs", "Browsing", "VMs", "Message"]},
+      "animavm_empty_state": {"status": "pass", "message": "No sandbox activity yet"},
+      "sidebar_animavm_first": {"status": "pass", "position": 0},
+      "agent_dropdown_works": {"status": "pass", "shows": ["Anima Fund", "TestSkills", "Create New Agent"]}
+    },
+    "code_review": {
+      "genesis_has_6_steps": {"status": "pass", "steps": ["Create Sandbox", "Install Terminal", "Install OpenClaw", "Install Claude Code", "Load Skills", "Create Anima"]},
+      "genesis_has_wallet_qr": {"status": "pass", "testid": "wallet-qr"},
+      "genesis_has_dashboard_btn": {"status": "pass", "testid": "go-to-dashboard-btn"}
+    }
+  },
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (status=ok)",
+    "GET /api/agents - 200 OK (2 agents: Anima Fund, TestSkills)",
+    "GET /api/provision/status - 200 OK (agent_id, sandbox, tools)",
+    "POST /api/provision/domain-search - 200 OK (domain results)",
+    "GET /api/skills/available - 200 OK (149 skills)",
+    "GET /api/genesis/status - 200 OK (config_exists=true for deployed agent)"
+  ]
+}

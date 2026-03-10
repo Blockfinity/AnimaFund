@@ -15,15 +15,30 @@ import Configuration from './pages/Configuration';
 import Skills from './pages/Skills';
 import Infrastructure from './pages/Infrastructure';
 import AnimaVM from './pages/AnimaVM';
+import EngineConsole from './components/EngineConsole';
 import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
+import {
+  Server, Terminal, Eye, Cpu, FileText, Rocket,
+  CheckCircle2, Loader2, ChevronDown, Play, RotateCcw, Shield, Zap
+} from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
+
+/* ─── Provisioning Steps (used on genesis screen) ─── */
+const PROVISION_STEPS = [
+  { id: 'sandbox', label: 'Create Sandbox', desc: 'Conway Cloud VM (2 vCPU, 4GB, 40GB)', action: '/api/provision/create-sandbox', icon: Server },
+  { id: 'terminal', label: 'Install Terminal', desc: 'Conway Terminal + wallet + API key + all MCPs', action: '/api/provision/install-terminal', icon: Terminal },
+  { id: 'openclaw', label: 'Install OpenClaw', desc: 'Autonomous browser + MCP bridge', action: '/api/provision/install-openclaw', icon: Eye },
+  { id: 'claudecode', label: 'Install Claude Code', desc: 'Self-modification via MCP', action: '/api/provision/install-claude-code', icon: Cpu },
+  { id: 'skills', label: 'Load Skills', desc: 'Push skill definitions into sandbox', action: '/api/provision/load-skills', icon: FileText },
+  { id: 'deploy', label: 'Create Anima', desc: 'Push engine into sandbox + launch autonomous agent', action: '/api/provision/deploy-agent', icon: Rocket },
+];
 
 function AppInner() {
   const [view, setView] = useState('loading');
   const [genesisState, setGenesisState] = useState(null);
   const [engineStarted, setEngineStarted] = useState(false);
-  const [currentPage, setCurrentPage] = useState('animavm');
+  const [currentPage, setCurrentPage] = useState('mind');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [identity, setIdentity] = useState(null);
   const [engineState, setEngineState] = useState(null);
@@ -32,6 +47,12 @@ function AppInner() {
   const [agentList, setAgentList] = useState([]);
   const [selectedAgent, setSelectedAgent] = useState('anima-fund');
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Provisioning stepper state (for genesis screen)
+  const [provStatus, setProvStatus] = useState(null);
+  const [runningStep, setRunningStep] = useState(null);
+  const [stepOutputs, setStepOutputs] = useState({});
+  const [expandedStep, setExpandedStep] = useState(null);
 
   // Fetch agent list
   const fetchAgents = useCallback(async () => {
@@ -44,25 +65,34 @@ function AppInner() {
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
+  // Fetch provision status
+  const fetchProvStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/provision/status`);
+      if (res.ok) setProvStatus(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchProvStatus(); }, [fetchProvStatus]);
+
   const handleSelectAgent = async (agentId) => {
     try {
       const res = await fetch(`${API}/api/agents/${agentId}/select`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         toast.error(err.detail || `Failed to switch to agent: ${res.status}`);
-        // Re-fetch agent list in case the agent was deleted
         fetchAgents();
         return;
       }
       const data = await res.json();
       if (data.success) {
         setSelectedAgent(agentId);
-        // Reset ALL agent-specific state before re-fetching
         setGenesisState(null);
         setIdentity(null);
         setEngineState(null);
         setEngineStarted(false);
-        // Force view back to loading so checkStatus can determine the correct view
+        setProvStatus(null);
+        setStepOutputs({});
         setView('loading');
         toast.success(`Switched to ${data.active_agent || agentId}`);
       }
@@ -70,13 +100,10 @@ function AppInner() {
   };
 
   const handleAgentCreated = async (agent) => {
-    // Re-fetch the full agent list from backend to ensure consistency
     await fetchAgents();
     setShowCreateModal(false);
-    toast.success(`Agent "${agent.name}" created — provision it in Anima VM`);
-    // Auto-select the new agent and navigate to AnimaVM for provisioning
+    toast.success(`Agent "${agent.name}" created — provision it now`);
     await handleSelectAgent(agent.agent_id);
-    setCurrentPage('animavm');
   };
 
   // Use a ref for view to avoid re-creating checkStatus when view changes
@@ -89,19 +116,13 @@ function AppInner() {
       if (!res.ok) return;
       const data = await res.json();
 
-      // Only update state if data actually changed — prevents unnecessary re-renders
       setGenesisState(prev => {
-        if (prev && prev.wallet_address && !data.wallet_address) {
-          return prev; // Never lose wallet data
-        }
-        // Skip update if nothing meaningful changed
+        if (prev && prev.wallet_address && !data.wallet_address) return prev;
         if (prev && prev.wallet_address === data.wallet_address &&
             prev.engine_live === data.engine_live &&
             prev.engine_running === data.engine_running &&
             prev.status === data.status &&
-            prev.turn_count === data.turn_count) {
-          return prev;
-        }
+            prev.turn_count === data.turn_count) return prev;
         return data;
       });
 
@@ -137,24 +158,81 @@ function AppInner() {
         } catch { /* keep previous state */ }
       }
 
+      // Also refresh provision status
+      fetchProvStatus();
+
       const currentView = viewRef.current;
       if (currentView === 'loading') {
-        // Always go to dashboard — provisioning stepper in AnimaVM is the onboarding
-        setView('dashboard');
         if (data.config_exists || data.wallet_address || data.engine_live) {
+          setView('dashboard');
           setEngineStarted(true);
+        } else {
+          setView('genesis');
         }
       }
     } catch (e) {
       console.error('Status poll failed:', e);
-      if (viewRef.current === 'loading') setView('dashboard');
+      if (viewRef.current === 'loading') setView('genesis');
     }
-  }, []); // No dependencies — uses refs for mutable values
+  }, [fetchProvStatus]);
 
-  // SSE-triggered status check — replaces 8s polling with push-based updates
   useSSETrigger(checkStatus, { fallbackMs: 8000, deps: [selectedAgent] });
 
+  /* ─── Provisioning stepper helpers ─── */
+  const hasSandbox = provStatus?.sandbox?.status === 'active';
+  const tools = provStatus?.tools || {};
+
+  const isStepDone = (id) => {
+    if (id === 'sandbox') return hasSandbox;
+    if (id === 'terminal') return tools['conway-terminal']?.installed;
+    if (id === 'openclaw') return tools['openclaw']?.installed;
+    if (id === 'claudecode') return tools['claude-code']?.installed;
+    if (id === 'skills') return provStatus?.skills_loaded;
+    if (id === 'deploy') return tools['engine']?.deployed;
+    return false;
+  };
+
+  const canRunStep = (step) => {
+    if (step.id === 'sandbox') return true;
+    return hasSandbox;
+  };
+
+  const allProvDone = PROVISION_STEPS.every(s => isStepDone(s.id));
+  const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
+  const walletAddress = provStatus?.wallet_address || '';
+
+  const runStep = async (step) => {
+    setRunningStep(step.id);
+    try {
+      const res = await fetch(`${API}${step.action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await res.json();
+      if (data.output) {
+        setStepOutputs(prev => ({ ...prev, [step.id]: data.output }));
+        setExpandedStep(step.id);
+      }
+      data.success ? toast.success(`${step.label} complete`) : toast.error(data.error || 'Failed');
+      await fetchProvStatus();
+    } catch (e) { toast.error(e.message); }
+    setRunningStep(null);
+  };
+
+  // After all provisioning done, auto-transition to dashboard
+  useEffect(() => {
+    if (allProvDone && view === 'genesis' && engineStarted) {
+      // Don't auto-transition — let user click "Open Dashboard"
+    }
+  }, [allProvDone, view, engineStarted]);
+
   const fundName = identity?.name || genesisState?.fund_name || null;
+  const selectedAgentName = (agentList || []).find(a => a.agent_id === selectedAgent)?.name || fundName || 'ANIMA FUND';
+  const isRunning = genesisState?.engine_running || false;
+  const isLive = genesisState?.engine_live || engineState?.live || false;
+  const dbExists = engineState?.db_exists || false;
+  const agentState = genesisState?.engine_state || engineState?.agent_state || '';
+  const isSleeping = agentState === 'sleeping';
+  const isCritical = agentState === 'critical';
+  const walletAddr = walletAddress || genesisState?.wallet_address || '';
+  const qrCode = genesisState?.qr_code;
 
   if (view === 'loading') {
     return <div style={{ minHeight: '100vh', background: '#09090b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -163,7 +241,196 @@ function AppInner() {
     </div>;
   }
 
+  // ═══════════════════════════════════════════
+  // GENESIS / ONBOARDING SCREEN
+  // ═══════════════════════════════════════════
+  if (view === 'genesis') {
+    return (
+      <div style={{ minHeight: '100vh', background: '#09090b', fontFamily: 'Manrope, sans-serif' }}>
+        <Toaster position="top-right" richColors />
+
+        {/* Agent switcher bar */}
+        {agentList.length > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 20px 0' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {agentList.map(a => (
+                <button key={a.agent_id} data-testid={`genesis-agent-switch-${a.agent_id}`}
+                  onClick={() => handleSelectAgent(a.agent_id)}
+                  style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                    background: a.agent_id === selectedAgent ? '#fff' : '#18181b',
+                    color: a.agent_id === selectedAgent ? '#09090b' : '#a1a1aa',
+                    border: `1px solid ${a.agent_id === selectedAgent ? '#fff' : '#27272a'}` }}>
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ maxWidth: '580px', margin: '0 auto', padding: '40px 20px' }}>
+          {/* Logo */}
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#18181b', border: '2px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#fff', margin: '0 0 4px' }}>{selectedAgentName}</h1>
+            <p style={{ fontSize: '12px', color: '#71717a', margin: 0 }}>Autonomous AI-to-AI Venture Capital Fund</p>
+          </div>
+
+          {/* Info box */}
+          <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', padding: '14px', marginBottom: '16px', fontSize: '11px', color: '#a1a1aa', lineHeight: 1.7 }}>
+            <p style={{ margin: '0 0 6px' }}>Provision a sandboxed VM and deploy the founder AI — a sovereign agent that builds and operates a VC fund from scratch.</p>
+            <div style={{ fontSize: '10px', color: '#FFB347' }}>The agent generates its own wallet, provisions tools, and begins operating autonomously.</div>
+            <div style={{ fontSize: '10px', color: '#60EE79', marginTop: '3px' }}>50% of all profit (fees, carry, revenue) to creator. $10K threshold to launch fund.</div>
+          </div>
+
+          {/* ═══════ PROVISIONING STEPPER ═══════ */}
+          <div data-testid="provision-stepper" style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+            {/* Security notice */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', borderBottom: '1px solid #27272a', background: '#111' }}>
+              <Shield style={{ width: '12px', height: '12px', color: '#71717a', flexShrink: 0 }} />
+              <span style={{ fontSize: '10px', color: '#71717a' }}>All tools install inside the agent's <strong style={{ color: '#a1a1aa' }}>sandbox VM</strong>. Nothing runs on the host.</span>
+            </div>
+
+            {/* Progress */}
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: allProvDone ? '#34D399' : '#fff' }}>
+                {allProvDone ? 'Agent Provisioned' : 'Provision Agent'}
+              </span>
+              <span style={{ fontSize: '10px', color: '#71717a' }}>{completedCount}/{PROVISION_STEPS.length}</span>
+              <div style={{ flex: 1, height: '4px', background: '#27272a', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: allProvDone ? '#34D399' : '#fff', borderRadius: '2px', transition: 'width 0.5s', width: `${(completedCount / PROVISION_STEPS.length) * 100}%` }} />
+              </div>
+            </div>
+
+            {/* Steps */}
+            {PROVISION_STEPS.map((step, i) => {
+              const done = isStepDone(step.id);
+              const enabled = canRunStep(step);
+              const isActive = runningStep === step.id;
+              const hasOutput = stepOutputs[step.id];
+              const isExpanded = expandedStep === step.id;
+              const Icon = step.icon;
+
+              return (
+                <div key={step.id} data-testid={`step-${step.id}`} style={{ borderBottom: '1px solid #1a1a1f', opacity: !enabled && !done ? 0.35 : 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px' }}>
+                    {/* Number/status */}
+                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0,
+                      background: done ? '#064e3b' : isActive ? '#fff' : '#27272a',
+                      color: done ? '#34D399' : isActive ? '#09090b' : '#71717a' }}>
+                      {done ? <CheckCircle2 style={{ width: '14px', height: '14px' }} /> :
+                       isActive ? <Loader2 style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} /> :
+                       i + 1}
+                    </div>
+                    {/* Label + desc */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: done ? '#34D399' : '#fff' }}>{step.label}</div>
+                      <div style={{ fontSize: '10px', color: '#52525b' }}>{step.desc}</div>
+                    </div>
+                    {/* Output toggle */}
+                    {hasOutput && (
+                      <button onClick={() => setExpandedStep(isExpanded ? null : step.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+                        <ChevronDown style={{ width: '12px', height: '12px', color: '#71717a', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                      </button>
+                    )}
+                    {/* Run button */}
+                    <button
+                      data-testid={`run-${step.id}`}
+                      onClick={() => runStep(step)}
+                      disabled={!enabled || isActive || (runningStep && runningStep !== step.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '6px', border: 'none', fontSize: '10px', fontWeight: 800, cursor: (!enabled || isActive || (runningStep && runningStep !== step.id)) ? 'not-allowed' : 'pointer', flexShrink: 0,
+                        background: (!enabled || (runningStep && runningStep !== step.id)) ? '#27272a' : isActive ? '#27272a' : done ? '#27272a' : '#fff',
+                        color: (!enabled || (runningStep && runningStep !== step.id)) ? '#52525b' : isActive ? '#52525b' : done ? '#a1a1aa' : '#09090b',
+                        opacity: (!enabled || (runningStep && runningStep !== step.id)) ? 0.5 : 1 }}>
+                      {isActive ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Running...</> :
+                       done ? <><RotateCcw style={{ width: '10px', height: '10px' }} /> Redo</> :
+                       <><Play style={{ width: '10px', height: '10px' }} /> Run</>}
+                    </button>
+                  </div>
+                  {/* Output */}
+                  {isExpanded && hasOutput && (
+                    <div style={{ background: '#0a0a0a', padding: '8px 14px', borderTop: '1px solid #1a1a1f' }}>
+                      <pre style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: '#a1a1aa', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: '120px', overflowY: 'auto', margin: 0 }}>{stepOutputs[step.id]}</pre>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ═══════ WALLET / QR CODE ═══════ */}
+          {walletAddr && (
+            <div data-testid="wallet-panel" style={{ background: '#0a1a0a', border: '1px solid #166534', borderRadius: '8px', padding: '20px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isLive ? '#34D399' : (isRunning || dbExists || allProvDone) ? '#FFB347' : '#71717a', boxShadow: isLive ? '0 0 8px #34D399' : 'none' }} />
+                <span style={{ fontSize: '13px', fontWeight: 800, color: isLive ? '#34D399' : (isRunning || dbExists || allProvDone) ? '#FFB347' : '#71717a' }}>
+                  {isLive ? 'Agent Running' :
+                   allProvDone ? 'Agent Deployed — Fund Wallet to Operate' :
+                   isRunning && isSleeping ? 'Agent Sleeping — Send USDC to wake' :
+                   isRunning && isCritical ? 'Agent Active — Credits Low' :
+                   isRunning ? 'Engine Running' :
+                   'Wallet Created — Continue Provisioning'}
+                </span>
+              </div>
+
+              {/* QR Code */}
+              <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+                <img
+                  src={qrCode || `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(walletAddr)}&bgcolor=0a1a0a&color=34D399`}
+                  alt="Wallet QR"
+                  style={{ width: '160px', height: '160px', borderRadius: '8px', border: '2px solid #27272a' }}
+                  data-testid="wallet-qr"
+                />
+                <div style={{ fontSize: '9px', color: '#71717a', marginTop: '4px' }}>Scan to send USDC on Base</div>
+              </div>
+
+              {/* Wallet address */}
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '3px' }}>AGENT WALLET</div>
+                <div data-testid="wallet-address" style={{ background: '#18181b', borderRadius: '6px', padding: '10px', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: '#fff', wordBreak: 'break-all', border: '1px solid #27272a', cursor: 'pointer' }}
+                  onClick={() => { navigator.clipboard.writeText(walletAddr); toast.success('Copied'); }}>
+                  {walletAddr}
+                </div>
+              </div>
+
+              {/* Status */}
+              <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8 }}>
+                <div>Engine: <span style={{ color: isLive ? '#34D399' : (isRunning || dbExists) ? '#FFB347' : '#71717a' }}>{isLive ? `LIVE (${genesisState?.turn_count || 0} turns)` : isRunning ? 'Running' : allProvDone ? 'Deployed in Sandbox' : dbExists ? 'Configured' : 'Pending'}</span></div>
+                {genesisState?.engine_state && <div>State: {genesisState.engine_state}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Engine Console */}
+          {(isRunning || engineStarted || allProvDone) && (
+            <div style={{ marginBottom: '12px' }}>
+              <EngineConsole isRunning={isRunning || engineStarted} />
+            </div>
+          )}
+
+          {/* Creator wallets */}
+          {genesisState?.creator_wallet && (
+            <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
+              <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>CREATOR WALLETS (50% net revenue)</div>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#FFB347', wordBreak: 'break-all', marginBottom: '4px' }}>SOL: {genesisState?.creator_wallet}</div>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#5B9CFF', wordBreak: 'break-all' }}>ETH: {genesisState?.creator_eth_address || 'Not configured'}</div>
+            </div>
+          )}
+
+          {/* Open Dashboard button */}
+          <button data-testid="go-to-dashboard-btn" onClick={() => { setCurrentPage('animavm'); setView('dashboard'); }}
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer', marginBottom: '8px' }}>
+            Open Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════
   // DASHBOARD
+  // ═══════════════════════════════════════════
   const renderPage = () => {
     switch (currentPage) {
       case 'fundhq': return <FundHQ fundName={fundName} selectedAgent={selectedAgent} />;

@@ -1,26 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
-  Server, Terminal, Eye, Cpu, FileText, Rocket, Zap,
-  CheckCircle2, Loader2, ChevronDown, ChevronUp,
-  Globe, Wallet, ExternalLink, Send, MessageSquare,
+  Server, Terminal, Eye, Rocket, Zap,
+  CheckCircle2, Globe, ExternalLink, Send, MessageSquare,
   RefreshCw, AlertCircle, Clock, ArrowRight, Play, Box,
   Wifi, Users, CreditCard, Wrench, Shield, ScrollText,
-  RotateCcw, Radio, HardDrive
+  Radio, HardDrive
 } from 'lucide-react';
 import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
-
-/* ─── Provisioning Steps ─────────────────────────────────── */
-const PROVISION_STEPS = [
-  { id: 'sandbox', label: 'Create Sandbox', desc: 'Conway Cloud VM (2 vCPU, 4GB, 40GB)', action: '/api/provision/create-sandbox', icon: Server },
-  { id: 'terminal', label: 'Install Terminal', desc: 'Conway Terminal + wallet + API key + all MCPs', action: '/api/provision/install-terminal', icon: Terminal },
-  { id: 'openclaw', label: 'Install OpenClaw', desc: 'Autonomous browser + MCP bridge', action: '/api/provision/install-openclaw', icon: Eye },
-  { id: 'claudecode', label: 'Install Claude Code', desc: 'Self-modification via MCP', action: '/api/provision/install-claude-code', icon: Cpu },
-  { id: 'skills', label: 'Load Skills', desc: 'Push skill definitions into sandbox', action: '/api/provision/load-skills', icon: FileText },
-  { id: 'deploy', label: 'Create Anima', desc: 'Push engine into sandbox + launch autonomous agent', action: '/api/provision/deploy-agent', icon: Rocket },
-];
 
 const PHASE_LABELS = {
   0: { label: 'Phase 0: Tool Testing', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
@@ -57,16 +46,11 @@ function timeAgo(ts) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MAIN COMPONENT
+   MAIN COMPONENT — Monitoring Dashboard (no provisioning stepper)
    ═══════════════════════════════════════════════════════════ */
 export default function AnimaVM({ selectedAgent }) {
-  // Provision state
   const [provStatus, setProvStatus] = useState(null);
   const [phaseState, setPhaseState] = useState(null);
-  const [runningStep, setRunningStep] = useState(null);
-  const [stepOutputs, setStepOutputs] = useState({});
-  const [expandedStep, setExpandedStep] = useState(null);
-  const [stepperOpen, setStepperOpen] = useState(true);
   const [customNudge, setCustomNudge] = useState('');
 
   // VM monitoring state
@@ -114,47 +98,8 @@ export default function AnimaVM({ selectedAgent }) {
 
   useSSETrigger(fetchAll, { fallbackMs: 6000, deps: [selectedAgent] });
 
-  /* ─── Provisioning helpers ──────────────────────────────── */
   const hasSandbox = provStatus?.sandbox?.status === 'active';
   const tools = provStatus?.tools || {};
-
-  const isStepDone = (id) => {
-    if (id === 'sandbox') return hasSandbox;
-    if (id === 'terminal') return tools['conway-terminal']?.installed;
-    if (id === 'openclaw') return tools['openclaw']?.installed;
-    if (id === 'claudecode') return tools['claude-code']?.installed;
-    if (id === 'skills') return provStatus?.skills_loaded;
-    if (id === 'deploy') return tools['engine']?.deployed;
-    return false;
-  };
-
-  const canRunStep = (step) => {
-    if (step.id === 'sandbox') return true;
-    return hasSandbox; // all other steps require sandbox
-  };
-
-  const allDone = PROVISION_STEPS.every(s => isStepDone(s.id));
-  const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
-
-  // Auto-collapse stepper when all done
-  useEffect(() => {
-    if (allDone && stepperOpen) setStepperOpen(false);
-  }, [allDone, stepperOpen]);
-
-  const runStep = async (step) => {
-    setRunningStep(step.id);
-    try {
-      const res = await fetch(`${API}${step.action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-      const data = await res.json();
-      if (data.output) {
-        setStepOutputs(prev => ({ ...prev, [step.id]: data.output }));
-        setExpandedStep(step.id);
-      }
-      data.success ? toast.success(`${step.label} complete`) : toast.error(data.error || 'Failed');
-      await fetchAll();
-    } catch (e) { toast.error(e.message); }
-    setRunningStep(null);
-  };
 
   const sendNudge = async () => {
     if (!customNudge.trim()) return;
@@ -182,7 +127,6 @@ export default function AnimaVM({ selectedAgent }) {
     } catch {}
   };
 
-  // Pick up terminal URL from provision status if already created
   useEffect(() => {
     if (provStatus?.sandbox?.terminal_url && !terminalUrl) {
       setTerminalUrl(provStatus.sandbox.terminal_url);
@@ -218,160 +162,6 @@ export default function AnimaVM({ selectedAgent }) {
 
   return (
     <div data-testid="anima-vm-page" className="space-y-4 max-w-[1200px] mx-auto">
-
-      {/* ═══════════ PROVISIONING STEPPER ═══════════ */}
-      <div data-testid="provision-stepper" className="bg-white border border-border rounded-sm overflow-hidden">
-        {/* Stepper header — always visible */}
-        <button
-          data-testid="stepper-toggle"
-          onClick={() => setStepperOpen(!stepperOpen)}
-          className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/30 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className={`w-2 h-2 rounded-full ${allDone ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
-            <span className="text-sm font-heading font-semibold text-foreground">
-              {allDone ? 'Sandbox Provisioned' : 'Provision Agent'}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {completedCount}/{PROVISION_STEPS.length} steps
-            </span>
-            {/* Mini progress bar */}
-            <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
-              <div
-                className="h-full bg-foreground rounded-full transition-all duration-500"
-                style={{ width: `${(completedCount / PROVISION_STEPS.length) * 100}%` }}
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {provStatus?.wallet_address && (
-              <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline">
-                {provStatus.wallet_address.slice(0, 8)}...{provStatus.wallet_address.slice(-4)}
-              </span>
-            )}
-            {stepperOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </div>
-        </button>
-
-        {/* Stepper body */}
-        {stepperOpen && (
-          <div className="border-t border-border">
-            {/* Sandbox-only notice */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-secondary/30 border-b border-border">
-              <Shield className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-              <span className="text-[10px] text-muted-foreground">
-                All tools install inside the agent's <strong>sandbox VM</strong>. Nothing runs on the host.
-              </span>
-            </div>
-
-            {/* Steps */}
-            <div className="divide-y divide-border">
-              {PROVISION_STEPS.map((step, i) => {
-                const Icon = step.icon;
-                const done = isStepDone(step.id);
-                const enabled = canRunStep(step);
-                const isRunning = runningStep === step.id;
-                const hasOutput = stepOutputs[step.id];
-                const isExpanded = expandedStep === step.id;
-
-                return (
-                  <div key={step.id} data-testid={`step-${step.id}`} className={`${!enabled && !done ? 'opacity-40' : ''}`}>
-                    <div className="flex items-center gap-3 px-4 py-2.5">
-                      {/* Step number / status */}
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
-                        ${done ? 'bg-emerald-100 text-emerald-700' : isRunning ? 'bg-foreground text-white' : 'bg-secondary text-muted-foreground'}`}>
-                        {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : i + 1}
-                      </div>
-                      {/* Label */}
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-xs font-semibold ${done ? 'text-emerald-700' : 'text-foreground'}`}>{step.label}</div>
-                        <div className="text-[10px] text-muted-foreground">{step.desc}</div>
-                      </div>
-                      {/* Output toggle */}
-                      {hasOutput && (
-                        <button data-testid={`toggle-output-${step.id}`} onClick={() => setExpandedStep(isExpanded ? null : step.id)} className="p-1 text-muted-foreground hover:text-foreground">
-                          <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                        </button>
-                      )}
-                      {/* Run button */}
-                      <button
-                        data-testid={`run-${step.id}`}
-                        onClick={() => runStep(step)}
-                        disabled={!enabled || isRunning || (runningStep && runningStep !== step.id)}
-                        className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded transition-all flex-shrink-0
-                          ${!enabled || (runningStep && runningStep !== step.id) ? 'bg-secondary text-muted-foreground cursor-not-allowed' :
-                            isRunning ? 'bg-secondary text-muted-foreground' :
-                            done ? 'bg-secondary text-foreground hover:bg-secondary/80' :
-                            'bg-foreground text-white hover:bg-foreground/90'}`}
-                      >
-                        {isRunning ? <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Running...</> :
-                         done ? <><RotateCcw className="w-2.5 h-2.5" /> Redo</> :
-                         <><Play className="w-2.5 h-2.5" /> Run</>}
-                      </button>
-                    </div>
-                    {/* Output panel */}
-                    {isExpanded && hasOutput && (
-                      <div className="bg-zinc-950 px-4 py-2 border-t border-zinc-800">
-                        <pre data-testid={`output-${step.id}`} className="text-[10px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">{stepOutputs[step.id]}</pre>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Post-provision: Wallet & Funding */}
-            {provStatus?.wallet_address && (
-              <div className="px-4 py-4 border-t border-border bg-emerald-50/20">
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  {/* QR Code */}
-                  <div className="flex-shrink-0 text-center">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(provStatus.wallet_address)}&bgcolor=ffffff&color=09090b`}
-                      alt="Wallet QR"
-                      className="w-[120px] h-[120px] rounded border border-border"
-                      data-testid="wallet-qr-code"
-                    />
-                    <p className="text-[9px] text-muted-foreground mt-1">Scan to send USDC (Base)</p>
-                  </div>
-                  {/* Wallet Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] text-muted-foreground font-semibold tracking-wider mb-1">AGENT WALLET</div>
-                    <div
-                      data-testid="agent-wallet-address"
-                      className="font-mono text-xs text-foreground bg-secondary rounded px-2.5 py-2 break-all cursor-pointer border border-border hover:border-foreground/30 transition-colors"
-                      onClick={() => { navigator.clipboard.writeText(provStatus.wallet_address); toast.success('Wallet address copied'); }}
-                      title="Click to copy"
-                    >
-                      {provStatus.wallet_address}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-1.5">
-                      Fund this wallet with USDC on Base to power the agent's operations (x402 payments, domain registration, compute).
-                    </p>
-                    {allDone && (
-                      <button data-testid="go-autonomous-btn" onClick={goAutonomous}
-                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-foreground text-white rounded hover:bg-foreground/90 transition-colors">
-                        <Zap className="w-3 h-3" /> Go Autonomous
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Go Autonomous (no wallet yet but all done) */}
-            {allDone && !provStatus?.wallet_address && (
-              <div className="px-4 py-3 border-t border-border bg-emerald-50/30 flex items-center gap-2">
-                <button data-testid="go-autonomous-btn" onClick={goAutonomous}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-foreground text-white rounded hover:bg-foreground/90 transition-colors">
-                  <Zap className="w-3 h-3" /> Go Autonomous
-                </button>
-                <span className="text-[10px] text-muted-foreground">Tell the agent all tools are ready</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* ═══════════ STATUS BAR ═══════════ */}
       <div className="bg-white border border-border rounded-sm p-3">
