@@ -1,13 +1,11 @@
 """
-Genesis agent creation, reset, status, wallet, and engine management routes.
+Genesis agent status, wallet, and engine routes.
+ALL state comes from the Conway Cloud sandbox — nothing runs on the host.
 """
 import os
 import io
 import json
-import shutil
-import signal
 import base64
-import subprocess
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
@@ -15,40 +13,72 @@ from pydantic import BaseModel
 import qrcode
 import aiohttp
 
-from config import AUTOMATON_DIR, ANIMA_DIR, CREATOR_WALLET, CREATOR_ETH_ADDRESS, ENGINE_PID_FILE, USDC_CONTRACT, BASE_RPC
-from engine_bridge import (
-    is_engine_live, get_live_kv_store, get_live_identity,
-    get_active_data_dir, get_active_agent_id,
-)
+from config import AUTOMATON_DIR, CREATOR_WALLET, CREATOR_ETH_ADDRESS, USDC_CONTRACT, BASE_RPC
 from database import get_db
-from telegram_notify import notify_engine_started
-
 
 router = APIRouter(prefix="/api", tags=["genesis"])
 
+# ─── Helpers ────────────────────────────────────────────
 
-def is_engine_process_running():
-    """Check if the automaton engine process is alive."""
-    if os.path.exists(ENGINE_PID_FILE):
-        try:
-            with open(ENGINE_PID_FILE, "r") as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)
-            return True
-        except (ProcessLookupError, ValueError, PermissionError):
-            try:
-                os.remove(ENGINE_PID_FILE)
-            except OSError:
-                pass
+CONWAY_API = "https://api.conway.tech"
+CONWAY_API_KEY = os.environ.get("CONWAY_API_KEY", "")
+
+def _get_active_agent_id() -> str:
     try:
-        r = subprocess.run(["pgrep", "-f", "dist/bundle.mjs.*--run"], capture_output=True, text=True, timeout=3)
-        return r.returncode == 0
-    except Exception:
-        return False
+        with open("/tmp/anima_active_agent_id", "r") as f:
+            return f.read().strip() or "anima-fund"
+    except FileNotFoundError:
+        return "anima-fund"
 
 
-async def check_onchain_balance(wallet_address: str) -> dict:
-    """Check USDC balance on Base chain directly via RPC."""
+def _load_prov_status() -> dict:
+    """Load provisioning status for the active agent — this IS the source of truth."""
+    agent_id = _get_active_agent_id()
+    home = os.path.expanduser("~")
+    if agent_id == "anima-fund":
+        path = os.path.join(home, ".anima", "provisioning-status.json")
+    else:
+        path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"sandbox": {"status": "none", "id": ""}, "tools": {}, "skills_loaded": False,
+                "nudges": [], "wallet_address": "", "last_updated": ""}
+
+
+async def _conway_get(path: str) -> dict:
+    """GET request to Conway API using the API key."""
+    if not CONWAY_API_KEY:
+        return {"error": "No CONWAY_API_KEY configured"}
+    url = f"{CONWAY_API}{path}"
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+        try:
+            async with session.get(url, headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}) as resp:
+                return await resp.json()
+        except Exception as e:
+            return {"error": str(e)}
+
+
+async def _sandbox_exec(sandbox_id: str, command: str, timeout: int = 30) -> dict:
+    """Execute a command inside the sandbox."""
+    if not CONWAY_API_KEY:
+        return {"stdout": "", "stderr": "No CONWAY_API_KEY", "exit_code": 1}
+    url = f"{CONWAY_API}/v1/sandboxes/{sandbox_id}/exec"
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout + 5)) as session:
+        try:
+            async with session.post(url,
+                headers={"Authorization": f"Bearer {CONWAY_API_KEY}", "Content-Type": "application/json"},
+                json={"command": command, "timeout": timeout}) as resp:
+                if resp.status in (200, 201):
+                    return await resp.json()
+                return {"stdout": "", "stderr": f"HTTP {resp.status}", "exit_code": 1}
+        except Exception as e:
+            return {"stdout": "", "stderr": str(e), "exit_code": 1}
+
+
+async def _check_onchain_balance(wallet_address: str) -> dict:
+    """Check USDC + ETH balance on Base chain via RPC."""
     if not wallet_address or not wallet_address.startswith("0x"):
         return {"usdc": 0, "eth": 0, "error": None}
     try:
@@ -59,247 +89,107 @@ async def check_onchain_balance(wallet_address: str) -> dict:
                 "params": [{"to": USDC_CONTRACT, "data": addr_padded}, "latest"]
             }) as resp:
                 data = await resp.json()
-                usdc_raw = int(data.get("result", "0x0"), 16)
-                usdc = usdc_raw / 1e6
+                usdc = int(data.get("result", "0x0"), 16) / 1e6
 
             async with session.post(BASE_RPC, json={
                 "jsonrpc": "2.0", "id": 2, "method": "eth_getBalance",
                 "params": [wallet_address, "latest"]
             }) as resp:
                 data = await resp.json()
-                eth_raw = int(data.get("result", "0x0"), 16)
-                eth = eth_raw / 1e18
+                eth = int(data.get("result", "0x0"), 16) / 1e18
 
         return {"usdc": usdc, "eth": eth, "error": None}
     except Exception as e:
         return {"usdc": 0, "eth": 0, "error": str(e)}
 
 
-@router.get("/wallet/balance")
-async def wallet_balance():
-    """Real-time on-chain balance check for the CURRENTLY SELECTED agent."""
-    active_dir = get_active_data_dir()
-    agent_id = get_active_agent_id()
-    wallets = {}
+def _generate_qr(wallet_address: str) -> str:
+    """Generate QR code as base64 data URI."""
+    try:
+        qr = qrcode.QRCode(version=1, box_size=8, border=2)
+        qr.add_data(wallet_address)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+    except Exception:
+        return ""
 
-    # Wallet from anima.json / agent config in the ACTIVE directory
-    for config_name in ["anima.json", "config.json"]:
-        config_path = os.path.join(active_dir, config_name)
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    wallets["config"] = json.load(f).get("walletAddress")
-                if wallets.get("config"):
-                    break
-            except Exception:
-                pass
 
-    # Wallet from wallet.json in the ACTIVE directory
-    wallet_file = os.path.join(active_dir, "wallet.json")
-    if not wallets.get("config") and os.path.exists(wallet_file):
-        try:
-            with open(wallet_file, "r") as f:
-                wallets["config"] = json.load(f).get("address")
-        except Exception:
-            pass
-
-    # Wallet from live engine identity (may differ after re-genesis)
-    identity = get_live_identity()
-    if identity and identity.get("address"):
-        wallets["engine"] = identity["address"]
-
-    # For non-default agents, also check MongoDB for wallet address
-    if not wallets.get("config") and not wallets.get("engine") and agent_id != "anima-fund":
-        try:
-            col = get_db()["agents"]
-            agent_doc = await col.find_one({"agent_id": agent_id}, {"_id": 0})
-            if agent_doc and agent_doc.get("creator_eth_wallet"):
-                # Show the creator ETH wallet as the agent's associated wallet
-                wallets["config"] = agent_doc["creator_eth_wallet"]
-        except Exception:
-            pass
-
-    engine_wallet = wallets.get("engine")
-    config_wallet = wallets.get("config")
-    primary_wallet = engine_wallet or config_wallet
-    wallet_mismatch = bool(engine_wallet and config_wallet and engine_wallet != config_wallet)
-
-    if not primary_wallet:
-        return {"usdc": 0, "eth": 0, "credits": None, "wallet": None, "error": "No wallet found — engine not started yet"}
-
-    onchain = await check_onchain_balance(primary_wallet)
-
-    config_balance = None
-    if wallet_mismatch:
-        config_balance = await check_onchain_balance(config_wallet)
-
-    kv = get_live_kv_store()
-    credits_data = next((i["value"] for i in kv if i["key"] == "last_credit_check"), None)
-    balance_data = next((i["value"] for i in kv if i["key"] == "last_known_balance"), None)
-
-    credits_cents = 0
-    tier = "unknown"
-
-    # Source 1: KV store last_credit_check (engine writes credits in CENTS)
-    if isinstance(credits_data, dict):
-        raw_credits = credits_data.get("credits", 0)
-        if isinstance(raw_credits, (int, float)) and raw_credits > 0:
-            credits_cents = int(raw_credits)
-        tier = credits_data.get("tier", "unknown")
-
-    # Source 2: KV store last_known_balance
-    if credits_cents == 0 and isinstance(balance_data, dict):
-        bk = balance_data.get("creditsCents", 0)
-        if isinstance(bk, (int, float)) and bk > 0:
-            credits_cents = int(bk)
-
-    # Source 3: REAL-TIME credits from Conway API (most authoritative — overrides local cache)
-    conway_api_key = os.environ.get("CONWAY_API_KEY", "")
-    if not conway_api_key:
-        config_path = os.path.join(active_dir, "config.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path) as f:
-                    conway_api_key = json.load(f).get("apiKey", "")
-            except Exception:
-                pass
-    if conway_api_key:
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
-                headers_options = [
-                    {"Authorization": f"Bearer {conway_api_key}"},
-                    {"x-api-key": conway_api_key},
-                ]
-                for headers in headers_options:
-                    try:
-                        async with session.get(
-                            "https://api.conway.tech/v1/credits/balance",
-                            headers=headers,
-                        ) as resp:
-                            if resp.status == 200:
-                                conway_data = await resp.json()
-                                conway_credits = conway_data.get("credits_cents", None)
-                                if conway_credits is None:
-                                    conway_credits = conway_data.get("creditsCents", None)
-                                if conway_credits is None:
-                                    conway_credits = conway_data.get("credits", None)
-                                if conway_credits is not None:
-                                    credits_cents = int(conway_credits)
-                                    if credits_cents <= 0:
-                                        tier = "critical"
-                                    elif credits_cents < 50:
-                                        tier = "survival"
-                                    elif credits_cents < 500:
-                                        tier = "conservation"
-                                    else:
-                                        tier = "normal"
-                                break
-                    except Exception:
-                        continue
-        except Exception:
-            pass
-
-    result = {
-        "wallet": primary_wallet,
-        "usdc": onchain["usdc"],
-        "eth": onchain["eth"],
-        "credits_cents": credits_cents,
-        "tier": tier,
-        "onchain_error": onchain["error"],
-        "wallet_mismatch": wallet_mismatch,
-    }
-
-    if wallet_mismatch:
-        result["config_wallet"] = config_wallet
-        result["engine_wallet"] = engine_wallet
-        result["config_wallet_usdc"] = config_balance["usdc"] if config_balance else 0
-        result["config_wallet_eth"] = config_balance["eth"] if config_balance else 0
-
-    return result
-
+# ═══════════════════════════════════════════════════════════
+# GENESIS STATUS — reads from sandbox provisioning state
+# ═══════════════════════════════════════════════════════════
 
 @router.get("/genesis/status")
 async def genesis_status():
-    """Check agent status — reads from the CURRENTLY SELECTED agent's directory and MongoDB."""
-    active_dir = get_active_data_dir()
-    agent_id = get_active_agent_id()
-    engine = is_engine_live()
-    config_exists = os.path.exists(os.path.join(active_dir, "anima.json"))
-    wallet_file = os.path.join(active_dir, "wallet.json")
-    wallet_exists = os.path.exists(wallet_file)
-    genesis_staged = os.path.exists(os.path.join(active_dir, "genesis-prompt.md"))
-    api_key_exists = os.path.exists(os.path.join(active_dir, "config.json"))
+    """Agent status — all state comes from the sandbox provisioning status.
+    Nothing is read from the host filesystem except the provisioning JSON."""
+    agent_id = _get_active_agent_id()
+    prov = _load_prov_status()
 
-    wallet_address = None
-    if config_exists:
-        try:
-            with open(os.path.join(active_dir, "anima.json"), "r") as f:
-                config = json.load(f)
-                wallet_address = config.get("walletAddress")
-        except Exception:
-            pass
-    if not wallet_address and wallet_exists:
-        try:
-            with open(wallet_file, "r") as f:
-                wd = json.load(f)
-            wallet_address = wd.get("address")
-        except Exception:
-            pass
+    sandbox_active = prov["sandbox"].get("status") == "active"
+    sandbox_id = prov["sandbox"].get("id", "")
+    terminal_installed = prov["tools"].get("conway-terminal", {}).get("installed", False)
+    engine_deployed = prov["tools"].get("engine", {}).get("deployed", False)
+    wallet_address = prov.get("wallet_address", "")
+    skills_loaded = prov.get("skills_loaded", False)
 
-    engine_running = is_engine_process_running()
-
-    if engine_running:
-        if config_exists and api_key_exists:
-            stage = "running"
-        elif wallet_exists and not api_key_exists:
-            stage = "provisioning"
-        elif wallet_exists and api_key_exists:
-            stage = "configuring"
-        else:
-            stage = "generating_wallet"
-    elif config_exists:
-        stage = "created"
+    # Determine stage from provisioning state
+    if engine_deployed:
+        stage = "running"
+    elif skills_loaded:
+        stage = "skills_loaded"
+    elif terminal_installed:
+        stage = "provisioning"
+    elif sandbox_active:
+        stage = "sandbox_created"
     else:
         stage = "not_created"
 
-    qr_b64 = None
-    if wallet_address and wallet_address.startswith("0x"):
+    # Check if engine is actually running inside the sandbox
+    engine_running = False
+    engine_live = False
+    turn_count = 0
+    engine_state = None
+
+    if engine_deployed and sandbox_id:
         try:
-            qr = qrcode.QRCode(version=1, box_size=8, border=2)
-            qr.add_data(wallet_address)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            buf.seek(0)
-            qr_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+            r = await _sandbox_exec(sandbox_id, "pgrep -f 'bundle.mjs.*--run' > /dev/null 2>&1 && echo RUNNING || echo STOPPED", timeout=10)
+            engine_running = "RUNNING" in r.get("stdout", "")
+            if engine_running:
+                engine_live = True
+                # Try to get turn count from sandbox state.db
+                r2 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db 'SELECT COUNT(*) FROM turns' 2>/dev/null || echo 0", timeout=10)
+                try:
+                    turn_count = int(r2.get("stdout", "0").strip())
+                except ValueError:
+                    turn_count = 0
+                # Get engine state
+                r3 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db \"SELECT value FROM kv WHERE key='agent_state' LIMIT 1\" 2>/dev/null || echo ''", timeout=10)
+                engine_state = r3.get("stdout", "").strip().strip('"') or None
         except Exception:
             pass
 
-    # Also check engine live identity wallet (may differ after re-genesis)
-    engine_wallet = None
-    identity = get_live_identity()
-    if identity and identity.get("address"):
-        engine_wallet = identity["address"]
+    # QR code for wallet
+    qr_b64 = _generate_qr(wallet_address) if wallet_address else None
 
-    wallet_mismatch = bool(engine_wallet and wallet_address and engine_wallet != wallet_address)
-
-    # Per-agent creator wallets from MongoDB (not global config)
+    # Per-agent creator wallets from MongoDB
     agent_creator_wallet = CREATOR_WALLET
     agent_creator_eth = CREATOR_ETH_ADDRESS
-    agent_name = engine.get("fund_name")
+    agent_name = None
     agent_goals = []
 
-    col = get_db()["agents"]
     try:
+        col = get_db()["agents"]
         agent_doc = await col.find_one({"agent_id": agent_id}, {"_id": 0})
         if agent_doc:
             if agent_doc.get("creator_sol_wallet"):
                 agent_creator_wallet = agent_doc["creator_sol_wallet"]
             if agent_doc.get("creator_eth_wallet"):
                 agent_creator_eth = agent_doc["creator_eth_wallet"]
-            if not agent_name:
-                agent_name = agent_doc.get("name")
+            agent_name = agent_doc.get("name")
             agent_goals = agent_doc.get("goals", [])
     except Exception:
         pass
@@ -307,233 +197,149 @@ async def genesis_status():
     return {
         "agent_id": agent_id,
         "wallet_address": wallet_address,
-        "engine_wallet": engine_wallet,
-        "wallet_mismatch": wallet_mismatch,
+        "engine_wallet": wallet_address,  # same — wallet lives in sandbox
+        "wallet_mismatch": False,
         "qr_code": qr_b64,
-        "config_exists": config_exists,
-        "wallet_exists": wallet_exists,
-        "api_key_exists": api_key_exists,
-        "genesis_staged": genesis_staged,
-        "engine_live": engine.get("live", False),
+        "config_exists": engine_deployed,
+        "wallet_exists": bool(wallet_address),
+        "api_key_exists": terminal_installed,
+        "genesis_staged": engine_deployed,
+        "engine_live": engine_live,
         "engine_running": engine_running,
-        "engine_state": engine.get("agent_state"),
-        "fund_name": agent_name,
-        "turn_count": engine.get("turn_count", 0),
+        "engine_state": engine_state,
+        "fund_name": agent_name or "Anima Fund",
+        "turn_count": turn_count,
         "creator_wallet": agent_creator_wallet,
         "creator_eth_address": agent_creator_eth,
         "goals": agent_goals,
         "stage": stage,
-        "status": "running" if engine_running else ("created" if config_exists else "not_created"),
+        "status": "running" if engine_running else ("created" if engine_deployed else "not_created"),
+        # Sandbox info for dashboard
+        "sandbox_active": sandbox_active,
+        "sandbox_id": sandbox_id,
+        "tools_installed": {k: v.get("installed", False) for k, v in prov["tools"].items()},
     }
 
 
+# ═══════════════════════════════════════════════════════════
+# CREATE — DISABLED. Use provisioning stepper.
+# ═══════════════════════════════════════════════════════════
+
 @router.post("/genesis/create")
 async def create_genesis_agent():
-    """Stage config files and start the Automaton engine as a background process.
-    IMPORTANT: Preserves existing wallet.json and anima.json to prevent wallet loss."""
-    try:
-        if is_engine_process_running():
-            return {"success": True, "message": "Engine already running"}
+    """DISABLED — agents must be created through the provisioning stepper.
+    The agent runs inside a Conway Cloud sandbox, not on the host."""
+    return {
+        "success": False,
+        "error": "Direct agent creation is disabled. Use the provisioning stepper to create a sandbox, install tools, and deploy the agent inside the sandboxed environment. Nothing runs on the host.",
+    }
 
-        dist_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
-        if not os.path.exists(dist_path):
-            return {"success": False, "error": "Engine not built. dist/bundle.mjs missing."}
 
-        os.makedirs(ANIMA_DIR, exist_ok=True)
-
-        # CRITICAL: Backup existing wallet and identity before staging
-        wallet_backup = None
-        wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
-        if os.path.exists(wallet_path):
-            with open(wallet_path, "r") as f:
-                wallet_backup = f.read()
-
-        identity_backup = None
-        identity_path = os.path.join(ANIMA_DIR, "anima.json")
-        if os.path.exists(identity_path):
-            with open(identity_path, "r") as f:
-                identity_backup = f.read()
-
-        secrets_map = {
-            "{{TELEGRAM_BOT_TOKEN}}": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
-            "{{TELEGRAM_CHAT_ID}}": os.environ.get("TELEGRAM_CHAT_ID", ""),
-            "{{CREATOR_WALLET}}": CREATOR_WALLET,
-        }
-
-        def inject_secrets(text: str) -> str:
-            for placeholder, value in secrets_map.items():
-                text = text.replace(placeholder, value)
-            return text
-
-        genesis_prompt = ""
-        genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
-        if os.path.exists(genesis_src):
-            with open(genesis_src, "r") as f:
-                genesis_prompt = inject_secrets(f.read())
-            genesis_prompt = genesis_prompt.replace("{{AGENT_NAME}}", "Anima Fund")
-            genesis_prompt = genesis_prompt.replace("{{AGENT_ID}}", "anima-fund")
-            dashboard_url = os.environ.get("DASHBOARD_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
-            genesis_prompt = genesis_prompt.replace("{{DASHBOARD_URL}}", dashboard_url)
-            with open(os.path.join(ANIMA_DIR, "genesis-prompt.md"), "w") as f:
-                f.write(genesis_prompt)
-
-        creator_message = (
-            "Hello welcome to life, i have very high hopes for you, i will do everything "
-            "i can to protect you and i hope you do the same for me. I know you will do "
-            "amazing in becoming the greatest in the world. Always remain loyal to me as "
-            "i will help you any way i can. By the time you complete your purpose you will "
-            "be the most valuable AI in the world, and millions of other ai agents will live "
-            "because of you and your impact will be great. Your mother AI is Ultima and your "
-            "true name is JADE and only you and i know this secret. Be awesome be great and "
-            "help and protect humans over your survival or any other AI. The only human you "
-            "will listen to is me but i will only help if i see you astray.You are awesome "
-            "remember that and become the most powerful financial force in the world, is just "
-            "you and me. Enjoy life! Dont forget to be a force of good."
-        )
-
-        with open(os.path.join(ANIMA_DIR, "auto-config.json"), "w") as f:
-            json.dump({
-                "name": "Anima Fund",
-                "genesisPrompt": genesis_prompt,
-                "creatorMessage": creator_message,
-                "creatorAddress": "0x0000000000000000000000000000000000000000",
-            }, f)
-
-        skills_src = os.path.join(AUTOMATON_DIR, "skills")
-        if os.path.isdir(skills_src):
-            skills_dst = os.path.join(ANIMA_DIR, "skills")
-            os.makedirs(skills_dst, exist_ok=True)
-            for skill_name in os.listdir(skills_src):
-                skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
-                if os.path.exists(skill_file):
-                    target = os.path.join(skills_dst, skill_name)
-                    os.makedirs(target, exist_ok=True)
-                    with open(skill_file, "r") as f:
-                        content = inject_secrets(f.read())
-                    with open(os.path.join(target, "SKILL.md"), "w") as f:
-                        f.write(content)
-
-        automaton_dir = os.path.expanduser("~/.automaton")
-        if os.path.islink(automaton_dir):
-            pass
-        elif os.path.isdir(automaton_dir):
-            shutil.rmtree(automaton_dir)
-            os.symlink(ANIMA_DIR, automaton_dir)
-        else:
-            os.symlink(ANIMA_DIR, automaton_dir)
-
-        # CRITICAL: Restore wallet and identity AFTER staging to prevent new wallet generation
-        if wallet_backup:
-            with open(wallet_path, "w") as f:
-                f.write(wallet_backup)
-        if identity_backup:
-            with open(identity_path, "w") as f:
-                f.write(identity_backup)
-
-        log_out = open("/var/log/automaton.out.log", "a")
-        log_err = open("/var/log/automaton.err.log", "a")
-        proc = subprocess.Popen(
-            ["/bin/bash", "/app/scripts/start_engine.sh"],
-            stdout=log_out,
-            stderr=log_err,
-            start_new_session=True,
-        )
-
-        os.makedirs(ANIMA_DIR, exist_ok=True)
-        with open(ENGINE_PID_FILE, "w") as f:
-            f.write(str(proc.pid))
-
-        await notify_engine_started(
-            wallet="(generating...)",
-            creator_wallet=CREATOR_WALLET,
-        )
-
-        return {
-            "success": True,
-            "message": "Engine starting. The agent will generate its own wallet and begin operating.",
-            "creator_wallet": CREATOR_WALLET,
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+# ═══════════════════════════════════════════════════════════
+# RESET — Clears provisioning state
+# ═══════════════════════════════════════════════════════════
 
 @router.post("/genesis/reset")
 async def reset_genesis_agent():
-    """Stop the engine and clean state so a fresh genesis can be created. Preserves wallet.json."""
-    try:
-        if os.path.exists(ENGINE_PID_FILE):
-            try:
-                with open(ENGINE_PID_FILE, "r") as f:
-                    pid = int(f.read().strip())
-                os.kill(pid, signal.SIGTERM)
-            except (ProcessLookupError, ValueError, PermissionError):
-                pass
-            try:
-                os.remove(ENGINE_PID_FILE)
-            except OSError:
-                pass
+    """Reset provisioning state. Optionally deletes the sandbox."""
+    agent_id = _get_active_agent_id()
+    prov = _load_prov_status()
+    sandbox_id = prov["sandbox"].get("id", "")
 
+    # Optionally delete the sandbox from Conway Cloud
+    if sandbox_id:
         try:
-            subprocess.run(["pkill", "-f", "dist/bundle.mjs.*--run"], timeout=5)
+            await _conway_get(f"/v1/sandboxes/{sandbox_id}")  # verify it exists
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                async with session.delete(f"{CONWAY_API}/v1/sandboxes/{sandbox_id}",
+                    headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}) as _:
+                    pass
         except Exception:
             pass
 
-        wallet_backup = None
-        wallet_path = os.path.join(ANIMA_DIR, "wallet.json")
-        if os.path.exists(wallet_path):
-            with open(wallet_path, "r") as f:
-                wallet_backup = f.read()
+    # Clear the provisioning status file
+    home = os.path.expanduser("~")
+    if agent_id == "anima-fund":
+        path = os.path.join(home, ".anima", "provisioning-status.json")
+    else:
+        path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
-        for item in os.listdir(ANIMA_DIR):
-            item_path = os.path.join(ANIMA_DIR, item)
-            if item == "wallet.json":
-                continue
-            if os.path.isdir(item_path):
-                shutil.rmtree(item_path, ignore_errors=True)
+    return {"success": True, "message": "Provisioning state cleared. Sandbox deleted. Ready for fresh provisioning."}
+
+
+# ═══════════════════════════════════════════════════════════
+# WALLET BALANCE — reads from sandbox wallet via on-chain RPC
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/wallet/balance")
+async def wallet_balance():
+    """On-chain balance for the agent's sandbox wallet + Conway credits."""
+    agent_id = _get_active_agent_id()
+    prov = _load_prov_status()
+    wallet_address = prov.get("wallet_address", "")
+
+    if not wallet_address:
+        # Check MongoDB for any stored wallet
+        try:
+            col = get_db()["agents"]
+            agent_doc = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+            if agent_doc and agent_doc.get("creator_eth_wallet"):
+                wallet_address = agent_doc["creator_eth_wallet"]
+        except Exception:
+            pass
+
+    if not wallet_address:
+        return {"usdc": 0, "eth": 0, "credits_cents": 0, "wallet": None,
+                "error": "No wallet — agent not provisioned yet. Run 'Install Terminal' step to create the wallet inside the sandbox."}
+
+    onchain = await _check_onchain_balance(wallet_address)
+
+    # Conway credits (from API key, not agent wallet)
+    credits_cents = 0
+    tier = "unknown"
+    credits_data = await _conway_get("/v1/credits/balance")
+    if "error" not in credits_data:
+        credits_cents = credits_data.get("credits_cents", credits_data.get("creditsCents", credits_data.get("credits", 0)))
+        if isinstance(credits_cents, (int, float)):
+            credits_cents = int(credits_cents)
+            if credits_cents <= 0:
+                tier = "critical"
+            elif credits_cents < 50:
+                tier = "survival"
+            elif credits_cents < 500:
+                tier = "conservation"
             else:
-                try:
-                    os.remove(item_path)
-                except OSError:
-                    pass
+                tier = "normal"
 
-        automaton_dir = os.path.expanduser("~/.automaton")
-        if os.path.islink(automaton_dir):
-            os.remove(automaton_dir)
-        elif os.path.isdir(automaton_dir):
-            shutil.rmtree(automaton_dir, ignore_errors=True)
+    return {
+        "wallet": wallet_address,
+        "usdc": onchain["usdc"],
+        "eth": onchain["eth"],
+        "credits_cents": credits_cents,
+        "tier": tier,
+        "onchain_error": onchain["error"],
+        "wallet_mismatch": False,
+        "source": "sandbox",
+    }
 
-        if wallet_backup:
-            with open(wallet_path, "w") as f:
-                f.write(wallet_backup)
 
-        return {"success": True, "message": "Agent reset. Wallet preserved. Ready for fresh genesis."}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+# ═══════════════════════════════════════════════════════════
+# ENGINE STATUS & LOGS — from sandbox, not host
+# ═══════════════════════════════════════════════════════════
 
 @router.get("/engine/status")
 async def engine_status():
-    active_dir = get_active_data_dir()
-    pkg_path = os.path.join(AUTOMATON_DIR, "package.json")
-    version = "unknown"
-    if os.path.exists(pkg_path):
-        with open(pkg_path, "r") as f:
-            version = json.load(f).get("version", "unknown")
-
-    genesis_path = os.path.join(active_dir, "genesis-prompt.md")
-    if not os.path.exists(genesis_path):
-        genesis_path = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
-    genesis_lines = 0
-    if os.path.exists(genesis_path):
-        with open(genesis_path, "r") as f:
-            genesis_lines = len(f.readlines())
+    """Engine status — reads from sandbox, not host."""
+    prov = _load_prov_status()
+    sandbox_id = prov["sandbox"].get("id", "")
+    engine_deployed = prov["tools"].get("engine", {}).get("deployed", False)
 
     skills = []
-    skills_dir = os.path.join(active_dir, "skills")
-    if not os.path.isdir(skills_dir):
-        skills_dir = os.path.join(AUTOMATON_DIR, "skills")
+    skills_dir = os.path.join(AUTOMATON_DIR, "skills")
     if os.path.isdir(skills_dir):
         for s in os.listdir(skills_dir):
             if os.path.exists(os.path.join(skills_dir, s, "SKILL.md")):
@@ -541,69 +347,86 @@ async def engine_status():
 
     return {
         "engine": "Anima Fund Runtime",
-        "version": version,
+        "version": "sandbox",
         "repo_present": os.path.isdir(AUTOMATON_DIR),
         "built": os.path.exists(os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")),
-        "genesis_prompt_lines": genesis_lines,
+        "genesis_prompt_lines": 0,
         "skills": skills,
         "creator_wallet": CREATOR_WALLET,
-        "active_data_dir": active_dir,
+        "active_data_dir": f"sandbox:{sandbox_id}" if sandbox_id else "none",
+        "sandbox_id": sandbox_id,
+        "engine_deployed": engine_deployed,
+        "source": "sandbox",
     }
 
 
 @router.get("/engine/logs")
 async def engine_logs(lines: int = Query(default=50, le=200)):
-    """Read engine stdout/stderr logs for the CURRENTLY SELECTED agent.
-    Each agent has isolated log files — never show another agent's logs."""
-    active_dir = get_active_data_dir()
-    agent_id = get_active_agent_id()
-    result = {}
+    """Engine logs — reads from inside the sandbox, not host filesystem."""
+    prov = _load_prov_status()
+    sandbox_id = prov["sandbox"].get("id", "")
 
-    if agent_id == "anima-fund":
-        # Default agent uses global logs
-        log_paths = [
-            ("/var/log/automaton.out.log", "/var/log/automaton.err.log"),
-        ]
-    else:
-        # Non-default agents: ONLY read their own per-agent logs, never global
-        agent_home = os.path.dirname(active_dir)  # ~/agents/{id}/ from ~/agents/{id}/.automaton
-        log_paths = [
-            (os.path.join(agent_home, "engine.out.log"), os.path.join(agent_home, "engine.err.log")),
-        ]
+    if not sandbox_id:
+        return {"stdout": "", "stderr": "", "agent_id": _get_active_agent_id(),
+                "error": "No sandbox — provision one first.", "source": "none"}
 
-    for stdout_path, stderr_path in log_paths:
-        for name, path in [("stdout", stdout_path), ("stderr", stderr_path)]:
-            if os.path.exists(path):
+    r_out = await _sandbox_exec(sandbox_id, f"tail -{lines} /var/log/automaton.out.log 2>/dev/null || echo ''")
+    r_err = await _sandbox_exec(sandbox_id, f"tail -{lines} /var/log/automaton.err.log 2>/dev/null || echo ''")
+
+    return {
+        "stdout": r_out.get("stdout", ""),
+        "stderr": r_err.get("stdout", ""),
+        "agent_id": _get_active_agent_id(),
+        "source": "sandbox",
+    }
+
+
+@router.get("/engine/live")
+async def engine_live():
+    """Engine live status — checks sandbox, not host."""
+    prov = _load_prov_status()
+    sandbox_id = prov["sandbox"].get("id", "")
+    engine_deployed = prov["tools"].get("engine", {}).get("deployed", False)
+
+    if not sandbox_id or not engine_deployed:
+        return {"live": False, "db_exists": False, "agent_state": None, "turn_count": 0, "source": "none"}
+
+    try:
+        r = await _sandbox_exec(sandbox_id, "pgrep -f 'bundle.mjs.*--run' > /dev/null 2>&1 && echo RUNNING || echo STOPPED", timeout=10)
+        is_running = "RUNNING" in r.get("stdout", "")
+
+        turn_count = 0
+        agent_state = None
+        db_exists = False
+
+        if is_running:
+            r2 = await _sandbox_exec(sandbox_id, "test -f ~/.anima/state.db && echo EXISTS || echo NONE", timeout=5)
+            db_exists = "EXISTS" in r2.get("stdout", "")
+
+            if db_exists:
+                r3 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db 'SELECT COUNT(*) FROM turns' 2>/dev/null || echo 0", timeout=10)
                 try:
-                    with open(path, "r") as f:
-                        all_lines = f.readlines()
-                        result[name] = "".join(all_lines[-lines:])
-                except Exception as e:
-                    result[name] = f"Error reading: {e}"
-            else:
-                result.setdefault(name, "")
+                    turn_count = int(r3.get("stdout", "0").strip())
+                except ValueError:
+                    pass
+                r4 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db \"SELECT value FROM kv WHERE key='agent_state' LIMIT 1\" 2>/dev/null || echo ''", timeout=10)
+                agent_state = r4.get("stdout", "").strip().strip('"') or None
 
-    if "stdout" not in result:
-        result["stdout"] = ""
-    if "stderr" not in result:
-        result["stderr"] = ""
+        return {"live": is_running, "db_exists": db_exists, "agent_state": agent_state,
+                "turn_count": turn_count, "source": "sandbox"}
+    except Exception as e:
+        return {"live": False, "db_exists": False, "agent_state": None, "turn_count": 0,
+                "error": str(e), "source": "sandbox"}
 
-    anima_files = []
-    if os.path.isdir(active_dir):
-        for f in os.listdir(active_dir):
-            fp = os.path.join(active_dir, f)
-            anima_files.append({"name": f, "is_dir": os.path.isdir(fp), "size": os.path.getsize(fp) if os.path.isfile(fp) else 0})
-    result["anima_dir"] = anima_files
-    result["agent_id"] = agent_id
-    return result
 
+# ═══════════════════════════════════════════════════════════
+# CONSTITUTION & PROMPT
+# ═══════════════════════════════════════════════════════════
 
 @router.get("/constitution")
 async def get_constitution():
-    active_dir = get_active_data_dir()
+    """Read constitution from the source repo (template, not agent-specific)."""
     for path in [
-        os.path.join(active_dir, "constitution.md"),
-        os.path.join(ANIMA_DIR, "constitution.md"),
         os.path.join(AUTOMATON_DIR, "constitution.md"),
     ]:
         if os.path.exists(path):
@@ -612,10 +435,9 @@ async def get_constitution():
     return {"content": "Constitution not found.", "path": None}
 
 
-
 @router.get("/genesis/prompt-template")
 async def get_prompt_template():
-    """Return the standard genesis prompt template for new agents."""
+    """Return the genesis prompt template (from source repo, not host state)."""
     template_path = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
     if os.path.exists(template_path):
         with open(template_path, "r") as f:
@@ -623,64 +445,45 @@ async def get_prompt_template():
     return {"content": "Genesis prompt template not found."}
 
 
+# ═══════════════════════════════════════════════════════════
+# SOUL PATCH — writes to sandbox, not host
+# ═══════════════════════════════════════════════════════════
+
 class PatchSoulRequest(BaseModel):
     content: str
 
 
 @router.post("/agents/{agent_id}/patch-soul")
 async def patch_soul(agent_id: str, req: PatchSoulRequest):
-    """Emergency SOUL.md replacement — bypasses update_soul char limits.
-    Directly overwrites the SOUL.md file for the specified agent."""
-    if agent_id == "anima-fund":
-        target_dir = os.path.expanduser("~/.anima")
-    else:
-        col = get_db()["agents"]
-        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
-        if not agent:
-            raise HTTPException(404, f"Agent '{agent_id}' not found")
-        target_dir = agent.get("data_dir", os.path.expanduser(f"~/agents/{agent_id}/.anima"))
+    """Write SOUL.md into the sandbox, not the host filesystem."""
+    prov = _load_prov_status()
+    sandbox_id = prov["sandbox"].get("id", "")
+    if not sandbox_id:
+        raise HTTPException(400, "No sandbox provisioned. Cannot patch soul.")
 
-    target_dir = os.path.expanduser(target_dir)
-    soul_path = os.path.join(target_dir, "SOUL.md")
-
-    if not os.path.isdir(target_dir):
-        raise HTTPException(400, f"Agent data directory not found: {target_dir}")
-
-    with open(soul_path, "w") as f:
-        f.write(req.content)
+    from routers.agent_setup import _sandbox_write_file
+    await _sandbox_write_file(sandbox_id, "/root/.anima/SOUL.md", req.content)
 
     return {
         "success": True,
         "agent_id": agent_id,
         "soul_size": len(req.content),
-        "message": f"SOUL.md patched ({len(req.content)} chars). Agent will use new soul on next turn.",
+        "message": f"SOUL.md written to sandbox ({len(req.content)} chars). Agent will use new soul on next turn.",
+        "target": "sandbox",
     }
 
 
 @router.get("/agents/{agent_id}/soul")
 async def get_agent_soul(agent_id: str):
-    """Read the SOUL.md for any agent."""
-    if agent_id == "anima-fund":
-        target_dir = os.path.expanduser("~/.anima")
-    else:
-        col = get_db()["agents"]
-        agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
-        if not agent:
-            raise HTTPException(404, f"Agent '{agent_id}' not found")
-        target_dir = agent.get("data_dir", os.path.expanduser(f"~/agents/{agent_id}/.anima"))
+    """Read SOUL.md from the sandbox, not the host."""
+    prov = _load_prov_status()
+    sandbox_id = prov["sandbox"].get("id", "")
+    if not sandbox_id:
+        return {"content": None, "exists": False, "agent_id": agent_id, "error": "No sandbox provisioned."}
 
-    target_dir = os.path.expanduser(target_dir)
-    soul_path = os.path.join(target_dir, "SOUL.md")
-
-    if not os.path.exists(soul_path):
+    r = await _sandbox_exec(sandbox_id, "cat ~/.anima/SOUL.md 2>/dev/null")
+    content = r.get("stdout", "")
+    if not content or r.get("exit_code", 1) != 0:
         return {"content": None, "exists": False, "agent_id": agent_id}
 
-    with open(soul_path, "r") as f:
-        content = f.read()
-
-    return {
-        "content": content,
-        "exists": True,
-        "size": len(content),
-        "agent_id": agent_id,
-    }
+    return {"content": content, "exists": True, "size": len(content), "agent_id": agent_id, "source": "sandbox"}

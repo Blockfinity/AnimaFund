@@ -10,17 +10,8 @@ router = APIRouter(prefix="/api", tags=["conway"])
 
 
 def _get_conway_api_key() -> str:
-    key = os.environ.get("CONWAY_API_KEY", "")
-    if key:
-        return key
-    try:
-        config_path = os.path.expanduser("~/.anima/config.json")
-        if os.path.exists(config_path):
-            with open(config_path) as f:
-                return json.load(f).get("apiKey", "")
-    except Exception:
-        pass
-    return ""
+    """Conway API key — only from environment, never from host filesystem."""
+    return os.environ.get("CONWAY_API_KEY", "")
 
 
 @router.get("/conway/balance")

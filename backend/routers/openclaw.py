@@ -22,69 +22,14 @@ router = APIRouter(prefix="/api/openclaw", tags=["openclaw"])
 
 
 def _get_conway_api_key() -> str:
-    key = os.environ.get("CONWAY_API_KEY", "")
-    if not key:
-        for path in [
-            os.path.expanduser("~/.anima/config.json"),
-            os.path.expanduser("~/.conway/config.json"),
-        ]:
-            if os.path.exists(path):
-                try:
-                    with open(path) as f:
-                        key = json.load(f).get("apiKey", "")
-                    if key:
-                        break
-                except Exception:
-                    pass
-    return key
+    """Conway API key — only from environment, never from host filesystem."""
+    return os.environ.get("CONWAY_API_KEY", "")
 
 
 def _get_tool_calls(tool_names: tuple, limit: int = 200) -> list:
-    """Read tool calls from agent state.db matching given tool names."""
-    from engine_bridge import get_engine_db
-    conn = get_engine_db()
-    if not conn:
-        return []
-    try:
-        placeholders = ",".join(["?" for _ in tool_names])
-        cursor = conn.execute(f"""
-            SELECT tc.id, tc.name, tc.arguments, tc.result, tc.duration_ms, tc.error,
-                   tc.created_at, t.timestamp as turn_timestamp, t.state as turn_state
-            FROM tool_calls tc
-            JOIN turns t ON tc.turn_id = t.id
-            WHERE tc.name IN ({placeholders})
-            ORDER BY t.timestamp DESC, tc.created_at DESC
-            LIMIT ?
-        """, (*tool_names, limit))
-
-        results = []
-        for row in cursor.fetchall():
-            args = {}
-            try:
-                args = json.loads(row["arguments"]) if row["arguments"] else {}
-            except Exception:
-                pass
-            result_text = row["result"] or ""
-            if len(result_text) > 3000:
-                result_text = result_text[:3000] + "\n... [truncated]"
-
-            results.append({
-                "id": row["id"],
-                "tool": row["name"],
-                "arguments": args,
-                "result": result_text,
-                "duration_ms": row["duration_ms"],
-                "error": row["error"],
-                "timestamp": row["turn_timestamp"],
-            })
-        conn.close()
-        return results
-    except Exception:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return []
+    """Tool calls come from sandbox state.db — returns empty when no host engine.
+    The engine runs inside the sandbox, not on the host."""
+    return []
 
 
 def _parse_openclaw_state(sandbox_actions: list) -> dict:

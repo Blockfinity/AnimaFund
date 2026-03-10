@@ -1,0 +1,87 @@
+{
+  "summary": "Completed iteration 14 testing for MAJOR REFACTOR: All host-side engine operations removed. Agent ONLY runs inside Conway Cloud sandbox. All 17 backend API tests passed. Frontend genesis screen verified with 6-step provisioning stepper. All required features working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_14_major_refactor.py",
+    "/app/test_reports/pytest/pytest_iteration14.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "genesis.py REWRITTEN: All endpoints read from provisioning status (not host filesystem)",
+    "server.py SIMPLIFIED: Removed host engine monitoring task",
+    "live.py REWRITTEN: All endpoints return empty defaults with source=sandbox",
+    "infrastructure.py REWRITTEN: All endpoints return empty defaults with source=sandbox",
+    "agents.py MODIFIED: start endpoint returns disabled error, no subprocess/host bootstrap",
+    "App.js correctly shows genesis screen with provisioning stepper when config_exists=false",
+    "Security notice 'Nothing runs on the host' visible in genesis screen"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_14_major_refactor.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (Genesis screen with stepper verified, Dashboard navigation works)"
+  },
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 14 verified the major refactor: all host-side engine operations removed. genesis/status returns config_exists=false when no sandbox provisioned (now correct). genesis/create and agents/start return disabled errors. All live/* and infrastructure/* return empty defaults. Frontend shows genesis screen with 6-step provisioning stepper. Dashboard accessible via 'Open Dashboard' button.",
+  "features_verified": {
+    "backend_endpoints": {
+      "GET /api/health": {"status": "pass", "returns": "engine_live=false (nothing on host)"},
+      "GET /api/genesis/status": {"status": "pass", "returns": "stage, config_exists, sandbox_active fields present"},
+      "POST /api/genesis/create": {"status": "pass", "returns": "success=false with 'disabled' error"},
+      "GET /api/wallet/balance": {"status": "pass", "returns": "error about provisioning or wallet data if exists"},
+      "GET /api/engine/live": {"status": "pass", "returns": "live=false, source=none or sandbox"},
+      "GET /api/engine/logs": {"status": "pass", "returns": "error 'No sandbox' or logs from sandbox"},
+      "GET /api/engine/status": {"status": "pass", "returns": "source=sandbox"},
+      "GET /api/live/identity": {"status": "pass", "returns": "name and source=database"},
+      "GET /api/live/activity": {"status": "pass", "returns": "empty list with source=sandbox"},
+      "GET /api/live/turns": {"status": "pass", "returns": "empty list with source=sandbox"},
+      "GET /api/infrastructure/sandboxes": {"status": "pass", "returns": "empty list with source=sandbox"},
+      "GET /api/infrastructure/domains": {"status": "pass", "returns": "empty list with source=sandbox"},
+      "GET /api/agents": {"status": "pass", "returns": "agents list with anima-fund"},
+      "POST /api/agents/anima-fund/start": {"status": "pass", "returns": "success=false with 'disabled' error"},
+      "GET /api/provision/status": {"status": "pass", "returns": "agent_id, sandbox, tools (regression)"},
+      "POST /api/provision/domain-search": {"status": "pass", "returns": "success=true (regression)"},
+      "GET /api/skills/available": {"status": "pass", "returns": "skills list with domain tools (regression)"}
+    },
+    "frontend_ui": {
+      "genesis_screen_with_stepper": {"status": "pass", "has_6_steps": true},
+      "step_1_create_sandbox_enabled": {"status": "pass", "run_button": "enabled"},
+      "steps_2_to_6_greyed_out": {"status": "pass", "verified": "visible in screenshot"},
+      "security_notice": {"status": "pass", "text": "Nothing runs on the host"},
+      "step_6_label": {"status": "pass", "label": "Create Anima"},
+      "open_dashboard_button": {"status": "pass", "visible": true, "navigates_to_dashboard": true},
+      "dashboard_layout": {"status": "pass", "sidebar": true, "status_bar": true, "7_tabs": true}
+    }
+  },
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (engine_live=false)",
+    "GET /api/genesis/status - 200 OK (stage, config_exists, sandbox_active)",
+    "POST /api/genesis/create - 200 OK (success=false, disabled)",
+    "GET /api/wallet/balance - 200 OK (provisioning error or wallet data)",
+    "GET /api/engine/live - 200 OK (live=false, source=none/sandbox)",
+    "GET /api/engine/logs - 200 OK (No sandbox error or logs)",
+    "GET /api/engine/status - 200 OK (source=sandbox)",
+    "GET /api/live/identity - 200 OK (name, source=database)",
+    "GET /api/live/activity - 200 OK (empty list)",
+    "GET /api/live/turns - 200 OK (empty list)",
+    "GET /api/infrastructure/sandboxes - 200 OK (empty list)",
+    "GET /api/infrastructure/domains - 200 OK (empty list)",
+    "GET /api/agents - 200 OK (agents list)",
+    "POST /api/agents/anima-fund/start - 200 OK (disabled)",
+    "GET /api/provision/status - 200 OK (regression)",
+    "POST /api/provision/domain-search - 200 OK (regression)",
+    "GET /api/skills/available - 200 OK (with domain tools)"
+  ]
+}

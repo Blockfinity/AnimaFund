@@ -1,9 +1,9 @@
 """
-Agent management routes — CRUD, select, start, skills listing.
+Agent management routes — CRUD, select, skills listing.
+All agent operations happen inside Conway Cloud sandbox. Nothing on host.
 """
 import os
 import json
-import subprocess
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 from database import get_db
 from config import AUTOMATON_DIR
-from engine_bridge import set_active_data_dir, set_active_agent_id
 
 router = APIRouter(prefix="/api", tags=["agents"])
 
@@ -33,8 +32,6 @@ class CreateAgentRequest(BaseModel):
 @router.get("/skills/available")
 async def list_available_skills():
     """List all skills: our custom Anima skills + Conway Terminal tools + ClawHub top skills + OpenClaw built-in tools."""
-    from engine_bridge import get_live_skills_full, get_live_installed_tools
-
     skills = []
     seen = set()
 
@@ -129,27 +126,6 @@ async def list_available_skills():
             skill["installed"] = False  # Available for install from marketplace
             skills.append(skill)
             seen.add(skill["name"])
-
-    # 5. Engine-discovered skills (from live state.db)
-    try:
-        engine_skills = get_live_skills_full()
-        for sk in engine_skills:
-            sname = sk.get("name") or sk.get("skill_name", "")
-            if sname and sname not in seen:
-                skills.append({"name": sname, "description": sk.get("description", ""), "source": "engine", "installed": True})
-                seen.add(sname)
-    except Exception:
-        pass
-
-    try:
-        tools = get_live_installed_tools()
-        for tool in tools:
-            tname = tool.get("name") or tool.get("tool_name", "")
-            if tname and tname not in seen:
-                skills.append({"name": tname, "description": tool.get("description", "Installed tool"), "source": "mcp", "installed": True})
-                seen.add(tname)
-    except Exception:
-        pass
 
     skills.sort(key=lambda s: (0 if s.get("installed") else 1, s["name"]))
     return {"skills": skills, "total": len(skills)}
@@ -288,25 +264,7 @@ async def create_agent(req: CreateAgentRequest):
             "creatorAddress": creator_addr,
         }, f)
 
-    # Pre-bootstrap the agent environment (install Conway Terminal skills, configure OpenClaw)
-    # Agent provisions its own Conway wallet/API key on first engine run.
-    bootstrap_script = "/app/scripts/bootstrap_agent.sh"
-    if os.path.exists(bootstrap_script):
-        try:
-            bootstrap_env = os.environ.copy()
-            bootstrap_env["HOME"] = agent_home
-            # Strip platform secrets — agents must not access platform DB or dashboard internals
-            for secret_key in ["MONGO_URL", "DB_NAME", "DASHBOARD_URL"]:
-                bootstrap_env.pop(secret_key, None)
-            subprocess.run(
-                ["bash", bootstrap_script],
-                env=bootstrap_env,
-                timeout=120,
-                capture_output=True,
-            )
-        except Exception:
-            pass  # Non-fatal — engine wizard will handle remaining setup
-
+    # Agent will be provisioned via the sandbox stepper — no host bootstrap needed.
     agent_doc = {
         "agent_id": agent_id,
         "name": req.name,
@@ -339,31 +297,23 @@ async def select_agent(agent_id: str):
     col = get_db()["agents"]
 
     if agent_id == "anima-fund":
-        set_active_data_dir("~/.anima")
-        set_active_agent_id("anima-fund")
-        return {"success": True, "active_agent": agent_id, "data_dir": "~/.anima"}
+        # Write active agent ID for per-agent provisioning status
+        with open("/tmp/anima_active_agent_id", "w") as f:
+            f.write("anima-fund")
+        return {"success": True, "active_agent": agent_id}
 
     agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
     if not agent:
         raise HTTPException(404, f"Agent '{agent_id}' not found")
 
-    # New agents use $HOME/.automaton pattern
-    data_dir = agent.get("data_dir", "")
-    if data_dir:
-        set_active_data_dir(data_dir)
-    else:
-        agent_home = agent.get("agent_home", os.path.expanduser(f"~/agents/{agent_id}"))
-        automaton_dir = os.path.join(agent_home, ".automaton")
-        set_active_data_dir(automaton_dir)
-        data_dir = automaton_dir
-
-    set_active_agent_id(agent_id)
-    return {"success": True, "active_agent": agent_id, "data_dir": data_dir}
+    with open("/tmp/anima_active_agent_id", "w") as f:
+        f.write(agent_id)
+    return {"success": True, "active_agent": agent_id}
 
 
 @router.delete("/agents/{agent_id}")
 async def delete_agent(agent_id: str):
-    """Delete a non-default agent. Blocks deletion of agents with known wallets (fund protection)."""
+    """Delete a non-default agent."""
     if agent_id == "anima-fund":
         raise HTTPException(400, "Cannot delete the default agent")
     col = get_db()["agents"]
@@ -371,15 +321,19 @@ async def delete_agent(agent_id: str):
     if not agent:
         raise HTTPException(404, f"Agent '{agent_id}' not found")
 
-    # Safety: check if agent has a wallet directory (may have funds)
-    agent_home = os.path.expanduser(agent.get("agent_home", f"~/agents/{agent_id}"))
-    wallet_path = os.path.join(agent_home, ".automaton", "wallet.json")
-    if os.path.exists(wallet_path):
-        raise HTTPException(
-            400,
-            f"Agent '{agent_id}' has a wallet and may have funds. "
-            "Remove the wallet manually first, or use the reset endpoint."
-        )
+    result = await col.delete_one({"agent_id": agent_id})
+    if result.deleted_count == 0:
+        raise HTTPException(500, "Failed to delete agent")
+
+    # Clean up provisioning status
+    home = os.path.expanduser("~")
+    prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
+    try:
+        os.remove(prov_path)
+    except FileNotFoundError:
+        pass
+
+    return {"success": True, "deleted": agent_id}
 
     result = await col.delete_one({"agent_id": agent_id})
     if result.deleted_count == 0:
@@ -456,150 +410,43 @@ async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
 
 @router.post("/agents/{agent_id}/start")
 async def start_agent_engine(agent_id: str):
-    """Start the engine for a specific agent using isolated HOME directory."""
-    col = get_db()["agents"]
-    agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
-    if not agent:
-        raise HTTPException(404, f"Agent '{agent_id}' not found")
-
-    agent_home = os.path.expanduser(agent.get("agent_home", f"~/agents/{agent_id}"))
-    automaton_dir = os.path.join(agent_home, ".automaton")
-
-    if not os.path.exists(os.path.join(automaton_dir, "auto-config.json")):
-        raise HTTPException(400, "No auto-config found. Agent not properly set up.")
-
-    # Use the main engine start script
-    engine_script = "/app/scripts/start_engine.sh"
-    if not os.path.exists(engine_script):
-        raise HTTPException(500, "Engine start script not found at /app/scripts/start_engine.sh")
-
-    log_out = os.path.join(agent_home, "engine.out.log")
-    log_err = os.path.join(agent_home, "engine.err.log")
-
-    env = os.environ.copy()
-    env["HOME"] = agent_home
-
-    # Per-agent Telegram credentials (override any global ones)
-    if agent.get("telegram_bot_token"):
-        env["TELEGRAM_BOT_TOKEN"] = agent["telegram_bot_token"]
-    if agent.get("telegram_chat_id"):
-        env["TELEGRAM_CHAT_ID"] = agent["telegram_chat_id"]
-
-    # Sanitize: strip platform secrets that agents must not access
-    for secret_key in ["MONGO_URL", "DB_NAME", "DASHBOARD_URL"]:
-        env.pop(secret_key, None)
-
-    try:
-        with open(log_out, "a") as fout, open(log_err, "a") as ferr:
-            proc = subprocess.Popen(
-                ["bash", engine_script],
-                env=env,
-                stdout=fout,
-                stderr=ferr,
-                cwd="/app/automaton",
-            )
-        await col.update_one({"agent_id": agent_id}, {"$set": {"status": "running", "engine_pid": proc.pid}})
-        return {"success": True, "pid": proc.pid, "home": agent_home}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to start engine: {str(e)}")
+    """DISABLED — engines run inside the sandbox, not on the host.
+    Use the provisioning stepper to deploy the agent."""
+    return {
+        "success": False,
+        "error": "Direct engine start is disabled. Engines run inside Conway Cloud sandboxes. Use the provisioning stepper (Create Sandbox → ... → Create Anima) to deploy the agent.",
+    }
 
 
 @router.post("/agents/push-constitution")
 async def push_constitution_to_all():
-    """Push the latest constitution to ALL existing agents without resetting them.
-    This updates the constitution file in each agent's data directory in-place.
-    Running agents will pick it up on their next constitution read."""
-    import shutil
+    """Push the latest constitution to agents' sandboxes."""
     constitution_src = os.path.join(AUTOMATON_DIR, "constitution.md")
     if not os.path.exists(constitution_src):
         raise HTTPException(404, "Source constitution.md not found")
 
-    col = get_db()["agents"]
-    agents = await col.find({}, {"_id": 0}).to_list(100)
-    updated = []
-
-    for agent in agents:
-        agent_id = agent.get("agent_id", "")
-        if agent_id == "anima-fund":
-            # Default agent uses ~/.anima
-            target_dir = os.path.expanduser("~/.anima")
-        else:
-            data_dir = agent.get("data_dir", "")
-            if data_dir:
-                target_dir = os.path.expanduser(data_dir)
-            else:
-                target_dir = os.path.expanduser(f"~/agents/{agent_id}/.automaton")
-
-        if os.path.isdir(target_dir):
-            target_path = os.path.join(target_dir, "constitution.md")
-            shutil.copy2(constitution_src, target_path)
-            updated.append(agent_id)
+    with open(constitution_src, "r") as f:
+        content = f.read()
 
     return {
         "success": True,
-        "updated_agents": updated,
-        "total": len(updated),
-        "message": "Constitution pushed to all agents. Running agents will pick up changes on next read.",
+        "message": "Constitution ready. Use 'deploy-agent' provisioning step to push to sandbox.",
+        "size": len(content),
     }
-
 
 
 @router.post("/agents/push-genesis")
 async def push_genesis_to_all():
-    """Push the latest genesis-prompt.md to ALL existing agents (except anima-fund which has its own).
-    This updates their prompt file so the next engine restart uses the new prompt.
-    NOTE: This does NOT change a running agent's SOUL.md — the engine loads SOUL.md
-    from its internal database. To update a running agent, it must call update_soul itself."""
+    """Push the latest genesis-prompt.md — agents pick it up on next deploy."""
     genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
     if not os.path.exists(genesis_src):
         raise HTTPException(404, "Source genesis-prompt.md not found")
 
-    col = get_db()["agents"]
-    agents = await col.find({}, {"_id": 0}).to_list(100)
-    updated = []
-    skipped = []
-
-    for agent in agents:
-        agent_id = agent.get("agent_id", "")
-
-        # Skip anima-fund — it has its own Catalyst-specific genesis prompt
-        if agent_id == "anima-fund":
-            skipped.append(agent_id)
-            continue
-
-        token = agent.get("telegram_bot_token", "")
-        chat_id = agent.get("telegram_chat_id", "")
-
-        data_dir = agent.get("data_dir", "")
-        target_dir = os.path.expanduser(data_dir) if data_dir else os.path.expanduser(f"~/agents/{agent_id}/.anima")
-
-        if os.path.isdir(target_dir):
-            try:
-                with open(genesis_src, "r") as f:
-                    content = f.read()
-                # Substitute per-agent variables
-                content = content.replace("{{AGENT_NAME}}", agent.get("name", agent_id))
-                content = content.replace("{{AGENT_ID}}", agent_id)
-                content = content.replace("{{TELEGRAM_BOT_TOKEN}}", token)
-                content = content.replace("{{TELEGRAM_CHAT_ID}}", chat_id)
-                content = content.replace("{{CREATOR_WALLET}}", agent.get("creator_sol_wallet", ""))
-                content = content.replace("{{CREATOR_ETH_ADDRESS}}", agent.get("creator_eth_wallet", ""))
-                # Dashboard webhook URL
-                dashboard_url = os.environ.get("DASHBOARD_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
-                content = content.replace("{{DASHBOARD_URL}}", dashboard_url)
-
-                target_path = os.path.join(target_dir, "genesis-prompt.md")
-                with open(target_path, "w") as f:
-                    f.write(content)
-                updated.append(agent_id)
-            except Exception:
-                pass
+    with open(genesis_src, "r") as f:
+        content = f.read()
 
     return {
         "success": True,
-        "updated_agents": updated,
-        "skipped_agents": skipped,
-        "total": len(updated),
-        "prompt_size": os.path.getsize(genesis_src),
-        "message": "Genesis prompt pushed. Agents must restart engine to pick up new prompt.",
+        "message": "Genesis prompt ready. Use 'deploy-agent' provisioning step to push to sandbox.",
+        "size": len(content),
     }

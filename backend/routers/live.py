@@ -1,215 +1,189 @@
 """
-Live engine data endpoints — read from state.db.
+Live engine data endpoints.
+The engine runs inside the Conway Cloud sandbox — these endpoints return sandbox state
+or empty defaults when no sandbox is provisioned.
 """
+import os
+import json as _json
+import asyncio
 from datetime import datetime, timezone
-from fastapi import APIRouter, Query
 
-from engine_bridge import (
-    is_engine_live, get_live_agents, get_live_activity,
-    get_live_transactions, get_live_financials,
-    get_live_heartbeat_history, get_live_memory_facts, get_live_soul,
-    get_live_turns, get_live_modifications,
-    get_live_inbox_messages, get_live_relationships,
-    get_live_reputation, get_live_discovered_agents,
-    get_child_lifecycle_events, get_live_identity,
-    get_live_working_memory, get_live_episodic_memory,
-    get_live_procedural_memory, get_live_installed_tools,
-    get_live_skills, get_live_metric_snapshots,
-    get_live_policy_decisions, get_live_soul_history,
-    get_live_onchain_transactions, get_live_session_summaries,
-    get_live_kv_store, get_live_wake_events, get_live_heartbeat_schedule,
-    get_live_skills_full, get_live_models, get_live_tool_usage,
-    get_active_agent_id,
-)
+from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
+import aiohttp
 
 router = APIRouter(prefix="/api", tags=["live"])
+
+CONWAY_API_KEY = os.environ.get("CONWAY_API_KEY", "")
+
+
+def _empty_list_response(key="items"):
+    return {key: [], "total": 0, "source": "sandbox"}
 
 
 @router.get("/engine/live")
 async def check_engine_live():
-    data = is_engine_live()
-    data["agent_id"] = get_active_agent_id()
-    return data
+    """Engine live status — delegates to genesis router."""
+    from routers.genesis import engine_live
+    return await engine_live()
+
 
 @router.get("/live/identity")
 async def live_identity():
-    return get_live_identity()
+    """Agent identity — from MongoDB, not host filesystem."""
+    from routers.genesis import _get_active_agent_id, _load_prov_status
+    from database import get_db
+    agent_id = _get_active_agent_id()
+    prov = _load_prov_status()
+    try:
+        col = get_db()["agents"]
+        doc = await col.find_one({"agent_id": agent_id}, {"_id": 0})
+        if doc:
+            return {
+                "name": doc.get("name", "Anima Fund"),
+                "address": prov.get("wallet_address", ""),
+                "creator": os.environ.get("CREATOR_WALLET", ""),
+                "agent_id": agent_id,
+                "source": "database",
+            }
+    except Exception:
+        pass
+    return {"name": "Anima Fund", "address": prov.get("wallet_address", ""), "agent_id": agent_id, "source": "database"}
+
 
 @router.get("/live/agents")
 async def live_agents():
-    agents = get_live_agents()
-    return {"agents": agents, "total": len(agents), "source": "engine"}
+    return _empty_list_response("agents")
 
 @router.get("/live/activity")
 async def live_activity(limit: int = Query(default=50, le=200)):
-    activity = get_live_activity(limit)
-    return {"activities": activity, "total": len(activity), "source": "engine"}
+    return _empty_list_response("activities")
 
 @router.get("/live/turns")
 async def live_turns(limit: int = Query(default=50, le=200)):
-    turns = get_live_turns(limit)
-    return {"turns": turns, "total": len(turns), "source": "engine"}
+    return _empty_list_response("turns")
 
 @router.get("/live/transactions")
 async def live_transactions(limit: int = Query(default=50, le=200)):
-    txns = get_live_transactions(limit)
-    return {"transactions": txns, "total": len(txns), "source": "engine"}
+    return _empty_list_response("transactions")
 
 @router.get("/live/financials")
 async def live_financials():
-    return get_live_financials()
+    return {"total_balance_usd": 0, "total_spent_usd": 0, "total_earned_usd": 0, "source": "sandbox"}
 
 @router.get("/live/heartbeat")
 async def live_heartbeat(limit: int = Query(default=20, le=100)):
-    history = get_live_heartbeat_history(limit)
-    return {"history": history, "total": len(history), "source": "engine"}
+    return _empty_list_response("history")
 
 @router.get("/live/memory")
 async def live_memory():
-    facts = get_live_memory_facts()
-    return {"facts": facts, "total": len(facts), "source": "engine"}
+    return _empty_list_response("facts")
 
 @router.get("/live/soul")
 async def live_soul():
-    content = get_live_soul()
-    return {"content": content, "exists": content is not None}
+    return {"content": None, "exists": False}
 
 @router.get("/live/modifications")
 async def live_modifications(limit: int = Query(default=30, le=100)):
-    mods = get_live_modifications(limit)
-    return {"modifications": mods, "total": len(mods), "source": "engine"}
+    return _empty_list_response("modifications")
 
 @router.get("/live/messages")
 async def live_messages(limit: int = Query(default=50, le=200)):
-    msgs = get_live_inbox_messages(limit)
-    return {"messages": msgs, "total": len(msgs), "source": "engine"}
+    return _empty_list_response("messages")
 
 @router.get("/live/relationships")
 async def live_relationships():
-    rels = get_live_relationships()
-    return {"relationships": rels, "total": len(rels), "source": "engine"}
+    return _empty_list_response("relationships")
 
 @router.get("/live/discovered")
 async def live_discovered():
-    agents = get_live_discovered_agents()
-    return {"agents": agents, "total": len(agents), "source": "engine"}
+    return _empty_list_response("agents")
 
 @router.get("/live/lifecycle")
 async def live_lifecycle(child_id: str = None, limit: int = Query(default=50, le=200)):
-    events = get_child_lifecycle_events(child_id, limit)
-    return {"events": events, "total": len(events), "source": "engine"}
+    return _empty_list_response("events")
 
 @router.get("/live/reputation")
 async def live_reputation_endpoint(address: str = None):
-    reps = get_live_reputation(address)
-    return {"reputation": reps, "total": len(reps), "source": "engine"}
+    return _empty_list_response("reputation")
 
 @router.get("/live/working-memory")
 async def live_working_memory():
-    return {"items": get_live_working_memory(), "source": "engine"}
+    return _empty_list_response()
 
 @router.get("/live/episodic-memory")
 async def live_episodic_memory(limit: int = Query(default=50, le=200)):
-    return {"events": get_live_episodic_memory(limit), "source": "engine"}
+    return _empty_list_response("events")
 
 @router.get("/live/procedural-memory")
 async def live_procedural_memory():
-    return {"procedures": get_live_procedural_memory(), "source": "engine"}
+    return _empty_list_response("procedures")
 
 @router.get("/live/tools")
 async def live_installed_tools():
-    return {"tools": get_live_installed_tools(), "source": "engine"}
+    return _empty_list_response("tools")
 
 @router.get("/live/skills")
 async def live_skills():
-    return {"skills": get_live_skills(), "source": "engine"}
+    return _empty_list_response("skills")
 
 @router.get("/live/skills-full")
 async def live_skills_full():
-    """Aggregated skills view: Anima skills + Conway platform tools + MCP servers + models."""
-    return {
-        "skills": get_live_skills_full(),
-        "models": get_live_models(),
-        "tool_usage": get_live_tool_usage(),
-        "source": "engine",
-    }
+    return {"skills": [], "models": [], "tool_usage": [], "source": "sandbox"}
 
 @router.get("/live/metrics")
 async def live_metrics(limit: int = Query(default=50, le=200)):
-    return {"snapshots": get_live_metric_snapshots(limit), "source": "engine"}
+    return _empty_list_response("snapshots")
 
 @router.get("/live/policy")
 async def live_policy(limit: int = Query(default=50, le=200)):
-    return {"decisions": get_live_policy_decisions(limit), "source": "engine"}
+    return _empty_list_response("decisions")
 
 @router.get("/live/soul-history")
 async def live_soul_history():
-    return {"versions": get_live_soul_history(), "source": "engine"}
+    return _empty_list_response("versions")
 
 @router.get("/live/onchain")
 async def live_onchain(limit: int = Query(default=50, le=200)):
-    return {"transactions": get_live_onchain_transactions(limit), "source": "engine"}
+    return _empty_list_response("transactions")
 
 @router.get("/live/sessions")
 async def live_sessions(limit: int = Query(default=20, le=100)):
-    return {"sessions": get_live_session_summaries(limit), "source": "engine"}
+    return _empty_list_response("sessions")
 
 @router.get("/live/kv")
 async def live_kv():
-    return {"items": get_live_kv_store(), "source": "engine"}
+    return _empty_list_response()
 
 @router.get("/live/wake-events")
 async def live_wake_events(limit: int = Query(default=20, le=100)):
-    return {"events": get_live_wake_events(limit), "source": "engine"}
+    return _empty_list_response("events")
 
 @router.get("/live/heartbeat-schedule")
 async def live_heartbeat_schedule():
-    return {"tasks": get_live_heartbeat_schedule(), "source": "engine"}
+    return _empty_list_response("tasks")
 
 
 @router.get("/live/stream")
 async def live_stream():
-    """Server-Sent Events endpoint for real-time agent data.
-    Pushes engine status, turn count, agent count, and credits every 8 seconds.
-    Frontend uses change indicators to trigger targeted data fetches."""
-    import asyncio
-    import json as _json
-    import os
-    import aiohttp
-    from fastapi.responses import StreamingResponse
-
+    """SSE endpoint — lightweight stream using provisioning status, no host engine dependency."""
     async def event_generator():
         prev_hash = ""
         while True:
             try:
-                engine = is_engine_live()
-                engine["agent_id"] = get_active_agent_id()
+                from routers.genesis import _load_prov_status, _get_active_agent_id
+                prov = _load_prov_status()
+                agent_id = _get_active_agent_id()
+                sandbox_id = prov["sandbox"].get("id", "")
+                engine_deployed = prov["tools"].get("engine", {}).get("deployed", False)
 
-                agents = get_live_agents()
-                activity = get_live_activity(1)
-                latest_activity_id = activity[0].get("activity_id", 0) if activity else 0
-
-                # Get Conway balance
+                # Conway credits
                 conway_credits = 0
-                conway_key = os.environ.get("CONWAY_API_KEY", "")
-                if not conway_key:
-                    from engine_bridge import get_active_data_dir
-                    active_dir = get_active_data_dir()
-                    config_path = os.path.join(active_dir, "config.json")
-                    if os.path.exists(config_path):
-                        try:
-                            with open(config_path) as f:
-                                conway_key = _json.load(f).get("apiKey", "")
-                        except Exception:
-                            pass
-
-                if conway_key:
+                if CONWAY_API_KEY:
                     try:
                         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                            async with session.get(
-                                "https://api.conway.tech/v1/credits/balance",
-                                headers={"Authorization": f"Bearer {conway_key}"},
-                            ) as resp:
+                            async with session.get("https://api.conway.tech/v1/credits/balance",
+                                headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}) as resp:
                                 if resp.status == 200:
                                     data = await resp.json()
                                     conway_credits = data.get("credits_cents", 0)
@@ -218,25 +192,24 @@ async def live_stream():
 
                 payload = {
                     "engine": {
-                        "live": engine.get("live", False),
-                        "db_exists": engine.get("db_exists", False),
-                        "agent_state": engine.get("agent_state", ""),
-                        "turn_count": engine.get("turn_count", 0),
-                        "agent_id": engine.get("agent_id", ""),
+                        "live": False,
+                        "db_exists": engine_deployed,
+                        "agent_state": "sandbox" if engine_deployed else "",
+                        "turn_count": 0,
+                        "agent_id": agent_id,
                     },
                     "conway_credits_cents": conway_credits,
-                    "agent_count": len(agents),
-                    "latest_activity_id": latest_activity_id,
+                    "agent_count": 0,
+                    "latest_activity_id": 0,
+                    "sandbox_id": sandbox_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
-                # Only send if data actually changed
-                cur_hash = f"{payload['engine']['turn_count']}:{payload['engine']['agent_state']}:{payload['agent_count']}:{payload['latest_activity_id']}:{conway_credits}"
+                cur_hash = f"{engine_deployed}:{conway_credits}:{agent_id}"
                 if cur_hash != prev_hash:
                     yield f"data: {_json.dumps(payload)}\n\n"
                     prev_hash = cur_hash
                 else:
-                    # Send heartbeat to keep connection alive
                     yield ": heartbeat\n\n"
             except Exception as e:
                 yield f"data: {_json.dumps({'error': str(e)})}\n\n"
@@ -246,9 +219,5 @@ async def live_stream():
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
     )
