@@ -3,7 +3,7 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 
 **PRODUCT REQUIREMENTS:**
 -   **Core Functionality:** A multi-agent platform to create, monitor, and manage multiple independent AI agents from a single dashboard.
--   **Agent Autonomy & Real-World Interaction:** Agents must be fully autonomous, operating on the live internet, and capable of installing their own tools and skills.
+-   **Agent Autonomy & Real-World Interaction:** Agents must be fully autonomous, operating on the live internet, and capable of installing their own tools and skills within their own sandboxed environment.
 -   **Financial Model:** Each agent has a customizable creator revenue share.
 -   **Real-time Dashboard:** A Fund HQ and Agent Mind dashboard providing a real-time view of all agents, including a Live Feed of agent thoughts and logs.
 -   **Dynamic Skills Ecosystem:** A UI for selecting priority skills during agent creation.
@@ -12,114 +12,220 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a React/FastAPI/MongoDB stack for creating and managing autonomous AI agents. This session involved a major overhaul to fix the core issues that were causing agents to get stuck in loops and the dashboard to show stale data.
+The application is a React/FastAPI/MongoDB stack for creating and managing autonomous AI agents. The current session's primary focus was to diagnose and fix a critical production bug where the AI agent, despite being funded, would ignore its  instructions, fail to install its necessary tools (like usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
+           [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]
+           [-p | --paginate | -P | --no-pager] [--no-replace-objects] [--bare]
+           [--git-dir=<path>] [--work-tree=<path>] [--namespace=<name>]
+           [--super-prefix=<path>] [--config-env=<name>=<envvar>]
+           <command> [<args>]
 
-The agent's  has been completely rewritten to enforce a mandatory, verifiable boot sequence, ensuring critical tools are installed before any other actions are taken. The  bloat issue, which was a primary cause of loops, was resolved by increasing the character limit in the Automaton engine and adding an emergency API endpoint () and a UI button for manual overrides.
+These are common Git commands used in various situations:
 
-Data accuracy has been fixed by updating the backend to query the Conway API for live wallet data instead of relying on a stale local cache. A new OpenClaw VM Viewer page was also created and then completely re-architected to correctly display data from Conway sandboxes where OpenClaw actually runs. The agent creation flow was also repaired to correctly distinguish between the main Anima Fund agent's prompt and the generic template for new agents.
+start a working area (see also: git help tutorial)
+   clone     Clone a repository into a new directory
+   init      Create an empty Git repository or reinitialize an existing one
+
+work on the current change (see also: git help everyday)
+   add       Add file contents to the index
+   mv        Move or rename a file, a directory, or a symlink
+   restore   Restore working tree files
+   rm        Remove files from the working tree and from the index
+
+examine the history and state (see also: git help revisions)
+   bisect    Use binary search to find the commit that introduced a bug
+   diff      Show changes between commits, commit and working tree, etc
+   grep      Print lines matching a pattern
+   log       Show commit logs
+   show      Show various types of objects
+   status    Show the working tree status
+
+grow, mark and tweak your common history
+   branch    List, create, or delete branches
+   commit    Record changes to the repository
+   merge     Join two or more development histories together
+   rebase    Reapply commits on top of another base tip
+   reset     Reset current HEAD to the specified state
+   switch    Switch branches
+   tag       Create, list, delete or verify a tag object signed with GPG
+
+collaborate (see also: git help workflows)
+   fetch     Download objects and refs from another repository
+   pull      Fetch from and integrate with another repository or a local branch
+   push      Update remote refs along with associated objects
+
+'git help -a' and 'git help -g' list available subcommands and some
+concept guides. See 'git help <command>' or 'git help <concept>'
+to read about a specific subcommand or concept.
+See 'git help git' for an overview of the system., ), and get stuck in a loop, wasting all its credits.
+
+The agent successfully migrated the entire frontend from an inefficient  polling mechanism to a real-time Server-Sent Events (SSE) stream. It also correctly identified that the agent was skipping the boot sequence because the LLM chose to ignore the prompt's text instructions.
+
+However, the agent's proposed fix—a host-level  script to pre-install tools—was a **massive architectural and security flaw**. The user correctly pointed out that tools must be installed inside the agent's dedicated sandbox VM, not on the host system. The agent's last action was acknowledging this critical mistake and preparing to pivot to a new, correct architecture.
 
 **Last working item**:
--   **Last item agent was working:** Correcting the architecture of the OpenClaw VM Viewer. The agent initially built it assuming OpenClaw ran on the platform's local server. After user correction, the agent completely rewrote both the backend () and frontend () to reflect the correct architecture: OpenClaw runs inside Conway Sandbox VMs. The new implementation fetches live sandbox data from the Conway API and filters the agent's tool calls from the local database.
--   **Status:** USER VERIFICATION PENDING
--   **Agent Testing Done:** Y
+-   **Last item agent was working:** The agent was about to abandon its flawed host-level installation approach and begin designing the correct solution as directed by the user: a manual, step-by-step setup wizard on the dashboard. This wizard will allow the user to guide the agent through its setup process (e.g., creating a sandbox, installing tools inside it) via dedicated UI buttons and API calls.
+-   **Status:** NOT STARTED
+-   **Agent Testing Done:** N
 -   **Which testing method agent to use?** both
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
-There are no outstanding issues. The previously critical issues (agent loop, wallet discrepancy) have been addressed and are pending user verification.
+-   **Issue 1 (P0): Agent ignores boot sequence and fails to install tools.** This is the core, unresolved issue. The next attempt to fix this is to build the UI setup wizard.
+-   **Issue 2 (P1): Telegram API rate limiting.** A fix was implemented to reduce notification frequency, but it has not been verified under load.
+-   **Issue 3 (P2): Incorrect credits display on the dashboard.** A fix was implemented to make credit fetching more robust, but it needs to be verified with a live, funded agent.
 
 **Issues Detail:**
--   None.
+-   **Issue 1: Agent ignores boot sequence and fails to install tools.**
+    -   **Attempted fixes:**
+        1.  Strengthening the  text instructions. **Failed** as the LLM ignored them.
+        2.  Creating a  to install tools on the host. **Failed** as this was identified as a major security and architectural flaw. The agent must operate within its own sandbox.
+    -   **Next debug checklist:**
+        1.  Revert the incorrect changes made to  and the Automaton engine source ().
+        2.  Design and implement a new backend router (e.g., ) with endpoints for each step: , , , etc.
+        3.  Design and implement a new frontend component that acts as a step-by-step wizard, calling these endpoints in sequence.
+    -   **Why fix this issue and what will be achieved with the fix?** This is the most critical issue. Without tools, the agent is non-functional and immediately wastes its funding. A successful fix will enable the agent to become operational.
+    -   **Status:** IN PROGRESS
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** both
+    -   **Blocked on other issue:** None.
 
 **In progress Task List**:
--   None.
+-   **Task 1: Architect and Implement Step-by-Step Agent Setup Wizard.**
+    -   **Where to resume:** Begin by designing the API endpoints and database models needed for the new frontend wizard. Create a new backend router () and a new frontend page/component ().
+    -   **What will be achieved with this?** A secure, reliable, and user-guided process for provisioning an agent with its necessary tools inside its sandboxed VM.
+    -   **Status:** NOT STARTED
+    -   **Should Test frontend/backend/both after fix?** both
+    -   **Blocked on something:** None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
-    -   (P0) Full User Verification: The user needs to create/start an agent to verify all the fixes from this session. This includes checking that the agent follows the new mandatory boot sequence, installs all tools, avoids loops, and that the dashboard (including wallet and the new OpenClaw viewer) displays accurate, real-time data.
-    -   (P1) Connect Frontend to SSE Stream: The backend now has a Server-Sent Events (SSE) endpoint at  for real-time data. The frontend should be updated to use this  instead of its current polling mechanism for a more efficient, live experience.
+    -   (P0) Full User Verification of the new setup wizard and confirmation that a newly created agent can successfully boot and execute tasks.
 -   **Future Tasks:**
     -   Implement Real Smart Contracts.
     -   Integrate Android Device Control.
     -   Migrate to a self-hosted agent engine.
 
 **Completed work in this session**
--   **Agent Loop Root Cause Fix:** Completely rewrote  to enforce a mandatory, verifiable boot sequence, preventing agents from skipping critical tool installations.
--   **SOUL.md Bloat Resolution:** Increased the  character limit in the Automaton engine, and added an emergency  endpoint with a corresponding Patch SOUL button in the UI for manual overrides.
--   **Data Sync & Accuracy Fix:** The  endpoint now fetches live data from the Conway API instead of a stale local cache.
--   **Agent Creation Flow Correction:** Fixed the logic to correctly use the generic template for new agents while preserving the unique Catalyst prompt for the main Anima Fund agent.
--   **OpenClaw VM Viewer Implementation:** Created and then re-architected the OpenClaw viewer page and backend to correctly fetch data from Conway sandboxes and agent tool call history.
--   **Comprehensive Testing:** Created unit tests () and ran multiple successful E2E test suites to validate all fixes.
+-   **Frontend Real-Time Migration:** Replaced all  polling with a single Server-Sent Events (SSE) connection using a new  hook, making the dashboard fully real-time.
+-   **Core Bug Root Cause Analysis:** Successfully diagnosed that the agent fails because the LLM ignores installation instructions in the genesis prompt.
+-   **Architectural Flaw Identification:** Realized (with user guidance) that installing tools on the host system is incorrect and a security risk.
+-   **Code Cleanup:** Purged all stale data, wallets, configs, and test artifacts from the preview environment.
+-   **Telegram Rate Limiting Fix:** Implemented a rate limiter in  and modified the genesis prompt to prevent API spam.
 
 **Earlier issues found/mentioned but not fixed**
--   None. All identified issues were addressed during this session's overhaul.
+-   None. The entire session was dedicated to the core boot sequence failure.
 
 **Known issue recurrence from previous fork**
--   **Issue:** Agent getting stuck in behavioral loops.
-    -   **Recurrence count:** High
-    -   **Status:** RESOLVED. The root cause (skipping installations) was addressed with a mandatory boot sequence in the genesis prompt.
--   **Issue:** Wallet/data discrepancy on the dashboard.
-    -   **Recurrence count:** Medium
-    -   **Status:** RESOLVED. The backend was fixed to pull live data directly from the Conway API.
+-   **Issue recurrence in previous fork:** Agent getting stuck in behavioral loops.
+-   **Recurrence count:** High
+-   **Status:** IN PROGRESS. The root cause is the failure to install tools. The new UI wizard is the next proposed solution.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Mandatory Boot Sequence:** Forcing an agent to complete a series of verifiable setup steps before proceeding to its main logic to prevent state corruption.
--   **Server-Sent Events (SSE):** Using SSE for efficient, unidirectional, real-time data push from backend to frontend for live updates.
--   **Emergency Patch Endpoint:** Creating a dedicated API endpoint () to allow direct modification of an agent's state file () to recover from critical failures.
--   **Architectural Correction:** Rewriting a feature (OpenClaw Viewer) based on a corrected understanding of the system architecture (remote vs. local execution).
+-   **Architectural Pivot:** A critical shift from an automated (but flawed) host-level bootstrap script to a user-driven, sandboxed setup wizard. This acknowledges the security and isolation requirements of the agent.
+-   **Server-Sent Events (SSE):** The frontend was successfully migrated from inefficient polling to a modern, real-time SSE architecture for data updates.
+-   **Mechanical vs. Probabilistic Enforcement:** The key lesson that critical setup steps cannot be left to LLM interpretation (probabilistic) and must be enforced through code (mechanical), such as user-triggered API calls.
+-   **Environment Isolation:** A hard-learned lesson on the critical importance of distinguishing between the production environment and the isolated preview environment to avoid confusion with wallets, state, and logs.
 
 **key DB schema**
--   No changes were made to the database schema.
+-   No schema changes were made. Stale data was purged from the , , and  collections in MongoDB.
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   : The rewritten **template** for new agents, containing the mandatory boot sequence.
--   : Contains the fixes for wallet data, the SOUL patch endpoint, and agent creation logic.
--   : Contains the new SSE endpoint for real-time data.
--   : The new, architecturally-correct backend for the OpenClaw viewer.
--   : The new frontend for the OpenClaw viewer.
--   : Contains the new UI button for patching the .
--   : The Automaton engine file where the  character limit was raised.
+-   : The new React hook for managing the SSE connection.
+-   : All pages were modified to remove  and use the new SSE hook.
+-   : Contains the new rate-limiting logic for Telegram notifications.
+-   : Contains the improved (but unverified) logic for displaying agent credits.
+-   : **WARNING:** This file contains the logic for the flawed host-level installation approach and must be reverted or removed.
+-   : **WARNING:** This file was modified as part of the flawed approach and must be reverted.
 
 **Areas that need refactoring**:
--   The frontend should be updated to use the new SSE stream from  instead of its current  polling for a more efficient, truly real-time experience.
+-   The  script must be reverted to its original state or deleted entirely. The current version attempts to install tools on the host, which is a major security flaw.
+-   The changes made within the Automaton engine source code at  should be reverted as they were part of the flawed bootstrap plan.
 
 **key api endpoints**
--   : **NEW**. Emergency endpoint to directly overwrite an agent's .
--   : **NEW**. SSE endpoint for pushing real-time wallet/log data.
--   : **NEW**. Provides status for the OpenClaw viewer, including Conway sandbox info and relevant tool calls.
--   : **FIXED**. Now provides live data from the Conway API.
+-   : The SSE endpoint that now powers all frontend real-time updates.
+-   **Upcoming:** A new set of endpoints under  will be required for the new UI wizard (e.g., , ).
 
 **Critical Info for New Agent**
--   A massive overhaul was just completed to fix the root causes of agent loops and data discrepancies. The core of the fix is the new mandatory boot sequence in the  files.
--   The immediate next step is **user verification**. You must guide the user to create/start an agent and confirm that the fixes work as intended. Do not assume the fixes work without this verification step.
--   The  has been completely rewritten to be architecturally correct. It will only show data once an agent creates a Conway sandbox and starts using OpenClaw inside it.
+-   **STOP! DO NOT CONTINUE THE PREVIOUS PLAN.** The last agent's strategy of using a  script to install tools on the host was a critical architectural and security error. The user has explicitly rejected this approach.
+-   **Your immediate task is to implement the user's new directive:** Build a step-by-step setup wizard on the dashboard. This UI will have buttons that trigger individual API calls to:
+    1.  Create the agent's sandbox VM.
+    2.  Install required tools (usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
+           [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]
+           [-p | --paginate | -P | --no-pager] [--no-replace-objects] [--bare]
+           [--git-dir=<path>] [--work-tree=<path>] [--namespace=<name>]
+           [--super-prefix=<path>] [--config-env=<name>=<envvar>]
+           <command> [<args>]
+
+These are common Git commands used in various situations:
+
+start a working area (see also: git help tutorial)
+   clone     Clone a repository into a new directory
+   init      Create an empty Git repository or reinitialize an existing one
+
+work on the current change (see also: git help everyday)
+   add       Add file contents to the index
+   mv        Move or rename a file, a directory, or a symlink
+   restore   Restore working tree files
+   rm        Remove files from the working tree and from the index
+
+examine the history and state (see also: git help revisions)
+   bisect    Use binary search to find the commit that introduced a bug
+   diff      Show changes between commits, commit and working tree, etc
+   grep      Print lines matching a pattern
+   log       Show commit logs
+   show      Show various types of objects
+   status    Show the working tree status
+
+grow, mark and tweak your common history
+   branch    List, create, or delete branches
+   commit    Record changes to the repository
+   merge     Join two or more development histories together
+   rebase    Reapply commits on top of another base tip
+   reset     Reset current HEAD to the specified state
+   switch    Switch branches
+   tag       Create, list, delete or verify a tag object signed with GPG
+
+collaborate (see also: git help workflows)
+   fetch     Download objects and refs from another repository
+   pull      Fetch from and integrate with another repository or a local branch
+   push      Update remote refs along with associated objects
+
+'git help -a' and 'git help -g' list available subcommands and some
+concept guides. See 'git help <command>' or 'git help <concept>'
+to read about a specific subcommand or concept.
+See 'git help git' for an overview of the system., , , etc.) *inside* that sandbox.
+    3.  Verify the tools are working inside the sandbox.
+    4.  Start the agent's main logic only after the setup is complete.
+-   You must first revert or remove the incorrect changes made to  and . These files represent a flawed and abandoned strategy.
 
 **documents and test reports created in this job**
--   : Multiple test reports were generated, with final reports showing 100% pass rates on E2E tests.
--   : New unit test file was created.
--   : Updated with the latest progress.
+-   All stale test reports and logs from previous runs were deleted to ensure a clean environment. No new, relevant documents were created.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Asks to add a screen showing the OpenClaw browsing VM in real-time.
-2.  **User:** Corrects the agent's understanding: OpenClaw runs *inside* the Conway VM, not on its own.
-3.  **User:** Confirms the agent's corrected understanding and tells it to fix the implementation.
-4.  **User:** Asks for E2E tests, cleanup, and verification of agent creation flow, data isolation, and deployment readiness.
-5.  **User:** Asks to remove the M capital part from the genesis prompt.
-6.  **User:** Clarifies the two-prompt system: one for Anima Fund itself, and a template for new agents, both needing the mandatory install steps.
-7.  **User:** Requests E2E testing and preparation for deployment, ensuring all data flows are working and separate for each agent.
-8.  **User:** Asks if all screens and elements are connected correctly and requests the OpenClaw VM viewer screen again.
-9.  **User:** Confirms the agent's understanding of the OpenClaw/Conway architecture is now correct and instructs it to proceed with the fix.
-10. **Agent:** Finalizes all fixes, runs E2E tests successfully, and is ready for user verification.
+1.  **User:** Realizes the agent is trying to install tools on the host, which is a massive security breach, and instructs the agent to remove any host-level installations.
+2.  **Agent:** Acknowledges the error and starts removing the flawed implementation.
+3.  **User:** Asks how to force the agent to install and test tools correctly before doing anything else.
+4.  **Agent:** Proposes a new, mechanically enforced  that tests tools and creates a  before the LLM starts. (This is still the flawed host-level approach).
+5.  **User:** Asks for the tool tests to be functional (e.g., actually download a file), not just  checks.
+6.  **Agent:** Implements functional tests in the bootstrap script.
+7.  **User:** Asks for a Telegram test and why it's failing.
+8.  **Agent:** Identifies the Telegram bot is rate-limited from earlier spam.
+9.  **User:** Asks for confidence level in the fix.
+10. **Agent:** Admits confidence is only medium because the LLM can still ignore the  file. Proposes modifying the engine to inject the report into the prompt. (Still based on the flawed host-level premise).
+11. **User:** do whatever it takes to ensure it will 100% work as intended, at least acually work
+12. **Agent:** Proceeds to modify the Automaton engine source code to inject the boot report.
+13. **User:** where will you be installing these things because the agent first needs to be created and funded before he can have its own sandbox and vm it might be better to just add a button on the dashboard... - **This is the critical course correction.** The user identifies the fundamental flaw and provides the correct architectural direction.
+14. **Agent:** Acknowledges the user is correct and that the bootstrap script approach is wrong. Prepares to build the new step-by-step UI wizard.
 
 **Project Health Check:**
--   **Broken:** None. All previously broken items have been fixed and are pending user verification.
--   **Mocked:** None.
+-   **Broken:** The core agent creation and boot sequence is fundamentally non-functional. The agent cannot install its required tools to operate.
+-   **Mocked:** None. The previous confusion between production and preview environments has been resolved.
 
 **3rd Party Integrations**
 -   Conway Research Ecosystem (web4.ai)
@@ -127,13 +233,13 @@ There are no outstanding issues. The previously critical issues (agent loop, wal
 -   Telegram Bot API
 
 **Testing status**
--   **Testing agent used after significant changes:** YES. The testing agent was used multiple times, culminating in a full E2E test run with a 100% pass rate after all fixes were implemented.
+-   **Testing agent used after significant changes:** YES (for the SSE migration).
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** 
+-   **Test files created:** None of note. Stale test files were removed.
 -   **Known regressions:** None.
 
 **Credentials to test flow:**
 -   Agent creation requires a Telegram Bot Token and Chat ID.
 
 **What agent forgot to execute**
--   The agent implemented a real-time SSE endpoint () on the backend but did not update the frontend to use it. The frontend still relies on a polling  for data refreshes.</analysis>
+-   The agent fundamentally misunderstood the agent's execution environment (sandbox vs. host) for the majority of the session, leading to a series of flawed fixes that have now been abandoned.</analysis>

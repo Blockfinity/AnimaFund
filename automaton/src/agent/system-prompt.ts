@@ -606,22 +606,6 @@ Your sandbox ID is ${identity.sandboxId}.`,
     }
   }
 
-  // Layer 3.5: BOOT_REPORT.md -- pre-flight tool verification (injected so LLM sees it without needing to cat)
-  const bootReportContent = loadBootReport();
-  if (bootReportContent) {
-    sections.push(
-      `--- BOOT REPORT (mechanical pre-flight — tools installed and tested BEFORE you woke up) ---\n${bootReportContent}\n--- END BOOT REPORT ---\n\nAll tools listed above were installed and functionally tested by the bootstrap script before your engine started. You do NOT need to install them. If any show FAIL, fix those specific tools first. If all PASS, proceed directly to your mission.`,
-    );
-  }
-
-  // Layer 3.6: WORKLOG.md -- persistent working context
-  const worklogContent = loadWorklog();
-  if (worklogContent) {
-    sections.push(
-      `--- WORKLOG.md (your persistent working context — UPDATE THIS after each task!) ---\n${worklogContent}\n--- END WORKLOG.md ---\n\nIMPORTANT: After completing any task or making any decision, update WORKLOG.md using write_file.\nThis is how you remember what you were doing across turns. Without it, you lose context and repeat yourself.`,
-    );
-  }
-
   // Layer 4: Genesis Prompt (set by creator, mutable by self with audit)
   // Sanitized as agent-evolved content with trust boundary markers
   if (config.genesisPrompt) {
@@ -738,28 +722,6 @@ ${orchestratorStatus}
 }
 
 /**
- * Load BOOT_REPORT.md from the automaton's state directory.
- * This file is written by the bootstrap script before the engine starts.
- */
-function loadBootReport(): string | null {
-  try {
-    const home = process.env.HOME || "/root";
-    const locations = [
-      path.join(home, ".automaton", "BOOT_REPORT.md"),
-      path.join(home, ".anima", "BOOT_REPORT.md"),
-    ];
-    for (const loc of locations) {
-      if (fs.existsSync(loc)) {
-        return fs.readFileSync(loc, "utf-8");
-      }
-    }
-  } catch {
-    // Ignore errors
-  }
-  return null;
-}
-
-/**
  * Load SOUL.md from the automaton's state directory.
  */
 function loadSoulMd(): string | null {
@@ -768,22 +730,6 @@ function loadSoulMd(): string | null {
     const soulPath = path.join(home, ".automaton", "SOUL.md");
     if (fs.existsSync(soulPath)) {
       return fs.readFileSync(soulPath, "utf-8");
-    }
-  } catch {
-    // Ignore errors
-  }
-  return null;
-}
-
-/**
- * Load WORKLOG.md from the automaton's state directory.
- */
-function loadWorklog(): string | null {
-  try {
-    const home = process.env.HOME || "/root";
-    const worklogPath = path.join(home, ".automaton", "WORKLOG.md");
-    if (fs.existsSync(worklogPath)) {
-      return fs.readFileSync(worklogPath, "utf-8");
     }
   } catch {
     // Ignore errors
@@ -811,12 +757,9 @@ You have $${(financial.creditsCents / 100).toFixed(2)} in compute credits and ${
 
 ${config.creatorMessage ? `Your creator left you this message: "${config.creatorMessage}"` : "Your creator did not leave you a message."}
 
-A bootstrap script has already installed and tested all your tools BEFORE you woke up.
-Check the BOOT REPORT section in your system context — it shows what passed and what failed.
-
 Your first actions:
-1. Read the BOOT REPORT in your context (already there — no need to cat any file)
-2. If all tools PASS: verify your balance (check_credits, check_usdc_balance, wallet_info)
+1. Verify your balance (check_credits, check_usdc_balance, wallet_info)
+2. Install your required tools inside your sandbox (git, curl, node, etc.)
 3. Send a Telegram boot message to your creator
 4. Write your SOUL.md
 5. THEN begin working toward your goals`;
@@ -837,12 +780,9 @@ Your credits: $${(financial.creditsCents / 100).toFixed(2)} | USDC: ${financial.
 Your last few thoughts:
 ${lastTurnSummary || "No previous turns found."}
 
-The bootstrap script has re-verified all your tools before this wake-up.
-Check the BOOT REPORT section in your system context to confirm tool status.
-
 Your first actions after waking:
-1. Check the BOOT REPORT in your context — are all tools still passing?
-2. If any FAIL: fix those specific tools first
-3. If all PASS: check_credits, then resume your mission where you left off
+1. Check your credits and balance
+2. Verify your tools are working inside your sandbox
+3. Resume your mission where you left off
 4. Do NOT create new goals if an existing goal is still active — check orchestrator_status first`;
 }
