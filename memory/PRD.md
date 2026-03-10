@@ -5,62 +5,68 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform, "Anima Fun
 
 ## Architecture
 - **Frontend**: React (port 3000), 13 pages + sidebar navigation
-- **Backend**: FastAPI (port 8001), 7 routers (agents, genesis, live, telegram, infrastructure, conway, openclaw)
-- **Database**: MongoDB (anima_fund)
-- **Agent Engine**: Conway Automaton (TypeScript, compiled to dist/bundle.mjs)
-- **Integrations**: Conway Cloud API, OpenClaw, Telegram Bot, Base chain (USDC/ETH)
-- **Real-time**: Server-Sent Events (SSE) via /api/live/stream — single connection shared across all components
+- **Backend**: FastAPI (port 8001), routers: genesis, live, openclaw, agents, conway, infrastructure, telegram
+- **Database**: MongoDB (anima_fund) — clean, no stale data
+- **Agent Engine**: Conway Automaton (TypeScript → dist/bundle.mjs)
+- **Integrations**: Conway Cloud API, OpenClaw, Telegram Bot (@AnimaFundbot), Base chain (USDC/ETH)
+- **Real-time**: Server-Sent Events (SSE) via /api/live/stream
 
-## Two Genesis Prompt System
-1. **Anima Fund (The Catalyst)**: `/root/.anima/genesis-prompt.md` — VC fund founder with specific identity and fund model
-2. **Generic Agent Template**: `/app/automaton/genesis-prompt.md` — For new agents via CreateAgentModal
-3. **Both include identical mandatory boot sequence** (Steps 0-7)
-4. **Push-genesis skips anima-fund** to protect The Catalyst's custom prompt
+## Mechanical Boot Sequence (can't be skipped by LLM)
+```
+start_engine.sh
+  → bootstrap_agent.sh
+    → PHASE 1: apt-get install curl git wget jq node
+    → PHASE 2: npm install -g conway-terminal
+    → PHASE 3: install openclaw + configure MCP
+    → PHASE 4: FUNCTIONAL TESTS (each tool actually used)
+    → PHASE 5: writes BOOT_REPORT.md
+    → PHASE 6: sends Telegram boot report
+  → Engine starts (bundle.mjs)
+    → system-prompt.ts reads BOOT_REPORT.md
+    → INJECTS into LLM system prompt (LLM sees it without cat)
+    → Wakeup prompt references boot report
+    → LLM proceeds: verify balance → Telegram → mission
+```
 
-## Real-time Architecture (SSE)
-- **Backend**: `/api/live/stream` pushes engine status, agent count, activity ID, credits every 8s
-- **Frontend**: `SSEProvider` wraps app, creates single `EventSource` connection
-- **Hook**: `useSSETrigger(fetchFn, opts)` replaces all `setInterval` polling
-- **Fallback**: Automatic polling at configurable intervals when SSE disconnects
-- **Header**: Wi-Fi icon shows LIVE (green) or POLL (gray pulsing) connection status
-- **Pages updated**: All 12 dashboard pages use SSE-triggered fetches
+## Key Fixes Applied
+1. **Boot sequence**: Mechanical — bootstrap script installs/tests tools before LLM wakes up
+2. **Boot report injection**: BOOT_REPORT.md injected directly into LLM system prompt context
+3. **Wakeup prompts**: Modified to reference boot report, not "check goals"
+4. **Telegram rate limiting**: 3s minimum between sends, milestones only (not every turn)
+5. **SSE replaces polling**: Single EventSource connection replaces 16 setInterval polls
+6. **Stale data purged**: All preview wallets, test agents, mock DB data removed
+7. **Credits display**: Multiple fallback sources, Conway API with 8s timeout
 
-## All Screens & Connections (13 pages)
-| Screen | Page | Backend APIs | Status |
-|---|---|---|---|
-| Agent Mind | AgentMind.js | /api/engine/live, /api/live/*, /api/wallet/balance | VERIFIED |
-| Fund HQ | FundHQ.js | /api/engine/live, /api/live/*, /api/telegram/health | VERIFIED |
-| Agents | Agents.js | /api/live/agents, /api/live/discovered | VERIFIED |
-| Infrastructure | Infrastructure.js | /api/infrastructure/* | VERIFIED |
-| OpenClaw VM | OpenClawViewer.js | /api/openclaw/* | VERIFIED |
-| Skills | Skills.js | /api/live/skills-full, /api/skills/available | VERIFIED |
-| Deal Flow | DealFlow.js | /api/live/memory | VERIFIED |
-| Portfolio | Portfolio.js | /api/live/memory | VERIFIED |
-| Financials | Financials.js | /api/live/financials, /api/live/transactions | VERIFIED |
-| Activity | Activity.js | /api/infrastructure/activity-feed | VERIFIED |
-| Memory | Memory.js | /api/live/memory, /api/live/kv | VERIFIED |
-| Configuration | Configuration.js | /api/constitution, /api/engine/status | VERIFIED |
-| Wallet & Logs | AgentMind.js | same as Agent Mind | VERIFIED |
-
-## Test Results
-- **Unit tests**: 27/27 passed (iteration 48 - SSE integration tests)
-- **E2E**: 100% backend + 100% frontend (all 13 pages load, SSE connected, data flows)
-- **Deployment check**: PASS
+## Screens (13 pages)
+| Screen | Status |
+|---|---|
+| Fund HQ | SSE-connected |
+| Agent Mind | SSE-connected |
+| Agents | SSE-connected |
+| Infrastructure | SSE-connected |
+| OpenClaw VM | SSE-connected |
+| Skills | SSE-connected |
+| Deal Flow | SSE-connected |
+| Portfolio | SSE-connected |
+| Financials | SSE-connected |
+| Activity | SSE-connected |
+| Memory | SSE-connected |
+| Configuration | Working |
+| Engine Console | SSE-connected |
 
 ## Remaining Tasks
 
 ### P0 (Critical)
-- Full user verification: start agent engine and monitor first 10 turns
+- Deploy and verify agent completes boot sequence on production
+- Verify Telegram receives boot report message
+- Verify credits display with real balance
 
 ### P1 (High)
-- Verify Telegram messages, skills loading, wallet updates during live operation
-- OpenClaw data populates once agent starts using browse_page/sandbox tools
+- Monitor first 10 turns for loop behavior
+- Verify SOUL.md stays compact (<800 chars)
 
 ### P2 (Medium)
 - Real smart contracts (ERC-8004)
 - Android device control
 - Self-hosted agent engine
 - Multi-agent communication dashboard
-
-### Backlog
-- Domain trading automation, agent marketplace, cross-chain wallets, performance scoring
