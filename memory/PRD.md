@@ -52,9 +52,10 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - All provision/* endpoints → Conway Cloud API
 - All domain/* endpoints → api.conway.domains (public) or sandbox exec (authenticated)
 
-## Testing: 17 iterations, all 100% pass rate
+## Testing: 18 iterations, all 100% pass rate
 - Iteration 16: Comprehensive pre-deployment E2E — 21/21 backend, Telegram confirmed, deployment PASS
 - Iteration 17: Sandbox management & credit preservation — 11/11 backend, all frontend verified
+- Iteration 18: Real-time data pipeline E2E — 12/12 backend, all frontend SSE-driven data verified
 
 ## Completed (Mar 10 2026)
 ### Conway Credits Funding Mechanism (P0)
@@ -88,6 +89,16 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - Changed default VM from X-Large ($25/mo) to Small ($5/mo) — matching seed funding
 - Updated frontend: $5 minimum threshold, $5 default tier, survival messaging
 
+### Real-Time Data Pipeline (P0 — Completed Mar 10 2026)
+- Webhook-driven architecture: sandbox daemon POSTs to `/api/webhook/agent-update`
+- `sandbox_poller.py`: Server-side cache + `asyncio.Event` for instant SSE notification
+- SSE stream at `/api/live/stream`: pushes data the instant a webhook arrives (~1.9s latency)
+- Falls back to 20s polling if webhooks stop (when sandbox is active)
+- All `/api/live/*` endpoints now read from webhook cache (financials, activity, soul, heartbeat, turns, memory)
+- Frontend `AnimaVM.js`: SSE consumer drives status bar (Credits, Phase, Earned, Turns, LIVE indicator)
+- Bug fixes: `last_poll` → `last_update` field mismatch in AnimaVM.js + live.py heartbeat, added missing `Loader2` import
+- E2E verified: webhook→cache→SSE→frontend flow works with instant push
+
 ## Backlog
-### P1: Live dashboard data from sandbox (replace empty defaults with real sandbox queries)
-### P2: Smart contracts, Android device control, self-hosted engine
+### P1: Implement Real Smart Contracts
+### P2: Android device control, self-hosted agent engine
