@@ -98,7 +98,7 @@ export default function AnimaVM({ selectedAgent }) {
     finally { setLoading(false); }
   }, []);
 
-  // SSE: direct real-time updates from stream data
+  // SSE: multi-source real-time updates
   const [sseData, setSseData] = useState(null);
   useEffect(() => {
     fetchAll();
@@ -110,19 +110,19 @@ export default function AnimaVM({ selectedAgent }) {
           const d = JSON.parse(e.data);
           if (!d.error) {
             setSseData(d);
+            // Conway credits (source: Conway API)
             if (d.conway_credits_cents !== undefined && provStatus) {
               setProvStatus(prev => prev ? { ...prev, credits_cents: d.conway_credits_cents } : prev);
             }
-            if (d.economics && Object.keys(d.economics).length > 0) {
+            // Agent financials (source: webhook from sandbox daemon)
+            if (d.total_earned_usd !== undefined || d.total_spent_usd !== undefined) {
               setFinancials(prev => ({
                 ...prev,
-                credits_usd: d.economics.credits_usd || 0,
-                credits_cents: d.economics.credits_cents || 0,
-                wallet_address: d.economics.wallet_address || '',
                 total_earned_usd: d.total_earned_usd || 0,
                 total_spent_usd: d.total_spent_usd || 0,
               }));
             }
+            // Phase state (source: webhook from sandbox daemon)
             if (d.phase_state && Object.keys(d.phase_state).length > 0) {
               setPhaseState(d.phase_state);
             }
@@ -217,12 +217,15 @@ export default function AnimaVM({ selectedAgent }) {
             <StatusPill label="Engine" ok={tools['engine']?.deployed} />
           </div>
           <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span>Credits: <b className={(sseData?.conway_credits_cents || provStatus?.credits_cents) > 0 ? "text-foreground" : "text-red-500"}>${((sseData?.conway_credits_cents || provStatus?.credits_cents || 0) / 100).toFixed(2)}</b></span>
+            <span data-testid="wallet-usdc">Wallet: <b className={sseData?.wallet?.usdc > 0 ? "text-emerald-600" : "text-muted-foreground"}>${(sseData?.wallet?.usdc || 0).toFixed(2)} <span className="text-[8px]">USDC</span></b></span>
+            <span className="text-border">|</span>
+            <span data-testid="conway-credits">Credits: <b className={(sseData?.conway_credits_cents || provStatus?.credits_cents) > 0 ? "text-foreground" : "text-red-500"}>${((sseData?.conway_credits_cents || provStatus?.credits_cents || 0) / 100).toFixed(2)}</b></span>
+            <span className="text-border">|</span>
             <span>Phase: <b className="text-foreground">{sseData?.phase ?? phaseState?.current_phase ?? 0}</b></span>
             <span>Earned: <b className="text-emerald-600">${(sseData?.total_earned_usd || financials?.total_earned_usd || 0).toFixed(2)}</b></span>
             <span>Turns: <b className="text-foreground">{sseData?.decision_count || sseData?.engine?.turn_count || 0}</b></span>
             <span>VMs: <b className="text-foreground">{sb.live_sandboxes || 0}</b></span>
-            {sseData?.last_update && <span className="text-emerald-500">LIVE</span>}
+            {sseData?.last_update && <span data-testid="live-indicator" className="text-emerald-500 font-bold">LIVE</span>}
             {!sseData?.last_update && sseData?.sandbox_id && <span className="text-amber-500">Connecting...</span>}
             <button data-testid="refresh-all-btn" onClick={fetchAll} className="p-1 rounded border border-border hover:bg-secondary transition-colors">
               <RefreshCw className="w-3 h-3 text-muted-foreground" />

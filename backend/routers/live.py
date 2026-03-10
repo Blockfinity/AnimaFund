@@ -9,13 +9,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-import aiohttp
 
 from sandbox_poller import get_cache, get_update_event
 
 router = APIRouter(prefix="/api", tags=["live"])
-
-CONWAY_API_KEY = os.environ.get("CONWAY_API_KEY", "")
 
 
 @router.get("/live/identity")
@@ -245,7 +242,13 @@ async def live_heartbeat_schedule():
 
 @router.get("/live/stream")
 async def live_stream():
-    """SSE — pushes the instant a webhook arrives, no sleep delay."""
+    """SSE — multi-source real-time stream.
+    Each data point comes from its optimal source:
+      - Wallet balance: on-chain RPC (background task, ~15s)
+      - Conway credits: Conway API (background task, ~10s)
+      - Agent activity: webhook from sandbox daemon (instant)
+    Pushes instantly on any source update, or heartbeat every 5s.
+    """
     update_event = get_update_event()
 
     async def event_generator():
@@ -256,17 +259,6 @@ async def live_stream():
                 phase = cache.get("phase_state", {})
                 revenue = cache.get("revenue_log", [])
                 decisions = cache.get("decisions_log", [])
-
-                credits_cents = econ.get("credits_cents", 0)
-                if not credits_cents and CONWAY_API_KEY:
-                    try:
-                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                            async with session.get("https://api.conway.tech/v1/credits/balance",
-                                headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}) as resp:
-                                if resp.status == 200:
-                                    credits_cents = (await resp.json()).get("credits_cents", 0)
-                    except Exception:
-                        pass
 
                 total_earned = sum(r.get("gross_revenue", r.get("net", 0)) for r in revenue if isinstance(r, dict))
                 total_spent = sum(r.get("cost", 0) for r in revenue if isinstance(r, dict))
@@ -279,7 +271,17 @@ async def live_stream():
                         "turn_count": len(decisions) if isinstance(decisions, list) else 0,
                         "agent_id": "anima-fund",
                     },
-                    "conway_credits_cents": credits_cents,
+                    # Source: Conway API (dedicated background task)
+                    "conway_credits_cents": cache.get("conway_credits_cents", 0),
+                    "conway_credits_last_check": cache.get("conway_credits_last_check"),
+                    # Source: On-chain RPC (dedicated background task)
+                    "wallet": {
+                        "address": cache.get("wallet_address", ""),
+                        "usdc": cache.get("wallet_usdc", 0.0),
+                        "eth": cache.get("wallet_eth", 0.0),
+                        "last_check": cache.get("wallet_last_check"),
+                    },
+                    # Source: Webhook from sandbox daemon (instant push)
                     "economics": econ,
                     "phase": phase.get("current_phase", 0) if isinstance(phase, dict) else 0,
                     "phase_state": phase,
@@ -287,7 +289,6 @@ async def live_stream():
                     "total_spent_usd": total_spent,
                     "revenue_actions": len(revenue) if isinstance(revenue, list) else 0,
                     "decision_count": len(decisions) if isinstance(decisions, list) else 0,
-                    "wallet_address": econ.get("wallet_address", ""),
                     "sandbox_id": cache["sandbox_id"],
                     "update_source": cache.get("update_source", "waiting"),
                     "last_update": cache["last_update"],
@@ -300,7 +301,7 @@ async def live_stream():
             except Exception as e:
                 yield f"data: {_json.dumps({'error': str(e)})}\n\n"
 
-            # Wait for next webhook OR timeout after 5s (heartbeat)
+            # Wait for ANY source update or heartbeat timeout
             try:
                 await asyncio.wait_for(update_event.wait(), timeout=5.0)
             except asyncio.TimeoutError:

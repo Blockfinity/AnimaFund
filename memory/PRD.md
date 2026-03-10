@@ -58,6 +58,19 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - Iteration 18: Real-time data pipeline E2E — 12/12 backend, all frontend SSE-driven data verified
 
 ## Completed (Mar 10 2026)
+
+### Multi-Source Real-Time Data Pipeline (P0 — Completed Mar 10 2026)
+- **Architecture**: Each data point uses its optimal source:
+  - Wallet balance (USDC/ETH) → On-chain Base RPC (background refresh every ~10s)
+  - Conway credits → Conway API (background refresh every ~10s, same cycle)
+  - Agent activity/phase/logs → Webhook from sandbox daemon (instant push)
+  - Fallback sandbox polling → Only when webhook stale (>20s)
+- **Backend**: ONE unified refresh task fetches wallet + credits in parallel via `asyncio.gather`
+- **Frontend**: SSE stream is single source of truth for AnimaVM/App.js. AgentMind keeps its own working fetch.
+- **Removed**: 3 separate polling loops → 1 unified cycle. Removed 5s credit polling from App.js.
+- Bug fixes: `last_poll` → `last_update` mismatch, missing `Loader2` import, wrong provisioning status path
+
+## Completed (Mar 10 2026)
 ### Conway Credits Funding Mechanism (P0)
 - Created `/app/backend/routers/credits.py` with 3 endpoints (balance, pricing, purchase)
 - Frontend: Credits panel on genesis screen with tier selector, QR code, payment instructions
@@ -91,13 +104,9 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 
 ### Real-Time Data Pipeline (P0 — Completed Mar 10 2026)
 - Webhook-driven architecture: sandbox daemon POSTs to `/api/webhook/agent-update`
-- `sandbox_poller.py`: Server-side cache + `asyncio.Event` for instant SSE notification
-- SSE stream at `/api/live/stream`: pushes data the instant a webhook arrives (~1.9s latency)
-- Falls back to 20s polling if webhooks stop (when sandbox is active)
-- All `/api/live/*` endpoints now read from webhook cache (financials, activity, soul, heartbeat, turns, memory)
-- Frontend `AnimaVM.js`: SSE consumer drives status bar (Credits, Phase, Earned, Turns, LIVE indicator)
-- Bug fixes: `last_poll` → `last_update` field mismatch in AnimaVM.js + live.py heartbeat, added missing `Loader2` import
-- E2E verified: webhook→cache→SSE→frontend flow works with instant push
+- `sandbox_poller.py`: Unified refresh cycle + webhook handler + SSE event
+- SSE stream at `/api/live/stream`: pushes data the instant any source updates
+- All `/api/live/*` endpoints read from shared cache
 
 ## Backlog
 ### P1: Implement Real Smart Contracts

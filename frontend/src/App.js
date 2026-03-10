@@ -82,7 +82,7 @@ function AppInner() {
 
   useEffect(() => { fetchProvStatus(); }, [fetchProvStatus]);
 
-  // Fetch credit balance
+  // Fetch credit balance — initial load only, SSE handles real-time updates
   const fetchCreditBalance = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/credits/balance`);
@@ -93,7 +93,7 @@ function AppInner() {
     } catch { /* ignore */ }
   }, []);
 
-  // Fetch pricing tiers on mount
+  // Fetch pricing tiers on mount + initial balance
   useEffect(() => {
     fetchCreditBalance();
     (async () => {
@@ -108,11 +108,13 @@ function AppInner() {
     })();
   }, [fetchCreditBalance]);
 
-  // Poll balance continuously — catches credits added from Conway dashboard
+  // SSE drives credit balance updates — no separate polling loop needed
+  const { sseData: globalSSE } = useSSE();
   useEffect(() => {
-    const interval = setInterval(fetchCreditBalance, 5000);
-    return () => clearInterval(interval);
-  }, [fetchCreditBalance]);
+    if (globalSSE?.conway_credits_cents !== undefined) {
+      setCreditBalance(globalSSE.conway_credits_cents);
+    }
+  }, [globalSSE?.conway_credits_cents]);
 
   const handleSelectAgent = async (agentId) => {
     try {
