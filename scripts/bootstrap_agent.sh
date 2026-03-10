@@ -127,68 +127,190 @@ if [ -d "$CT_COMMANDS" ]; then
 fi
 
 # ═════════════════════════════════════════════════════════
-# PHASE 4: TEST EVERY TOOL
+# PHASE 4: FUNCTIONAL TESTS — actually USE every tool
 # ═════════════════════════════════════════════════════════
 echo ""
-echo "[PHASE 4] Testing every tool..."
+echo "[PHASE 4] Functional tests — using every tool for real..."
 echo ""
 
-# --- System tools ---
-for tool in curl git wget jq python3; do
-    if command -v $tool &>/dev/null; then
-        ver=$($tool --version 2>&1 | head -1 | cut -c1-60)
-        record "$tool" "PASS" "$ver"
-    else
-        record "$tool" "FAIL" "not found in PATH"
-    fi
-done
+TEST_DIR=$(mktemp -d)
 
-# --- Node.js ---
+# --- curl: download a real file ---
+CURL_OUT=$(curl -s -m 10 -o "${TEST_DIR}/curl_test.html" -w "%{http_code}" "https://api.conway.tech/v1/health" 2>&1)
+if [ "$CURL_OUT" = "200" ] || [ -s "${TEST_DIR}/curl_test.html" ]; then
+    record "curl" "PASS" "fetched api.conway.tech/v1/health (HTTP ${CURL_OUT})"
+elif command -v curl &>/dev/null; then
+    # Fallback: try any URL
+    CURL_OUT2=$(curl -s -m 10 -o /dev/null -w "%{http_code}" "https://example.com" 2>&1)
+    if [ "$CURL_OUT2" = "200" ]; then
+        record "curl" "PASS" "fetched example.com (HTTP ${CURL_OUT2})"
+    else
+        record "curl" "FAIL" "installed but cannot reach any URL"
+    fi
+else
+    record "curl" "FAIL" "not found in PATH"
+fi
+
+# --- wget: download a real file ---
+if command -v wget &>/dev/null; then
+    wget -q -T 10 -O "${TEST_DIR}/wget_test.txt" "https://example.com" 2>/dev/null
+    if [ -s "${TEST_DIR}/wget_test.txt" ]; then
+        FSIZE=$(wc -c < "${TEST_DIR}/wget_test.txt")
+        record "wget" "PASS" "downloaded example.com (${FSIZE} bytes)"
+    else
+        record "wget" "FAIL" "installed but download failed"
+    fi
+else
+    record "wget" "FAIL" "not found in PATH"
+fi
+
+# --- git: init a repo, make a commit ---
+if command -v git &>/dev/null; then
+    cd "${TEST_DIR}" && git init -q test_repo && cd test_repo && \
+        git config user.email "test@boot.local" && git config user.name "boot" && \
+        echo "boot test" > README.md && git add . && git commit -q -m "boot test" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        HASH=$(cd "${TEST_DIR}/test_repo" && git log --oneline -1 2>/dev/null)
+        record "git" "PASS" "init + commit: ${HASH}"
+    else
+        record "git" "FAIL" "installed but commit failed"
+    fi
+    cd "${AGENT_HOME}"
+else
+    record "git" "FAIL" "not found in PATH"
+fi
+
+# --- jq: parse real JSON ---
+if command -v jq &>/dev/null; then
+    PARSED=$(echo '{"agent":"anima","status":"booting","tools":3}' | jq -r '.agent + " " + .status' 2>/dev/null)
+    if [ "$PARSED" = "anima booting" ]; then
+        record "jq" "PASS" "parsed JSON: ${PARSED}"
+    else
+        record "jq" "FAIL" "installed but parse failed"
+    fi
+else
+    record "jq" "FAIL" "not found in PATH"
+fi
+
+# --- python3: run real computation + file I/O ---
+if command -v python3 &>/dev/null; then
+    PY_OUT=$(python3 -c "
+import json, os, hashlib, tempfile
+# Write a file
+path = os.path.join('${TEST_DIR}', 'py_test.json')
+data = {'agent': 'anima', 'boot': True, 'hash': hashlib.sha256(b'boot').hexdigest()[:16]}
+with open(path, 'w') as f: json.dump(data, f)
+# Read it back and verify
+with open(path) as f: loaded = json.load(f)
+assert loaded['boot'] == True
+assert loaded['hash'] == hashlib.sha256(b'boot').hexdigest()[:16]
+print(f'write+read+verify OK (hash={loaded[\"hash\"]})')
+" 2>&1)
+    if echo "$PY_OUT" | grep -q "OK"; then
+        record "python3" "PASS" "$PY_OUT"
+    else
+        record "python3" "FAIL" "installed but test failed: $PY_OUT"
+    fi
+else
+    record "python3" "FAIL" "not found in PATH"
+fi
+
+# --- node: run real JS + npm module check ---
 if command -v node &>/dev/null; then
-    ver=$(node --version 2>&1)
-    record "node" "PASS" "$ver"
+    NODE_OUT=$(node -e "
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+// Write and read a file
+const p = path.join('${TEST_DIR}', 'node_test.json');
+const data = {agent: 'anima', ts: Date.now(), hash: crypto.createHash('sha256').update('boot').digest('hex').slice(0,16)};
+fs.writeFileSync(p, JSON.stringify(data));
+const loaded = JSON.parse(fs.readFileSync(p, 'utf8'));
+if (loaded.hash === data.hash) {
+    console.log('write+read+verify OK (hash=' + loaded.hash + ')');
+} else {
+    console.log('FAIL: hash mismatch');
+}
+" 2>&1)
+    if echo "$NODE_OUT" | grep -q "OK"; then
+        record "node" "PASS" "$NODE_OUT"
+    else
+        record "node" "FAIL" "installed but test failed: $NODE_OUT"
+    fi
 else
     record "node" "FAIL" "not found in PATH"
 fi
 
+# --- npm: list a global package ---
 if command -v npm &>/dev/null; then
-    ver=$(npm --version 2>&1)
-    record "npm" "PASS" "v$ver"
+    NPM_LIST=$(npm list -g --depth=0 2>/dev/null | grep conway-terminal || echo "")
+    if [ -n "$NPM_LIST" ]; then
+        record "npm" "PASS" "global: $NPM_LIST"
+    else
+        NPM_VER=$(npm --version 2>&1)
+        record "npm" "PASS" "v${NPM_VER} (no global conway-terminal yet)"
+    fi
 else
     record "npm" "FAIL" "not found in PATH"
 fi
 
-# --- Conway Terminal ---
+# --- conway-terminal: actually call system_synopsis ---
 if command -v conway-terminal &>/dev/null; then
-    ver=$(conway-terminal --version 2>&1 || echo "installed")
-    record "conway-terminal" "PASS" "$ver"
+    if [ -f "${ANIMA_DIR}/config.json" ]; then
+        CONWAY_KEY=$(python3 -c "import json; print(json.load(open('${ANIMA_DIR}/config.json')).get('apiKey',''))" 2>/dev/null)
+        if [ -n "$CONWAY_KEY" ]; then
+            # Actually call the Conway API to list tools
+            CT_OUT=$(CONWAY_API_KEY="$CONWAY_KEY" conway-terminal system_synopsis 2>&1 | head -5)
+            if [ -n "$CT_OUT" ] && ! echo "$CT_OUT" | grep -qi "error\|fail"; then
+                record "conway-terminal" "PASS" "system_synopsis returned data"
+            else
+                record "conway-terminal" "WARN" "installed but system_synopsis returned: ${CT_OUT:0:80}"
+            fi
+        else
+            record "conway-terminal" "WARN" "installed ($(conway-terminal --version 2>&1)) — no API key to test live call"
+        fi
+    else
+        record "conway-terminal" "WARN" "installed ($(conway-terminal --version 2>&1)) — no config.json yet"
+    fi
 else
     record "conway-terminal" "FAIL" "not found — agent must install via: npm install -g conway-terminal"
 fi
 
-# --- Conway API connectivity ---
+# --- Conway API: actually hit the credits endpoint ---
 if [ -f "${ANIMA_DIR}/config.json" ]; then
     CONWAY_KEY=$(python3 -c "import json; print(json.load(open('${ANIMA_DIR}/config.json')).get('apiKey',''))" 2>/dev/null)
     if [ -n "$CONWAY_KEY" ]; then
-        CREDITS=$(curl -s -m 5 -H "Authorization: Bearer $CONWAY_KEY" "https://api.conway.tech/v1/credits/balance" 2>/dev/null)
-        if echo "$CREDITS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('credits_cents',0))" 2>/dev/null; then
-            CVAL=$(echo "$CREDITS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('credits_cents',0))" 2>/dev/null)
-            record "conway-api" "PASS" "credits_cents: $CVAL"
+        CREDITS_RAW=$(curl -s -m 10 -H "Authorization: Bearer $CONWAY_KEY" "https://api.conway.tech/v1/credits/balance" 2>/dev/null)
+        CVAL=$(echo "$CREDITS_RAW" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('credits_cents',0))" 2>/dev/null)
+        if [ -n "$CVAL" ]; then
+            DOLLARS=$(python3 -c "print(f'\${int($CVAL)/100:.2f}')" 2>/dev/null)
+            record "conway-api" "PASS" "credits: $DOLLARS (${CVAL} cents)"
         else
-            record "conway-api" "WARN" "API returned unexpected response"
+            record "conway-api" "WARN" "API response: ${CREDITS_RAW:0:100}"
         fi
     else
-        record "conway-api" "WARN" "no API key found — agent will provision on first run"
+        record "conway-api" "WARN" "no API key — agent will provision on first run"
     fi
 else
-    record "conway-api" "WARN" "no config.json yet — agent will provision on first run"
+    record "conway-api" "WARN" "no config.json — agent will provision on first run"
 fi
 
-# --- Conway wallet ---
+# --- Wallet: read and validate address format ---
 if [ -f "${ANIMA_DIR}/config.json" ]; then
-    WALLET=$(python3 -c "import json; print(json.load(open('${ANIMA_DIR}/config.json')).get('walletAddress',''))" 2>/dev/null)
-    if [ -n "$WALLET" ]; then
+    WALLET=$(python3 -c "
+import json
+w = json.load(open('${ANIMA_DIR}/config.json')).get('walletAddress','')
+if w.startswith('0x') and len(w) == 42:
+    print(f'VALID {w}')
+elif w:
+    print(f'INVALID format: {w}')
+else:
+    print('EMPTY')
+" 2>/dev/null)
+    if echo "$WALLET" | grep -q "VALID"; then
         record "wallet" "PASS" "$WALLET"
+    elif echo "$WALLET" | grep -q "INVALID"; then
+        record "wallet" "FAIL" "$WALLET"
     else
         record "wallet" "WARN" "no wallet in config — engine wizard will generate"
     fi
@@ -196,54 +318,70 @@ else
     record "wallet" "WARN" "no config — engine wizard will provision wallet and API key"
 fi
 
-# --- OpenClaw ---
+# --- OpenClaw: actually run openclaw with a command ---
 if command -v openclaw &>/dev/null; then
-    ver=$(openclaw --version 2>&1 || echo "installed")
-    record "openclaw" "PASS" "$ver"
+    OC_OUT=$(openclaw --version 2>&1 || echo "")
+    if [ -n "$OC_OUT" ]; then
+        # Try to list MCP servers
+        OC_LIST=$(openclaw list 2>&1 | head -3 || echo "list not available")
+        record "openclaw" "PASS" "${OC_OUT} | list: ${OC_LIST:0:60}"
+    else
+        record "openclaw" "FAIL" "installed but --version returned nothing"
+    fi
 else
     record "openclaw" "WARN" "not found — agent can install via: curl -fsSL https://openclaw.ai/install.sh | bash"
 fi
 
-# --- OpenClaw MCP config ---
+# --- OpenClaw MCP config: verify JSON is valid ---
 if [ -f "${OPENCLAW_CONFIG}" ]; then
-    record "openclaw-mcp" "PASS" "config exists at ${OPENCLAW_CONFIG}"
+    OC_VALID=$(python3 -c "
+import json
+with open('${OPENCLAW_CONFIG}') as f:
+    cfg = json.load(f)
+servers = list(cfg.get('mcpServers', {}).keys())
+print(f'servers: {servers}')
+" 2>/dev/null)
+    if [ -n "$OC_VALID" ]; then
+        record "openclaw-mcp" "PASS" "valid JSON — $OC_VALID"
+    else
+        record "openclaw-mcp" "FAIL" "config exists but invalid JSON"
+    fi
 else
     record "openclaw-mcp" "WARN" "no MCP config — agent must create"
 fi
 
-# --- Skills ---
+# --- Skills: count and list first few ---
 SKILL_COUNT=$(ls -d "${ANIMA_DIR}/skills/"*/ 2>/dev/null | wc -l)
 if [ "$SKILL_COUNT" -gt 0 ]; then
-    record "skills" "PASS" "$SKILL_COUNT skills loaded"
+    FIRST_SKILLS=$(ls "${ANIMA_DIR}/skills/" 2>/dev/null | head -5 | tr '\n' ', ')
+    record "skills" "PASS" "${SKILL_COUNT} loaded (${FIRST_SKILLS}...)"
 else
     record "skills" "WARN" "no skills found"
 fi
 
-# --- Telegram ---
+# --- Telegram: send a real message ---
 if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-    # Actually test sending a message
     TG_RESULT=$(python3 -c "
 import urllib.request, json
-data = json.dumps({'chat_id': '$TELEGRAM_CHAT_ID', 'text': 'BOOT: Pre-flight checks running...', 'parse_mode': 'HTML'}).encode()
+data = json.dumps({'chat_id': '$TELEGRAM_CHAT_ID', 'text': 'BOOT: Pre-flight tool tests running...', 'parse_mode': 'HTML'}).encode()
 req = urllib.request.Request('https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage', data=data, headers={'Content-Type': 'application/json'})
 try:
     resp = urllib.request.urlopen(req, timeout=10)
     d = json.loads(resp.read())
-    print('ok' if d.get('ok') else 'fail')
+    print('sent message_id=' + str(d.get('result',{}).get('message_id','?')) if d.get('ok') else 'fail: ' + str(d))
 except Exception as e:
-    print(str(e)[:80])
+    print('error: ' + str(e)[:80])
 " 2>/dev/null)
-    if [ "$TG_RESULT" = "ok" ]; then
-        record "telegram" "PASS" "message sent successfully"
+    if echo "$TG_RESULT" | grep -q "sent"; then
+        record "telegram" "PASS" "$TG_RESULT"
     else
         record "telegram" "WARN" "send failed: $TG_RESULT"
     fi
 else
-    # Try to extract from genesis prompt
     if [ -f "${ANIMA_DIR}/genesis-prompt.md" ]; then
         HAS_TG=$(grep -c "api.telegram.org" "${ANIMA_DIR}/genesis-prompt.md" 2>/dev/null || echo "0")
         if [ "$HAS_TG" -gt 0 ]; then
-            record "telegram" "WARN" "credentials in genesis prompt but not in env — agent must use exec"
+            record "telegram" "WARN" "credentials in genesis prompt but not in env — agent uses exec"
         else
             record "telegram" "WARN" "no Telegram config found"
         fi
@@ -251,6 +389,9 @@ else
         record "telegram" "WARN" "no Telegram config found"
     fi
 fi
+
+# Clean up test artifacts
+rm -rf "${TEST_DIR}"
 
 # ═════════════════════════════════════════════════════════
 # PHASE 5: WRITE BOOT REPORT
