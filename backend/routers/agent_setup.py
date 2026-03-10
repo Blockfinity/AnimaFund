@@ -1514,25 +1514,78 @@ async def deploy_agent():
 
         env_exports = " && ".join(f"export {k}='{v}'" for k, v in env_vars.items()) if env_vars else "true"  # noqa: F841
 
-        # Create economics monitor — writes live balances to ~/.anima/economics.json every 60s
+        # Create webhook daemon — watches agent files and pushes changes to backend instantly
         api_key = env_vars.get("CONWAY_API_KEY", "")
-        econ_monitor = f"""#!/usr/bin/env python3
-import json, time, urllib.request, os
-API = "https://api.conway.tech"
-KEY = "{api_key}"
-OUT = os.path.expanduser("~/.anima/economics.json")
-os.makedirs(os.path.dirname(OUT), exist_ok=True)
-def fetch(path):
+        # The backend webhook URL — the sandbox calls our backend directly
+        backend_url = os.environ.get("WEBHOOK_URL", "")
+        if not backend_url:
+            # Construct from known deployment pattern
+            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "https://agent-capital-hub.preview.emergentagent.com")
+
+        webhook_daemon = f"""#!/usr/bin/env python3
+import json, time, os, hashlib, urllib.request
+CONWAY_API = "https://api.conway.tech"
+CONWAY_KEY = "{api_key}"
+WEBHOOK_URL = "{backend_url}/api/webhook/agent-update"
+CREATOR_WALLET = "{env_vars.get('CREATOR_WALLET', '')}"
+FILES = {{
+    "economics": os.path.expanduser("~/.anima/economics.json"),
+    "revenue_log": os.path.expanduser("~/.anima/revenue-log.json"),
+    "decisions_log": os.path.expanduser("~/.anima/decisions-log.json"),
+    "creator_split_log": os.path.expanduser("~/.anima/creator-split-log.json"),
+    "phase_state": os.path.expanduser("~/.anima/phase-state.json"),
+}}
+LOG_FILES = {{
+    "agent_stdout": "/var/log/automaton.out.log",
+    "agent_stderr": "/var/log/automaton.err.log",
+}}
+os.makedirs(os.path.expanduser("~/.anima"), exist_ok=True)
+prev_hashes = {{}}
+def read_json(path):
     try:
-        req = urllib.request.Request(API + path, headers={{"Authorization": "Bearer " + KEY}})
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return None
+def read_tail(path, lines=80):
+    try:
+        with open(path) as f:
+            return "\\n".join(f.readlines()[-lines:])
+    except Exception:
+        return ""
+def file_hash(path):
+    try:
+        with open(path, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except Exception:
+        return ""
+def fetch_conway(path):
+    try:
+        req = urllib.request.Request(CONWAY_API + path, headers={{"Authorization": "Bearer " + CONWAY_KEY}})
+        with urllib.request.urlopen(req, timeout=8) as r:
             return json.loads(r.read())
     except Exception as e:
         return {{"error": str(e)}}
-while True:
+def check_engine():
     try:
-        balance = fetch("/v1/credits/balance")
-        pricing = fetch("/v1/credits/pricing")
+        import subprocess
+        r = subprocess.run(["pgrep", "-f", "bundle.mjs"], capture_output=True, timeout=3)
+        return r.returncode == 0
+    except Exception:
+        return False
+def send_webhook(payload):
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(WEBHOOK_URL, data=data, headers={{"Content-Type": "application/json"}}, method="POST")
+        with urllib.request.urlopen(req, timeout=8) as r:
+            pass
+    except Exception:
+        pass
+# Also write economics.json for the agent to read
+def update_economics():
+    try:
+        balance = fetch_conway("/v1/credits/balance")
+        pricing = fetch_conway("/v1/credits/pricing")
         wallet_cfg = {{}}
         try:
             with open(os.path.expanduser("~/.conway/config.json")) as f:
@@ -1545,19 +1598,55 @@ while True:
             "wallet_address": wallet_cfg.get("walletAddress", ""),
             "vm_pricing": pricing.get("pricing", []),
             "credit_tiers": pricing.get("tiers", []),
-            "creator_wallet": "{env_vars.get('CREATOR_WALLET', '')}",
+            "creator_wallet": CREATOR_WALLET,
             "creator_split_pct": 50,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }}
-        with open(OUT, "w") as f:
+        with open(os.path.expanduser("~/.anima/economics.json"), "w") as f:
             json.dump(econ, f, indent=2)
+        return econ
+    except Exception:
+        return {{}}
+econ_counter = 0
+while True:
+    try:
+        changed = False
+        current_hashes = {{}}
+        for key, path in FILES.items():
+            h = file_hash(path)
+            current_hashes[key] = h
+            if h and h != prev_hashes.get(key):
+                changed = True
+        # Check logs too
+        for key, path in LOG_FILES.items():
+            h = file_hash(path)
+            current_hashes[key] = h
+            if h and h != prev_hashes.get(key):
+                changed = True
+        # Update economics every 10 cycles (~20s)
+        econ_counter += 1
+        econ = {{}}
+        if econ_counter >= 10:
+            econ = update_economics()
+            econ_counter = 0
+        if changed or econ:
+            payload = {{"source": "sandbox"}}
+            for key, path in FILES.items():
+                payload[key] = read_json(path)
+            for key, path in LOG_FILES.items():
+                payload[key] = read_tail(path)
+            payload["engine_running"] = check_engine()
+            if econ:
+                payload["economics"] = econ
+            send_webhook(payload)
+            prev_hashes = current_hashes
     except Exception:
         pass
-    time.sleep(10)
+    time.sleep(2)
 """
-        await _sandbox_write_file(sandbox_id, "/app/automaton/econ-monitor.py", econ_monitor)
-        await _sandbox_exec(sandbox_id, "chmod +x /app/automaton/econ-monitor.py")
-        outputs.append("[econ-monitor] created")
+        await _sandbox_write_file(sandbox_id, "/app/automaton/webhook-daemon.py", webhook_daemon)
+        await _sandbox_exec(sandbox_id, "chmod +x /app/automaton/webhook-daemon.py")
+        outputs.append("[webhook-daemon] created")
 
         # Create a startup script inside the sandbox
         startup_script = f"""#!/bin/bash
@@ -1565,8 +1654,8 @@ while True:
 export HOME=/root
 export NODE_OPTIONS="--max-old-space-size=4096"
 
-# Start economics monitor in background
-nohup python3 /app/automaton/econ-monitor.py >> /var/log/econ-monitor.log 2>&1 &
+# Start webhook daemon in background (pushes live data to backend)
+nohup python3 /app/automaton/webhook-daemon.py >> /var/log/webhook-daemon.log 2>&1 &
 
 cd /app/automaton
 exec node dist/bundle.mjs --run >> /var/log/automaton.out.log 2>> /var/log/automaton.err.log
