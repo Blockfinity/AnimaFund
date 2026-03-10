@@ -631,10 +631,17 @@ Your sandbox ID is ${identity.sandboxId}.`,
   if (provStatus) {
     const lines: string[] = [];
     lines.push("--- PROVISIONING STATUS (from your creator) ---");
-    lines.push(`Sandbox: ${provStatus.sandbox?.status || "none"}${provStatus.sandbox?.id ? ` (ID: ${provStatus.sandbox.id})` : ""}`);
-    const toolNames = Object.keys(provStatus.tools || {}).filter(t => provStatus.tools[t]?.installed);
+    lines.push(`Sandbox: ${provStatus.sandbox?.status || "none"}${provStatus.sandbox?.id ? ` (ID: ${provStatus.sandbox.id})` : ""}${provStatus.sandbox?.region ? ` [${provStatus.sandbox.region}]` : ""}`);
+    const toolNames = Object.keys(provStatus.tools || {}).filter(t => provStatus.tools[t]?.installed || provStatus.tools[t]?.verified);
     lines.push(`Installed tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none yet"}`);
-    if (provStatus.skills_loaded) lines.push(`Skills: loaded`);
+    if (provStatus.ports && provStatus.ports.length > 0) {
+      lines.push(`Exposed ports: ${provStatus.ports.map((p: any) => `${p.port} -> ${p.public_url}`).join(", ")}`);
+    }
+    if (provStatus.compute_verified) lines.push("Conway Compute: verified (inference API working)");
+    if (provStatus.skills_loaded) lines.push("Skills: loaded");
+    if (provStatus.domains && provStatus.domains.length > 0) {
+      lines.push(`Domains: ${provStatus.domains.join(", ")}`);
+    }
     if (provStatus.nudges && provStatus.nudges.length > 0) {
       const latest = provStatus.nudges[provStatus.nudges.length - 1];
       lines.push(`\nLatest message from creator: "${latest.message}"`);
