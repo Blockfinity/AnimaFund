@@ -52,18 +52,22 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - All provision/* endpoints → Conway Cloud API
 - All domain/* endpoints → api.conway.domains (public) or sandbox exec (authenticated)
 
-## Testing: 16 iterations, all 100% pass rate
-- Iteration 14: Major refactor — all host operations removed — 17/17 backend
-- Iteration 15: Conway Credits funding mechanism — 15/15 backend
-- Iteration 16: Comprehensive pre-deployment E2E — 21/21 backend, all frontend verified, Telegram confirmed alive, deployment readiness PASS
+## Testing: 17 iterations, all 100% pass rate
+- Iteration 16: Comprehensive pre-deployment E2E — 21/21 backend, Telegram confirmed, deployment PASS
+- Iteration 17: Sandbox management & credit preservation — 11/11 backend, all frontend verified
 
 ## Completed (Mar 10 2026)
 ### Conway Credits Funding Mechanism (P0)
 - Created `/app/backend/routers/credits.py` with 3 endpoints (balance, pricing, purchase)
 - Frontend: Credits panel on genesis screen with tier selector, QR code, payment instructions
 - x402 protocol integration: Conway returns USDC payment address on Base network
-- Auto-balance polling (5s) when payment panel is shown
-- Create Sandbox disabled until balance >= $25 (2500 cents)
+
+### Sandbox Credit Preservation
+- create-sandbox checks Conway API for existing sandboxes and reuses them (no duplicate charges)
+- delete-sandbox blocked — Conway sandboxes are prepaid and non-refundable
+- New reset-sandbox endpoint: wipes agent data, kills processes, resets provisioning, keeps VM alive
+- Sandbox IDs persisted in MongoDB for durability
+- Frontend: "Reset Agent" button (visible only when sandbox exists) with confirmation dialog
 
 ### Agent Self-Funding Survival Protocol (P1)
 - Updated `genesis-prompt.md` with SURVIVAL section: credits = existence
