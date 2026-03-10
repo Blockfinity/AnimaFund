@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   Server, Terminal, Eye, FileText, Play, RotateCcw, Loader2,
@@ -6,6 +6,7 @@ import {
   ChevronDown, Globe, Cpu, Wallet, ExternalLink,
   HardDrive, Radio, Rocket, ScrollText
 } from 'lucide-react';
+import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -82,7 +83,7 @@ export default function AgentSetup() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+  useSSETrigger(fetchStatus, { fallbackMs: 10000 });
 
   const hasSandbox = status?.sandbox?.status === 'active';
   const tools = status?.tools || {};

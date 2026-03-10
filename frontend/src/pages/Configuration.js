@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Shield, Cpu } from 'lucide-react';
+import { useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -9,20 +10,19 @@ export default function Configuration({ identity, engineState, genesisState, sel
   const [activeTab, setActiveTab] = useState('engine');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [constRes, engRes] = await Promise.all([
-          fetch(`${API}/api/constitution`),
-          fetch(`${API}/api/engine/status`),
-        ]);
-        setConstitution((await constRes.json()).content || '');
-        setEngineStatus(await engRes.json());
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    };
-    fetchAll();
-  }, [selectedAgent]);
+  const fetchAll = useCallback(async () => {
+    try {
+      const [constRes, engRes] = await Promise.all([
+        fetch(`${API}/api/constitution`),
+        fetch(`${API}/api/engine/status`),
+      ]);
+      setConstitution((await constRes.json()).content || '');
+      setEngineStatus(await engRes.json());
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  useSSETrigger(fetchAll, { fallbackMs: 15000, deps: [selectedAgent] });
 
   const isLive = engineState?.live || false;
 

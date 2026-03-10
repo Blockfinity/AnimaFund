@@ -1,15 +1,19 @@
 """
 Conway Credits — funding mechanism for sandbox compute.
 Uses Conway's x402 payment protocol to generate payment instructions.
+Includes audit trail in MongoDB for all purchases and balance checks.
 """
 import os
 import io
 import base64
 import aiohttp
 import qrcode
+from datetime import datetime, timezone
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional
+
+from database import get_db
 
 router = APIRouter(prefix="/api/credits", tags=["credits"])
 
@@ -101,7 +105,13 @@ class PurchaseRequest(BaseModel):
 @router.post("/purchase")
 async def purchase_credits(req: PurchaseRequest):
     """Call Conway's x402 purchase endpoint to get USDC payment details.
-    Returns the payment address, amount, and a QR code for the user."""
+    Returns the payment address, amount, and a QR code for the user.
+    Logs the purchase attempt to MongoDB for audit trail."""
+
+    # Record pre-purchase balance for verification later
+    pre_balance = await _conway_get("/v1/credits/balance")
+    pre_credits = pre_balance.get("credits_cents", 0) if "error" not in pre_balance else 0
+
     status_code, data = await _conway_post_raw("/v1/credits/purchase", {"amount": req.amount})
 
     if status_code == 0:
@@ -121,6 +131,21 @@ async def purchase_credits(req: PurchaseRequest):
         qr_code = _generate_qr_base64(pay_to)
         qr_code_eip681 = _generate_qr_base64(eip681_uri)
 
+        # Audit trail: log purchase attempt to MongoDB
+        try:
+            db = get_db()
+            await db.credit_purchases.insert_one({
+                "type": "purchase_initiated",
+                "amount_usd": req.amount,
+                "amount_usdc": amount_usdc,
+                "pay_to": pay_to,
+                "pre_balance_cents": pre_credits,
+                "status": "pending_payment",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+
         return {
             "success": True,
             "payment_required": True,
@@ -135,11 +160,13 @@ async def purchase_credits(req: PurchaseRequest):
             "resource": payment.get("resource", ""),
             "qr_code": qr_code,
             "qr_code_eip681": qr_code_eip681,
+            "pre_balance_cents": pre_credits,
             "instructions": [
                 f"Send exactly {amount_usdc} USDC on Base network",
                 f"To address: {pay_to}",
                 "Use any wallet that supports Base (Coinbase Wallet, MetaMask, etc.)",
                 "Credits will be added automatically after confirmation",
+                "Use /api/credits/verify to confirm credits were received",
             ],
         }
 
@@ -150,3 +177,74 @@ async def purchase_credits(req: PurchaseRequest):
         "error": data.get("error", data.get("message", "Unexpected response")),
         "raw": data,
     }
+
+
+@router.post("/verify")
+async def verify_credits():
+    """Force-check the Conway credit balance and log the result.
+    Call after a payment to verify credits were received."""
+    balance_data = await _conway_get("/v1/credits/balance")
+    if "error" in balance_data:
+        return {"verified": False, "error": balance_data["error"]}
+
+    current_cents = balance_data.get("credits_cents", 0)
+
+    # Log verification to MongoDB
+    try:
+        db = get_db()
+        await db.credit_verifications.insert_one({
+            "type": "balance_verification",
+            "credits_cents": current_cents,
+            "credits_usd": current_cents / 100,
+            "raw_response": {k: v for k, v in balance_data.items() if k != "_id"},
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # Check most recent purchase to see if it's been fulfilled
+        last_purchase = await db.credit_purchases.find_one(
+            {"status": "pending_payment"},
+            sort=[("created_at", -1)],
+        )
+        if last_purchase and current_cents > last_purchase.get("pre_balance_cents", 0):
+            gained = current_cents - last_purchase["pre_balance_cents"]
+            await db.credit_purchases.update_one(
+                {"_id": last_purchase["_id"]},
+                {"$set": {
+                    "status": "confirmed",
+                    "post_balance_cents": current_cents,
+                    "credits_gained_cents": gained,
+                    "confirmed_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            return {
+                "verified": True,
+                "credits_cents": current_cents,
+                "credits_usd": current_cents / 100,
+                "credits_gained_cents": gained,
+                "message": f"Payment confirmed! {gained / 100:.2f} USD in credits received.",
+            }
+    except Exception:
+        pass
+
+    return {
+        "verified": True,
+        "credits_cents": current_cents,
+        "credits_usd": current_cents / 100,
+        "message": "Balance checked successfully.",
+    }
+
+
+@router.get("/history")
+async def credit_purchase_history():
+    """Get audit trail of all credit purchases and verifications."""
+    try:
+        db = get_db()
+        purchases = []
+        async for doc in db.credit_purchases.find({}, {"_id": 0}).sort("created_at", -1).limit(50):
+            purchases.append(doc)
+        verifications = []
+        async for doc in db.credit_verifications.find({}, {"_id": 0}).sort("verified_at", -1).limit(20):
+            verifications.append(doc)
+        return {"purchases": purchases, "verifications": verifications}
+    except Exception as e:
+        return {"purchases": [], "verifications": [], "error": str(e)}

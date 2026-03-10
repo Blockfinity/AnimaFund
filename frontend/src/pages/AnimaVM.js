@@ -7,6 +7,7 @@ import {
   Wifi, Users, CreditCard, Wrench, Shield, ScrollText,
   Radio, HardDrive, Loader2
 } from 'lucide-react';
+import { useSSE, useSSETrigger } from '../hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -66,7 +67,7 @@ export default function AnimaVM({ selectedAgent }) {
   const [terminalLoading, setTerminalLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  /* ─── Data fetching ─────────────────────────────────────── */
+  /* ─── Data fetching — SSE-triggered via shared SSEProvider ─── */
   const fetchAll = useCallback(async () => {
     try {
       const [statusRes, phaseRes, ocStatusRes, actionsRes, sandboxRes, browseRes, execRes, financialsRes] = await Promise.all([
@@ -98,44 +99,30 @@ export default function AnimaVM({ selectedAgent }) {
     finally { setLoading(false); }
   }, []);
 
-  // SSE: multi-source real-time updates
-  const [sseData, setSseData] = useState(null);
+  // SSE: use shared SSEProvider context instead of duplicate EventSource
+  const { sseData } = useSSE();
+  useSSETrigger(fetchAll, { fallbackMs: 15000, deps: [selectedAgent] });
+
+  // Apply real-time SSE updates to local state
   useEffect(() => {
-    fetchAll();
-    let es;
-    const connect = () => {
-      es = new EventSource(`${API}/api/live/stream`);
-      es.onmessage = (e) => {
-        try {
-          const d = JSON.parse(e.data);
-          if (!d.error) {
-            setSseData(d);
-            // Conway credits (source: Conway API)
-            if (d.conway_credits_cents !== undefined && provStatus) {
-              setProvStatus(prev => prev ? { ...prev, credits_cents: d.conway_credits_cents } : prev);
-            }
-            // Agent financials (source: webhook from sandbox daemon)
-            if (d.total_earned_usd !== undefined || d.total_spent_usd !== undefined) {
-              setFinancials(prev => ({
-                ...prev,
-                total_earned_usd: d.total_earned_usd || 0,
-                total_spent_usd: d.total_spent_usd || 0,
-              }));
-            }
-            // Phase state (source: webhook from sandbox daemon)
-            if (d.phase_state && Object.keys(d.phase_state).length > 0) {
-              setPhaseState(d.phase_state);
-            }
-          }
-        } catch {}
-      };
-      es.onerror = () => { es.close(); setTimeout(connect, 3000); };
-    };
-    connect();
-    // Full refresh every 15s as backup
-    const interval = setInterval(fetchAll, 15000);
-    return () => { es?.close(); clearInterval(interval); };
-  }, [fetchAll]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!sseData) return;
+    // Conway credits (source: Conway API)
+    if (sseData.conway_credits_cents !== undefined && provStatus) {
+      setProvStatus(prev => prev ? { ...prev, credits_cents: sseData.conway_credits_cents } : prev);
+    }
+    // Agent financials (source: webhook from sandbox daemon)
+    if (sseData.total_earned_usd !== undefined || sseData.total_spent_usd !== undefined) {
+      setFinancials(prev => ({
+        ...prev,
+        total_earned_usd: sseData.total_earned_usd || 0,
+        total_spent_usd: sseData.total_spent_usd || 0,
+      }));
+    }
+    // Phase state (source: webhook from sandbox daemon)
+    if (sseData.phase_state && Object.keys(sseData.phase_state).length > 0) {
+      setPhaseState(sseData.phase_state);
+    }
+  }, [sseData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasSandbox = provStatus?.sandbox?.status === 'active';
   const tools = provStatus?.tools || {};
