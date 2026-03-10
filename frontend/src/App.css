@@ -1,1 +1,6 @@
 /* App CSS - Styles managed via Tailwind and index.css */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}

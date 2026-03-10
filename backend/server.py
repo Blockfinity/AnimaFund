@@ -21,7 +21,7 @@ from telegram_notify import send_telegram, notify_error
 # Import routers
 from routers import (
     agents, genesis, live, telegram, infrastructure,
-    conway, openclaw, agent_setup,
+    conway, openclaw, agent_setup, credits,
 )
 
 
@@ -53,6 +53,7 @@ app.include_router(infrastructure.router)
 app.include_router(conway.router)
 app.include_router(openclaw.router)
 app.include_router(agent_setup.router)
+app.include_router(credits.router)
 
 
 # ═══════════════════════════════════════════════════════════

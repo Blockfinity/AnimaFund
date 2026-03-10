@@ -19,7 +19,8 @@ import EngineConsole from './components/EngineConsole';
 import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
 import {
   Server, Terminal, Eye, Cpu, FileText, Rocket,
-  CheckCircle2, Loader2, ChevronDown, Play, RotateCcw, Shield, Zap
+  CheckCircle2, Loader2, ChevronDown, Play, RotateCcw, Shield, Zap,
+  Wallet, RefreshCw, ExternalLink, Copy, DollarSign
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -54,6 +55,15 @@ function AppInner() {
   const [stepOutputs, setStepOutputs] = useState({});
   const [expandedStep, setExpandedStep] = useState(null);
 
+  // Credits funding state
+  const [creditBalance, setCreditBalance] = useState(null);
+  const [creditTiers, setCreditTiers] = useState([]);
+  const [vmPricing, setVmPricing] = useState([]);
+  const [selectedTier, setSelectedTier] = useState(25);
+  const [purchaseData, setPurchaseData] = useState(null);
+  const [fundingLoading, setFundingLoading] = useState(false);
+  const [balancePolling, setBalancePolling] = useState(false);
+
   // Fetch agent list
   const fetchAgents = useCallback(async () => {
     try {
@@ -74,6 +84,60 @@ function AppInner() {
   }, []);
 
   useEffect(() => { fetchProvStatus(); }, [fetchProvStatus]);
+
+  // Fetch credit balance
+  const fetchCreditBalance = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/credits/balance`);
+      if (res.ok) {
+        const data = await res.json();
+        setCreditBalance(data.credits_cents ?? 0);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Fetch pricing tiers on mount
+  useEffect(() => {
+    fetchCreditBalance();
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/credits/pricing`);
+        if (res.ok) {
+          const data = await res.json();
+          setCreditTiers(data.tiers || []);
+          setVmPricing(data.pricing || []);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [fetchCreditBalance]);
+
+  // Poll balance when funding panel is open
+  useEffect(() => {
+    if (!balancePolling) return;
+    const interval = setInterval(fetchCreditBalance, 5000);
+    return () => clearInterval(interval);
+  }, [balancePolling, fetchCreditBalance]);
+
+  // Handle purchase — get payment QR from backend
+  const handlePurchase = async () => {
+    setFundingLoading(true);
+    try {
+      const res = await fetch(`${API}/api/credits/purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: selectedTier }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPurchaseData(data);
+        setBalancePolling(true);
+        toast.success('Payment details ready — scan QR to send USDC');
+      } else {
+        toast.error(data.error || 'Failed to get payment details');
+      }
+    } catch (e) { toast.error(e.message); }
+    setFundingLoading(false);
+  };
 
   const handleSelectAgent = async (agentId) => {
     try {
@@ -193,9 +257,14 @@ function AppInner() {
   };
 
   const canRunStep = (step) => {
-    if (step.id === 'sandbox') return true;
+    if (step.id === 'sandbox') {
+      // Need at least 2500 cents ($25) for X-Large VM
+      return creditBalance !== null && creditBalance >= 2500;
+    }
     return hasSandbox;
   };
+
+  const hasEnoughCredits = creditBalance !== null && creditBalance >= 2500;
 
   const allProvDone = PROVISION_STEPS.every(s => isStepDone(s.id));
   const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
@@ -282,6 +351,132 @@ function AppInner() {
             <p style={{ margin: '0 0 6px' }}>Provision a sandboxed VM and deploy the founder AI — a sovereign agent that builds and operates a VC fund from scratch.</p>
             <div style={{ fontSize: '10px', color: '#FFB347' }}>The agent generates its own wallet, provisions tools, and begins operating autonomously.</div>
             <div style={{ fontSize: '10px', color: '#60EE79', marginTop: '3px' }}>50% of all profit (fees, carry, revenue) to creator. $10K threshold to launch fund.</div>
+          </div>
+
+          {/* ═══════ CREDITS FUNDING ═══════ */}
+          <div data-testid="credits-funding-panel" style={{ background: '#18181b', border: `1px solid ${hasEnoughCredits ? '#166534' : '#92400e'}`, borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Wallet style={{ width: '14px', height: '14px', color: hasEnoughCredits ? '#34D399' : '#FBBF24' }} />
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Conway Credits</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span data-testid="credit-balance" style={{ fontSize: '13px', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace', color: hasEnoughCredits ? '#34D399' : creditBalance === 0 ? '#EF4444' : '#FBBF24' }}>
+                  ${creditBalance !== null ? (creditBalance / 100).toFixed(2) : '...'}
+                </span>
+                <button data-testid="refresh-balance-btn" onClick={fetchCreditBalance} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex' }}>
+                  <RefreshCw style={{ width: '12px', height: '12px', color: '#71717a' }} />
+                </button>
+              </div>
+            </div>
+
+            {/* Status message */}
+            {!hasEnoughCredits && (
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a', background: '#1c1917' }}>
+                <div style={{ fontSize: '11px', color: '#FBBF24', lineHeight: 1.6 }}>
+                  <strong>Fund your account</strong> to create a sandbox VM. The X-Large VM (2 vCPU, 4GB, 40GB) costs <strong>$25/mo</strong>.
+                  {creditBalance !== null && creditBalance > 0 && <span> You have ${(creditBalance / 100).toFixed(2)} — need ${((2500 - creditBalance) / 100).toFixed(2)} more.</span>}
+                </div>
+              </div>
+            )}
+            {hasEnoughCredits && !hasSandbox && (
+              <div style={{ padding: '8px 14px', borderBottom: '1px solid #27272a', background: '#052e16' }}>
+                <div style={{ fontSize: '11px', color: '#34D399' }}>Credits loaded. You can now create your sandbox below.</div>
+              </div>
+            )}
+
+            {/* Tier selector + Purchase button */}
+            {!hasEnoughCredits && (
+              <div style={{ padding: '12px 14px' }}>
+                {/* Tier buttons */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                  {(creditTiers.length > 0 ? creditTiers : [{ amount: 5 }, { amount: 25 }, { amount: 100 }]).map(t => (
+                    <button key={t.amount} data-testid={`tier-${t.amount}`}
+                      onClick={() => { setSelectedTier(t.amount); setPurchaseData(null); }}
+                      style={{
+                        padding: '6px 12px', borderRadius: '6px', border: `1px solid ${selectedTier === t.amount ? '#fff' : '#27272a'}`,
+                        background: selectedTier === t.amount ? '#fff' : '#09090b',
+                        color: selectedTier === t.amount ? '#09090b' : '#a1a1aa',
+                        fontSize: '11px', fontWeight: 800, cursor: 'pointer',
+                      }}>
+                      ${t.amount}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Get Payment Details button */}
+                {!purchaseData && (
+                  <button data-testid="get-payment-btn" onClick={handlePurchase} disabled={fundingLoading}
+                    style={{
+                      width: '100%', padding: '10px', borderRadius: '6px', border: 'none',
+                      background: fundingLoading ? '#27272a' : '#FBBF24', color: '#09090b',
+                      fontSize: '12px', fontWeight: 800, cursor: fundingLoading ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    }}>
+                    {fundingLoading ? <><Loader2 style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} /> Loading...</> :
+                     <><DollarSign style={{ width: '12px', height: '12px' }} /> Add ${selectedTier} Credits</>}
+                  </button>
+                )}
+
+                {/* Payment QR + Instructions */}
+                {purchaseData && (
+                  <div data-testid="payment-details" style={{ background: '#09090b', borderRadius: '8px', border: '1px solid #27272a', padding: '16px', marginTop: '8px' }}>
+                    <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: '#FBBF24', marginBottom: '8px' }}>
+                        Send {purchaseData.amount_usdc} USDC on Base
+                      </div>
+                      <img
+                        src={purchaseData.qr_code}
+                        alt="Payment QR"
+                        style={{ width: '180px', height: '180px', borderRadius: '8px', border: '2px solid #27272a', margin: '0 auto' }}
+                        data-testid="payment-qr"
+                      />
+                    </div>
+
+                    {/* Pay-to address */}
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>PAY TO (USDC on Base)</div>
+                      <div data-testid="pay-to-address"
+                        onClick={() => { navigator.clipboard.writeText(purchaseData.pay_to); toast.success('Address copied'); }}
+                        style={{
+                          background: '#18181b', borderRadius: '6px', padding: '8px 10px',
+                          fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#FBBF24',
+                          wordBreak: 'break-all', border: '1px solid #27272a', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '6px',
+                        }}>
+                        <span style={{ flex: 1 }}>{purchaseData.pay_to}</span>
+                        <Copy style={{ width: '12px', height: '12px', color: '#71717a', flexShrink: 0 }} />
+                      </div>
+                    </div>
+
+                    {/* Instructions */}
+                    <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8 }}>
+                      {(purchaseData.instructions || []).map((inst, i) => (
+                        <div key={i} style={{ display: 'flex', gap: '6px' }}>
+                          <span style={{ color: '#52525b' }}>{i + 1}.</span>
+                          <span>{inst}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Polling indicator */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px', padding: '8px', background: '#18181b', borderRadius: '6px' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FBBF24', animation: 'pulse 2s infinite' }} />
+                      <span style={{ fontSize: '10px', color: '#a1a1aa' }}>Watching for payment... balance updates every 5s</span>
+                    </div>
+
+                    {/* Link to Conway dashboard */}
+                    <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer"
+                      data-testid="conway-dashboard-link"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '8px', fontSize: '10px', color: '#71717a', textDecoration: 'none' }}>
+                      <span>Or buy credits at app.conway.tech</span>
+                      <ExternalLink style={{ width: '10px', height: '10px' }} />
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ═══════ PROVISIONING STEPPER ═══════ */}

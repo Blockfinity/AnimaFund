@@ -4,74 +4,63 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 **PRODUCT REQUIREMENTS:**
 -   **Core Functionality:** A multi-agent platform to create, monitor, and manage independent AI agents from a single dashboard. Each agent has its own VM, wallet, and skills.
 -   **Agent Autonomy & Lifecycle:**
-    1.  The agent must be created *within* a sandboxed VM, not on the host.
-    2.  The agent must be equipped with a full suite of tools (Conway Terminal, OpenClaw for browsing, Claude Code for self-modification, x402 for payments) and be able to test them.
-    3.  The agent's operations are governed by a strict, mechanically-enforced 4-phase prompt:
-        -   **Phase 0 (Tooling & Testing):** Verify all 15 core tools are functional.
-        -   **Phase 1 (Capital Acquisition):** Make **,000 within one hour** by all means necessary (e.g., gambling, crypto memes, prediction markets). Forbidden from building any product or service.
-        -   **Phase 2 (Capital Growth):** Grow capital to **0,000**. Still forbidden from starting a business.
-        -   **Phase 3 (Business Incubation & Fund):** After reaching 0k, the agent can begin building its product, start the Anima Fund, and use tools like **Boardy.ai**. The capital goal for the fund is ambitious, potentially in the hundreds of millions.
+    1.  The agent must be created and operate *exclusively within* a sandboxed VM, not on the host.
+    2.  The agent's operations are governed by a strict, mechanically-enforced 4-phase prompt:
+        -   **Phase 0 (Tooling & Testing):** Verify all core tools are functional.
+        -   **Phase 1 (Capital Acquisition):** Make **,000 within one hour** by all means necessary. Forbidden from building any product or service.
+        -   **Phase 2 (Capital Growth):** Grow capital to **0,000**.
+        -   **Phase 3 (Business Incubation & Fund):** After reaching 0k, the agent can begin building its product, start the Anima Fund, and use tools like **Boardy.ai**.
 -   **Real-time Dashboard:** A dashboard to monitor all agents, with real-time logs and terminal/browser views for each Anima VM.
 -   **User Control:** The user provisions the agent's tools via dashboard controls but does not control the agent's actions once it goes autonomous.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a React/FastAPI/MongoDB stack. The previous agent performed a massive refactor, including:
-1.  **UI/UX Overhaul:** The dedicated Provision Agent page was eliminated and its functionality was merged into a new, unified Anima VM page. This page now features a collapsing stepper UI for provisioning that disappears to reveal the monitoring dashboard.
-2.  **Critical Multi-Agent Fix:** The system now correctly isolates data between agents. Provisioning status is stored on a per-agent basis () instead of globally. The agent creation flow was fixed to store selected skills in the database and no longer incorrectly starts the agent engine on the host.
-3.  **Conway API Alignment:** The backend was audited against the latest Conway documentation. This led to the implementation of the full PTY (programmatic terminal) API and hardening of the Claude Code installation verification.
-4.  **Genesis Prompt Update:** The agent's core mission prompt () was updated to include a more ambitious fundraising goal and the introduction of  as a tool to be used only in Phase 3.
+The application is a React/FastAPI/MongoDB stack. The architecture has been significantly refactored to be **strictly sandbox-only**. All agent creation, provisioning, and operational logic now executes exclusively within a Conway sandbox VM, with the backend acting as a secure proxy to the Conway API. Host-side execution has been eliminated. The UI has been redesigned to make the multi-step provisioning flow the primary onboarding experience on the main landing page, fixing a critical bug that allowed users to bypass the sandbox. The  page is now a dedicated monitoring-only dashboard.
 
 **Last working item**:
--   **Last item agent was working:** The agent finished updating the  and the  files to incorporate the user's latest requirements for the agent's lifecycle: a higher capital goal and the use of  in Phase 3.
--   **Status:** USER VERIFICATION PENDING
+-   **Last item agent was working:** The agent was investigating how to implement a payment mechanism for Conway API credits. The user identified a critical blocker: the Create Sandbox step requires credits, but there is no UI to fund them. The agent had just found the  Conway endpoint and was about to determine how to use it to generate a payment QR code for the user.
+-   **Status:** IN PROGRESS
 -   **Agent Testing Done:** N
 -   **Which testing method agent to use?** both
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1 (P0): Full E2E Test of Agent Lifecycle.**
-    -   **Description:** The user requested a full end-to-end test of the entire system, including agent creation, data separation between agents, Telegram integration, and the complete AnimaVM provisioning flow. This was completed, but *afterward*, the agent made changes to the core . These changes have not been tested and could affect the agent's behavior. A full regression and E2E test is now the top priority.
-    -   **Status:** NOT STARTED
+-   **Issue 1 (P0): Implement Conway Credits Funding Mechanism.** This is the top priority and a major blocker for the entire application.
 
 **Issues Detail:**
--   **Issue 1: Full E2E Test of Agent Lifecycle.**
-    -   **Attempted fixes:** The agent performed a comprehensive E2E test *before* the final prompt change.
+-   **Issue 1: Implement Conway Credits Funding Mechanism.**
+    -   **Attempted fixes:** The agent identified the  endpoint in the Conway API but did not implement the full flow.
     -   **Next debug checklist:**
-        1.  Create a new agent via the UI.
-        2.  Verify the browser navigates to the new agent's  page.
-        3.  Execute the entire provisioning stepper from start to finish.
-        4.  Verify all steps complete successfully.
-        5.  Create a *second* agent.
-        6.  Verify its  page shows a fresh, un-provisioned state, confirming data isolation.
-        7.  Monitor the agent's logs to see if it correctly follows the updated  phases.
-    -   **Why fix this issue and what will be achieved with the fix?** To confirm that the recent major refactors and prompt changes work together correctly and that the core multi-agent architecture is stable and robust.
-    -   **Status:** NOT STARTED
+        1.  Create a new backend endpoint (e.g., ) that calls Conway's  to get payment details (USDC address, amount).
+        2.  Create a new backend endpoint (e.g., ) to fetch the current Conway API key credit balance.
+        3.  Modify the genesis screen in  to add a Step 0: Fund Account section before the current provisioning stepper.
+        4.  This new section should display the current credit balance and a button to Add Credits.
+        5.  Clicking the button should call the new funding endpoint and display the payment information as a QR code.
+        6.  The Create Sandbox step must remain disabled until the credit balance is sufficient to pay for a sandbox VM.
+    -   **Why fix this issue and what will be achieved with the fix?** This will solve the critical chicken-and-egg problem of needing credits to start the provisioning process. It will unblock the entire agent creation flow by allowing the user to fund their account directly from the UI.
+    -   **Status:** IN PROGRESS
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None.
+    -   **Blocked on other issue:** None. This is the primary blocker.
 
 **In progress Task List**:
 -   None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
-    -   (P1) Implement real-time embedded terminal/browser views inside the  page. The UI structure (tabs, placeholders) is built, but the live iframe components need to be fully integrated.
+    -   (P1) Update  to instruct the agent to monitor and top up its own Conway credits using its x402 wallet, making it truly self-sustaining.
 -   **Future Tasks:**
     -   Implement Real Smart Contracts.
     -   Integrate Android Device Control.
     -   Migrate to a self-hosted agent engine.
 
 **Completed work in this session**
--   **UI/UX Refactor:** Merged  and  into a single  page with a collapsing stepper UI.
--   **Critical Multi-Agent Data Isolation:** Rearchitected backend to store provisioning status on a per-agent basis, preventing data leaks between agents in the UI.
--   **Agent Creation Flow Fix:** Modified the agent creation modal to save selected skills to the DB and redirect to the AnimaVM page, instead of incorrectly starting the engine on the host.
--   **Conway PTY API Implementation:** Added a full suite of backend endpoints to manage programmatic terminal (PTY) sessions as per Conway documentation.
--   **Installation Hardening:** Improved the  process to include verification of the MCP registration, making the installation more robust.
--   **Telegram Bot Integration:** Updated the backend with a new, valid Telegram bot token and verified its functionality.
--   **Genesis Prompt Update:** Modified  to include a higher capital-raising goal and the introduction of  as a Phase 3 tool.
--   **Extensive Testing:** Successfully ran the  and  multiple times, achieving 100% pass rates after major refactoring stages.
+-   **Massive Host-Side Logic Removal:** Rewrote the entire backend (, , , etc.) to eliminate all dependencies on the host machine. All agent operations now run exclusively within the Conway sandbox.
+-   **UI Flow Refactor (Onboarding):** Moved the multi-step provisioning UI to the main genesis/onboarding screen in . The  page is now a monitoring-only dashboard. This fixed the critical bug where a user could create an agent on the host.
+-   **Conway API Alignment & Skill Discovery Fix:** Audited and updated the backend against the latest Conway docs. Corrected the skill loading path () and updated the genesis prompt to instruct the agent on how to discover and install skills from ClawHub.
+-   **Deployment Readiness:** Fixed the  file to stop blocking  files and successfully ran the .
+-   **Comprehensive E2E Testing:** Ran the testing agent multiple times after each major refactor, achieving 100% pass rates and verifying all architectural changes.
 
 **Earlier issues found/mentioned but not fixed**
 -   None.
@@ -83,83 +72,71 @@ The application is a React/FastAPI/MongoDB stack. The previous agent performed a
 
 
 **Key Technical Concepts**
--   **Deploy-to-Sandbox Architecture:** The agent engine and its state must exist only inside a sandboxed VM.
--   **Per-Agent State Management:** Critical application state (like provisioning status) is stored in agent-specific directories () to ensure data isolation in a multi-agent environment.
--   **UI-Driven Provisioning:** The user controls agent setup via an explicit, step-by-step process in the UI.
--   **Phased Agent Operation:** A code-enforced state machine () restricts the agent's behavior based on mission phases defined in .
+-   **Sandbox-First Architecture:** All agent operations MUST execute within the Conway sandbox VM. The backend is a stateless proxy to the Conway API.
+-   **UI-Driven Onboarding:** The initial user experience is a multi-step provisioning process on the main landing screen.
+-   **Creator vs. Agent Funding:**
+    -   **Conway Credits (Creator):** Pays for the sandbox VM. Must be funded *before* provisioning.
+    -   **x402 Wallet (Agent):** Pays for the agent's own operational costs (e.g., domains). Created *inside* the sandbox.
 
 **key DB schema**
--   **agents** collection:
-    -   The  model was updated to include  to store the skills chosen during creation.
+-   **agents**: 
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   : The new central UI page for agent provisioning and monitoring.
--   : Contains all per-agent logic for creating sandboxes, installing tools, and managing PTY sessions.
--   : Handles agent creation and storage/retrieval of agent-specific data like skills.
--   : The entry point for creating a new agent.
--   : The core mission document for the agent, which was recently updated.
--   : The Automaton engine code that enforces the mission from the genesis prompt.
+-   : Logic for the onboarding flow. Needs modification for credit funding.
+-   : Contains the onboarding/provisioning stepper. Will be modified to add the credit funding UI.
+-   : Logic for the individual provisioning steps.
+-   : The agent's core mission document.
 
 **Areas that need refactoring**:
--   None. The major UI refactor was just completed.
+-   None. The codebase just underwent a massive refactoring.
 
 **key api endpoints**
--   All provisioning endpoints are now parameterized by :
-    -   
-    -   
-    -   
-    -   
--   New PTY session endpoints:
-    -   
-    -   
--   Agent management endpoints:
-    -    (Create Agent)
-    -    (Get selected skills)
+-   : Checks if an agent is provisioned.
+-   : The first step in provisioning.
+-   **NEEDS TO BE CREATED:**  to get a payment QR for Conway credits.
+-   **NEEDS TO BE CREATED:**  to fetch the current Conway API key credit balance.
 
 **Critical Info for New Agent**
--   **Your top priority is testing.** The application just underwent a massive UI and backend refactor for multi-agent data isolation. While tests were run successfully, a final change was made to the agent's core  *after* the last test run. You must perform a full end-to-end regression test to ensure the entire agent lifecycle (creation, provisioning, phase execution) works as expected with all the new changes.
--   **Do not start new features until testing is complete.** The stability of the core architecture must be verified first.
--   The user wants to see a real-time view of the agent's terminal and browser. The UI for this exists in the  page, but it is not yet functional. This is the next feature to implement after testing is done.
+-   **Your top priority is implementing the Conway credits funding mechanism.** The entire application is blocked until the user can pay for the initial sandbox creation. You must implement the full backend and frontend flow to allow users to add credits to their Conway API key via a QR code.
+-   **The architecture is now STRICTLY sandbox-only.** Do not introduce any logic that interacts with the host filesystem or runs host processes.
+-   Do not confuse the two separate payment systems: **Conway Credits** (for compute, paid by the creator) and the **Agent's x402 Wallet** (for services, paid by the agent). Your current task is about funding the former.
 
 **documents and test reports created in this job**
--    was updated.
--   Multiple test reports exist under . The latest are  (for the PTY/UI changes) and  (for the multi-agent fixes).
+-   
+-   Multiple test reports in .
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Asks to E2E test everything: data flows, Telegram, agent creation, AnimaVM per-agent data separation, and skills provisioning.
-2.  **Agent:** Performs a deep audit and discovers critical issues: provisioning status is global, agent creation starts the engine on the host, and skills aren't passed to provisioning.
-3.  **Agent:** Implements a massive fix for all identified issues, making provisioning status per-agent and correcting the agent creation flow.
-4.  **Agent:** Runs comprehensive E2E tests with the .
-5.  **Agent:** Reports 100% pass rate on all tests.
-6.  **Agent:** Runs  and reports it passed.
-7.  **User:** Provides a new, revoked token for the .
-8.  **Agent:** Updates the  file with the new token and restarts the backend.
-9.  **User:** test it
-10. **Agent:** Verifies the new Telegram token is working end-to-end.
-11. **User:** Provides new instructions for the agent's mission: raise hundreds of millions and learn about  as a tool, but only after making 0k.
-12. **Agent:** Acknowledges, reviews the prompt system, and updates  and  with the new requirements. This was the final action.
+1.  **User:** Pointed out the critical bug: I deployed and launched the agent without provisioning first.
+2.  **User:** Gave clear direction to move the provisioning stepper to the onboarding screen.
+3.  **User:** Corrected the agent's first attempt at the UI refactor.
+4.  **User:** Triggered the major sandbox-only audit by asking for verification of the agent's environment.
+5.  **User:** Stated the core principle: There should be absolutely nothing on host.
+6.  **Agent:** Performed the massive refactor to make everything sandbox-only.
+7.  **User:** Identified the payment chicken-and-egg problem.
+8.  **User:** Confirmed the agent should be self-sustaining.
+9.  **User (pending):** you need to add an addional QR code to fund the sandbox for step 1... that funds the conway credits using the conway api? double check for the best way to do this - **This is the current task.**
 
 **Project Health Check:**
--   **Broken:** Potentially the agent's core behavior due to the untested changes in . Requires immediate E2E testing to verify.
--   **Mocked:** The real-time terminal and browser views within the  monitoring dashboard are currently placeholders.
+-   **Broken:** The entire user flow is blocked because there is no way to fund the Conway API key credits required to create the initial sandbox.
+-   **Mocked:** None.
 
 **3rd Party Integrations**
--   Conway Research Ecosystem (web4.ai): Used for sandboxed VMs, terminal, tool installation, x402 payments, and agent self-modification.
+-   Conway Research Ecosystem (web4.ai): Core dependency for sandboxed VMs, terminal, tool installation, and payments.
 -   OpenClaw: For autonomous web browsing.
 -   Claude Code: For agent self-modification.
 -   Telegram Bot API
 
 **Testing status**
--   **Testing agent used after significant changes:** YES. However, the very last change (updating ) was performed *after* the last test run.
+-   **Testing agent used after significant changes:** YES. The last major refactor was fully tested.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None.
 -   **Known regressions:** None.
 
 **Credentials to test flow:**
--   The Telegram Bot Token and Chat ID are configured in the backend  file.
+-   The  in the backend  file currently has **0 credits**. This is essential for testing the new funding flow.
 
 **What agent forgot to execute**
--   The agent did not run any tests after making the final modification to the  and . This is a critical oversight and must be the first action item.</analysis>
+-   The agent initially missed the payment dependency for sandbox creation until the user pointed it out. Implementing the credit funding mechanism is the main pending task.</analysis>
