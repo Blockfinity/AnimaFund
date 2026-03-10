@@ -1,200 +1,240 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Shield, Server, Package, Terminal, Eye, FileText, CheckCircle2, Play, RotateCcw, ChevronRight, Loader2, XCircle, AlertTriangle } from 'lucide-react';
+import {
+  Server, Terminal, Eye, FileText, Play, RotateCcw, Loader2,
+  CheckCircle2, XCircle, MessageSquare, Shield, Zap, Send, ChevronDown
+} from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
-const STEPS = [
-  { id: 'prerequisites', label: 'Check Prerequisites', desc: 'Verify Conway API key and credits', icon: Shield },
-  { id: 'create_sandbox', label: 'Create Sandbox VM', desc: 'Provision isolated cloud VM for agent', icon: Server },
-  { id: 'install_system_tools', label: 'Install System Tools', desc: 'git, curl, node, python3 inside sandbox', icon: Package },
-  { id: 'install_conway_terminal', label: 'Install Conway Terminal', desc: 'Conway CLI tools inside sandbox', icon: Terminal },
-  { id: 'install_openclaw', label: 'Install OpenClaw', desc: 'Browser agent inside sandbox', icon: Eye },
-  { id: 'configure_agent', label: 'Configure Agent', desc: 'Push genesis prompt, skills, constitution', icon: FileText },
-  { id: 'verify_tools', label: 'Verify Tools', desc: 'Run functional tests inside sandbox', icon: CheckCircle2 },
-  { id: 'start_agent', label: 'Start Agent', desc: 'Launch autonomous engine in sandbox', icon: Play },
+const PROVISIONS = [
+  {
+    id: 'sandbox',
+    label: 'Create Sandbox',
+    desc: 'Provision an isolated Conway Cloud VM',
+    action: '/api/provision/create-sandbox',
+    icon: Server,
+    needs: null,
+  },
+  {
+    id: 'terminal',
+    label: 'Install Terminal',
+    desc: 'Conway CLI tools inside sandbox',
+    action: '/api/provision/install-terminal',
+    icon: Terminal,
+    needs: 'sandbox',
+  },
+  {
+    id: 'openclaw',
+    label: 'Install OpenClaw',
+    desc: 'Browser agent inside sandbox',
+    action: '/api/provision/install-openclaw',
+    icon: Eye,
+    needs: 'sandbox',
+  },
+  {
+    id: 'skills',
+    label: 'Load Skills',
+    desc: 'Push skill definitions into sandbox',
+    action: '/api/provision/load-skills',
+    icon: FileText,
+    needs: 'sandbox',
+  },
+  {
+    id: 'nudge',
+    label: 'Go Autonomous',
+    desc: 'Tell the agent its tools are ready',
+    action: '/api/provision/nudge',
+    icon: Zap,
+    needs: 'sandbox',
+  },
 ];
 
-function StatusBadge({ status }) {
-  if (status === 'complete') return <span data-testid="status-complete" className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-950 text-emerald-400 border border-emerald-800"><CheckCircle2 className="w-3 h-3" /> DONE</span>;
-  if (status === 'failed') return <span data-testid="status-failed" className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-red-950 text-red-400 border border-red-800"><XCircle className="w-3 h-3" /> FAILED</span>;
-  if (status === 'running') return <span data-testid="status-running" className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-amber-950 text-amber-400 border border-amber-800"><Loader2 className="w-3 h-3 animate-spin" /> RUNNING</span>;
-  return <span data-testid="status-pending" className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-zinc-900 text-zinc-500 border border-zinc-800">PENDING</span>;
-}
-
 export default function AgentSetup() {
-  const [steps, setSteps] = useState(STEPS.map(s => ({ ...s, status: 'pending', detail: '', output: '' })));
-  const [sandboxId, setSandboxId] = useState(null);
-  const [runningStep, setRunningStep] = useState(null);
-  const [expandedStep, setExpandedStep] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [runningAction, setRunningAction] = useState(null);
+  const [expandedOutput, setExpandedOutput] = useState(null);
+  const [outputs, setOutputs] = useState({});
+  const [customNudge, setCustomNudge] = useState('');
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/agent-setup/status`);
+      const res = await fetch(`${API}/api/provision/status`);
       const data = await res.json();
-      if (data.steps) {
-        setSteps(prev => prev.map((step, i) => {
-          const remote = data.steps[i];
-          if (remote) return { ...step, status: remote.status, detail: remote.detail || '', output: remote.output || '' };
-          return step;
-        }));
-      }
-      if (data.sandbox_id) setSandboxId(data.sandbox_id);
+      setStatus(data);
     } catch { /* ignore */ }
   }, []);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  const runStep = async (stepId) => {
-    setRunningStep(stepId);
-    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: 'running', detail: 'Executing...', output: '' } : s));
-    setExpandedStep(stepId);
-
+  const runAction = async (provision) => {
+    setRunningAction(provision.id);
     try {
-      const res = await fetch(`${API}/api/agent-setup/step/${stepId.replace(/_/g, '-')}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const res = await fetch(`${API}${provision.action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
       const data = await res.json();
 
-      setSteps(prev => prev.map(s => {
-        if (s.id !== stepId) return s;
-        return {
-          ...s,
-          status: data.success ? 'complete' : 'failed',
-          detail: data.detail || data.error || data.message || (data.success ? 'Complete' : 'Failed'),
-          output: data.output || '',
-        };
-      }));
+      if (data.output) {
+        setOutputs(prev => ({ ...prev, [provision.id]: data.output }));
+        setExpandedOutput(provision.id);
+      }
 
-      if (data.sandbox_id) setSandboxId(data.sandbox_id);
-      if (data.success) toast.success(`${stepId.replace(/_/g, ' ')} complete`);
-      else toast.error(data.error || 'Step failed');
+      if (data.success) {
+        toast.success(`${provision.label} complete`);
+      } else {
+        toast.error(data.error || 'Action failed');
+      }
+
+      await fetchStatus();
     } catch (e) {
-      setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: 'failed', detail: e.message } : s));
       toast.error(e.message);
     }
-    setRunningStep(null);
+    setRunningAction(null);
   };
 
-  const handleReset = async () => {
-    if (!window.confirm('Reset setup wizard state? This will NOT delete the sandbox.')) return;
+  const sendCustomNudge = async () => {
+    if (!customNudge.trim()) return;
     try {
-      await fetch(`${API}/api/agent-setup/reset`, { method: 'POST' });
-      setSteps(STEPS.map(s => ({ ...s, status: 'pending', detail: '', output: '' })));
-      setSandboxId(null);
-      setExpandedStep(null);
-      toast.success('Setup state reset');
+      const res = await fetch(`${API}/api/provision/nudge/custom`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: customNudge }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Nudge sent — agent will see it next turn');
+        setCustomNudge('');
+        await fetchStatus();
+      }
     } catch (e) { toast.error(e.message); }
   };
 
-  const completedCount = steps.filter(s => s.status === 'complete').length;
-  const allComplete = completedCount === steps.length;
+  const hasSandbox = status?.sandbox?.status === 'active';
+  const tools = status?.tools || {};
 
-  // Determine which step should be active next
-  const nextStepIdx = steps.findIndex(s => s.status !== 'complete');
+  const isProvisionDone = (id) => {
+    if (id === 'sandbox') return hasSandbox;
+    if (id === 'terminal') return tools['conway-terminal']?.installed;
+    if (id === 'openclaw') return tools['openclaw']?.installed;
+    if (id === 'skills') return status?.skills_loaded;
+    if (id === 'nudge') return false; // always allow re-nudge
+    return false;
+  };
+
+  const canRun = (provision) => {
+    if (provision.needs === null) return true;
+    if (provision.needs === 'sandbox') return hasSandbox;
+    return false;
+  };
 
   return (
-    <div data-testid="agent-setup-wizard" className="max-w-3xl mx-auto space-y-6">
+    <div data-testid="agent-provision-panel" className="max-w-2xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Agent Setup Wizard</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Securely provision your agent inside an isolated sandbox VM</p>
+      <div>
+        <h1 className="text-xl font-bold text-foreground tracking-tight">Agent Provisioning</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Your agent is alive. Equip it with tools — it's aware of each step.
+        </p>
+      </div>
+
+      {/* Agent awareness indicator */}
+      <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-secondary/50">
+        <Shield className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+        <div className="text-xs text-muted-foreground leading-relaxed">
+          Everything installs inside the agent's <strong>sandbox VM</strong>. The agent sees a provisioning status file each turn and knows what tools are being built for it. After you click "Go Autonomous", it takes over.
         </div>
-        <div className="flex items-center gap-3">
-          {sandboxId && (
-            <div className="text-[10px] font-mono text-muted-foreground bg-secondary px-2 py-1 rounded" data-testid="sandbox-id-display">
-              Sandbox: {sandboxId.slice(0, 12)}...
+      </div>
+
+      {/* Status summary */}
+      {status && (
+        <div data-testid="provision-status-summary" className="flex flex-wrap gap-3 text-xs">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border ${hasSandbox ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border bg-secondary text-muted-foreground'}`}>
+            <Server className="w-3 h-3" />
+            Sandbox: {hasSandbox ? status.sandbox.id?.slice(0, 10) + '...' : 'none'}
+          </div>
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border ${tools['conway-terminal']?.installed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border bg-secondary text-muted-foreground'}`}>
+            <Terminal className="w-3 h-3" />
+            Terminal: {tools['conway-terminal']?.installed ? 'installed' : 'none'}
+          </div>
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border ${tools['openclaw']?.installed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border bg-secondary text-muted-foreground'}`}>
+            <Eye className="w-3 h-3" />
+            OpenClaw: {tools['openclaw']?.installed ? 'installed' : 'none'}
+          </div>
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border ${status.skills_loaded ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border bg-secondary text-muted-foreground'}`}>
+            <FileText className="w-3 h-3" />
+            Skills: {status.skills_loaded ? 'loaded' : 'none'}
+          </div>
+          {status.credits_cents !== undefined && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border bg-secondary text-muted-foreground">
+              Credits: ${(status.credits_cents / 100).toFixed(2)}
             </div>
           )}
-          <button data-testid="reset-setup-btn" onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 rounded-md transition-colors">
-            <RotateCcw className="w-3 h-3" /> Reset
-          </button>
         </div>
-      </div>
+      )}
 
-      {/* Progress bar */}
-      <div className="bg-secondary rounded-full h-2 overflow-hidden">
-        <div className="bg-foreground h-full transition-all duration-500 rounded-full" style={{ width: `${(completedCount / steps.length) * 100}%` }} data-testid="setup-progress-bar" />
-      </div>
-      <div className="text-xs text-muted-foreground text-right">{completedCount}/{steps.length} steps complete</div>
-
-      {/* Security notice */}
-      <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-        <div className="text-xs text-amber-800 leading-relaxed">
-          <strong>Sandbox isolation:</strong> All tools are installed inside the agent's Conway Cloud VM. Nothing runs on the host system.
-        </div>
-      </div>
-
-      {/* Steps */}
+      {/* Provision buttons */}
       <div className="space-y-2">
-        {steps.map((step, idx) => {
-          const Icon = step.icon;
-          const isActive = idx === nextStepIdx;
-          const isExpanded = expandedStep === step.id;
-          const canRun = idx === 0 || steps[idx - 1].status === 'complete';
-          const isRunning = runningStep === step.id;
+        {PROVISIONS.map((p) => {
+          const Icon = p.icon;
+          const done = isProvisionDone(p.id);
+          const enabled = canRun(p);
+          const isRunning = runningAction === p.id;
+          const hasOutput = outputs[p.id];
+          const isExpanded = expandedOutput === p.id;
 
           return (
-            <div key={step.id} data-testid={`setup-step-${step.id}`}
-              className={`border rounded-lg overflow-hidden transition-all duration-200 ${
-                step.status === 'complete' ? 'border-emerald-200 bg-emerald-50/50' :
-                step.status === 'failed' ? 'border-red-200 bg-red-50/30' :
-                isActive ? 'border-foreground/30 bg-white shadow-sm' :
-                'border-border bg-white/50'
-              }`}>
-              {/* Step header */}
-              <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => setExpandedStep(isExpanded ? null : step.id)}>
-                {/* Step number */}
-                <div className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 text-xs font-bold ${
-                  step.status === 'complete' ? 'bg-emerald-100 text-emerald-700' :
-                  step.status === 'failed' ? 'bg-red-100 text-red-700' :
-                  isActive ? 'bg-foreground text-white' :
-                  'bg-secondary text-muted-foreground'
-                }`}>
-                  {step.status === 'complete' ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
+            <div key={p.id} data-testid={`provision-${p.id}`} className={`border rounded-lg transition-all ${done ? 'border-emerald-200 bg-emerald-50/40' : enabled ? 'border-border bg-white' : 'border-border/50 bg-secondary/30 opacity-60'}`}>
+              <div className="flex items-center gap-3 px-4 py-3">
+                {/* Icon */}
+                <div className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${done ? 'bg-emerald-100 text-emerald-700' : 'bg-secondary text-muted-foreground'}`}>
+                  {done ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
                 </div>
 
+                {/* Label */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className={`text-sm font-semibold ${step.status === 'complete' ? 'text-emerald-700' : 'text-foreground'}`}>{step.label}</span>
-                    <StatusBadge status={isRunning ? 'running' : step.status} />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{step.detail || step.desc}</p>
+                  <div className="text-sm font-semibold text-foreground">{p.label}</div>
+                  <p className="text-[11px] text-muted-foreground">{p.desc}</p>
                 </div>
 
+                {/* Action */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {canRun && step.status !== 'complete' && (
+                  {hasOutput && (
                     <button
-                      data-testid={`run-step-${step.id}`}
-                      onClick={(e) => { e.stopPropagation(); runStep(step.id); }}
-                      disabled={isRunning || !!runningStep}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                        isRunning || runningStep ? 'bg-secondary text-muted-foreground cursor-not-allowed' :
-                        'bg-foreground text-white hover:bg-foreground/90'
-                      }`}
-                    >
-                      {isRunning ? <><Loader2 className="w-3 h-3 animate-spin" /> Running...</> : <><Play className="w-3 h-3" /> Run</>}
-                    </button>
-                  )}
-                  {step.status === 'complete' && canRun && (
-                    <button
-                      data-testid={`rerun-step-${step.id}`}
-                      onClick={(e) => { e.stopPropagation(); runStep(step.id); }}
-                      disabled={isRunning || !!runningStep}
+                      data-testid={`toggle-output-${p.id}`}
+                      onClick={() => setExpandedOutput(isExpanded ? null : p.id)}
                       className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground bg-secondary rounded transition-colors"
                     >
-                      <RotateCcw className="w-2.5 h-2.5" /> Retry
+                      <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      Output
                     </button>
                   )}
-                  <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                  <button
+                    data-testid={`run-provision-${p.id}`}
+                    onClick={() => runAction(p)}
+                    disabled={!enabled || isRunning || (runningAction && runningAction !== p.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                      !enabled || (runningAction && runningAction !== p.id)
+                        ? 'bg-secondary text-muted-foreground cursor-not-allowed'
+                        : isRunning
+                        ? 'bg-secondary text-muted-foreground'
+                        : done
+                        ? 'bg-secondary text-foreground hover:bg-secondary/80'
+                        : 'bg-foreground text-white hover:bg-foreground/90'
+                    }`}
+                  >
+                    {isRunning ? <><Loader2 className="w-3 h-3 animate-spin" /> Running...</> :
+                     done ? <><RotateCcw className="w-3 h-3" /> Redo</> :
+                     <><Play className="w-3 h-3" /> {p.label}</>}
+                  </button>
                 </div>
               </div>
 
-              {/* Expanded output */}
-              {isExpanded && step.output && (
+              {/* Output panel */}
+              {isExpanded && hasOutput && (
                 <div className="border-t border-border bg-zinc-950 px-4 py-3">
-                  <pre data-testid={`output-${step.id}`} className="text-[11px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{step.output}</pre>
+                  <pre data-testid={`output-${p.id}`} className="text-[11px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">{outputs[p.id]}</pre>
                 </div>
               )}
             </div>
@@ -202,14 +242,47 @@ export default function AgentSetup() {
         })}
       </div>
 
-      {/* Completion message */}
-      {allComplete && (
-        <div data-testid="setup-complete-banner" className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-          <div>
-            <div className="text-sm font-bold text-emerald-800">Agent Fully Provisioned</div>
-            <div className="text-xs text-emerald-700">All tools installed inside sandbox. Agent is autonomous.</div>
-          </div>
+      {/* Custom nudge */}
+      <div className="border border-border rounded-lg bg-white">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
+          <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Message the Agent</span>
+          <span className="text-[10px] text-muted-foreground">(agent sees this on its next turn)</span>
+        </div>
+        <div className="flex gap-2 p-3">
+          <input
+            data-testid="custom-nudge-input"
+            type="text"
+            value={customNudge}
+            onChange={(e) => setCustomNudge(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendCustomNudge()}
+            placeholder="e.g. Test your curl and git, then report back via Telegram"
+            className="flex-1 px-3 py-2 text-sm border border-border rounded-md bg-secondary/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+          />
+          <button
+            data-testid="send-nudge-btn"
+            onClick={sendCustomNudge}
+            disabled={!customNudge.trim()}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-foreground text-white rounded-md hover:bg-foreground/90 disabled:bg-secondary disabled:text-muted-foreground disabled:cursor-not-allowed transition-all"
+          >
+            <Send className="w-3 h-3" /> Send
+          </button>
+        </div>
+      </div>
+
+      {/* Recent nudges */}
+      {status?.nudges?.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1">Recent messages to agent</div>
+          {status.nudges.slice().reverse().map((n, i) => (
+            <div key={i} data-testid={`nudge-${i}`} className="flex items-start gap-2 px-3 py-2 text-xs bg-secondary/50 rounded-md border border-border">
+              <Send className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="text-foreground">{n.message}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">{new Date(n.timestamp).toLocaleString()}</div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

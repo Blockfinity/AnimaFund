@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 const navItems = [
-  { id: 'setup', label: 'Agent Setup', icon: Rocket },
+  { id: 'setup', label: 'Provision Agent', icon: Rocket },
   { id: 'mind', label: 'Agent Mind', icon: Brain },
   { id: 'fundhq', label: 'Fund HQ', icon: Building2 },
   { id: 'agents', label: 'Agents', icon: Users },

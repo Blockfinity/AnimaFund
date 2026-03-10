@@ -626,6 +626,23 @@ Your sandbox ID is ${identity.sandboxId}.`,
     }
   }
 
+  // Layer 5.5: Live Provisioning Status — what your creator has built for you
+  const provStatus = loadProvisioningStatus();
+  if (provStatus) {
+    const lines: string[] = [];
+    lines.push("--- PROVISIONING STATUS (from your creator) ---");
+    lines.push(`Sandbox: ${provStatus.sandbox?.status || "none"}${provStatus.sandbox?.id ? ` (ID: ${provStatus.sandbox.id})` : ""}`);
+    const toolNames = Object.keys(provStatus.tools || {}).filter(t => provStatus.tools[t]?.installed);
+    lines.push(`Installed tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none yet"}`);
+    if (provStatus.skills_loaded) lines.push(`Skills: loaded`);
+    if (provStatus.nudges && provStatus.nudges.length > 0) {
+      const latest = provStatus.nudges[provStatus.nudges.length - 1];
+      lines.push(`\nLatest message from creator: "${latest.message}"`);
+    }
+    lines.push("--- END PROVISIONING STATUS ---");
+    sections.push(lines.join("\n"));
+  }
+
   // Layer 6: Operational Context
   sections.push(OPERATIONAL_CONTEXT);
 
@@ -719,6 +736,28 @@ ${orchestratorStatus}
   }
 
   return sections.join("\n\n");
+}
+
+/**
+ * Load provisioning-status.json — written by the dashboard when the creator
+ * equips the agent with sandbox, tools, and skills while it's alive.
+ */
+function loadProvisioningStatus(): any | null {
+  try {
+    const home = process.env.HOME || "/root";
+    const locations = [
+      path.join(home, ".anima", "provisioning-status.json"),
+      path.join(home, ".automaton", "provisioning-status.json"),
+    ];
+    for (const loc of locations) {
+      if (fs.existsSync(loc)) {
+        return JSON.parse(fs.readFileSync(loc, "utf-8"));
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
 }
 
 /**
