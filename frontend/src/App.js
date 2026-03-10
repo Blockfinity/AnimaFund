@@ -258,13 +258,13 @@ function AppInner() {
 
   const canRunStep = (step) => {
     if (step.id === 'sandbox') {
-      // Need at least 500 cents ($5) for Small VM
-      return creditBalance !== null && creditBalance >= 500;
+      // Allow if credits >= $5 OR if sandbox already exists (reuse)
+      return (creditBalance !== null && creditBalance >= 500) || hasSandbox;
     }
     return hasSandbox;
   };
 
-  const hasEnoughCredits = creditBalance !== null && creditBalance >= 500;
+  const hasEnoughCredits = (creditBalance !== null && creditBalance >= 500) || hasSandbox;
 
   const allProvDone = PROVISION_STEPS.every(s => isStepDone(s.id));
   const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
@@ -279,7 +279,21 @@ function AppInner() {
         setStepOutputs(prev => ({ ...prev, [step.id]: data.output }));
         setExpandedStep(step.id);
       }
-      data.success ? toast.success(`${step.label} complete`) : toast.error(data.error || 'Failed');
+      if (data.reused) toast.success(`${step.label} — reusing existing sandbox (credits preserved)`);
+      else data.success ? toast.success(`${step.label} complete`) : toast.error(data.error || 'Failed');
+      await fetchProvStatus();
+    } catch (e) { toast.error(e.message); }
+    setRunningStep(null);
+  };
+
+  const resetAgent = async () => {
+    if (!window.confirm('Reset agent? This wipes all agent data but keeps the sandbox VM alive — your credits are preserved.')) return;
+    setRunningStep('reset');
+    try {
+      const res = await fetch(`${API}/api/provision/reset-sandbox`, { method: 'POST' });
+      const data = await res.json();
+      data.success ? toast.success('Agent reset — sandbox preserved, credits saved') : toast.error(data.error || 'Reset failed');
+      setStepOutputs({});
       await fetchProvStatus();
     } catch (e) { toast.error(e.message); }
     setRunningStep(null);
@@ -553,6 +567,22 @@ function AppInner() {
               );
             })}
           </div>
+
+          {/* ═══════ RESET AGENT (reuse sandbox, preserve credits) ═══════ */}
+          {hasSandbox && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+              <button data-testid="reset-agent-btn" onClick={resetAgent} disabled={runningStep === 'reset'}
+                style={{
+                  padding: '6px 14px', borderRadius: '6px', border: '1px solid #27272a',
+                  background: 'transparent', color: '#71717a', fontSize: '10px', fontWeight: 700,
+                  cursor: runningStep === 'reset' ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}>
+                {runningStep === 'reset' ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Resetting...</> :
+                 <><RotateCcw style={{ width: '10px', height: '10px' }} /> Reset Agent (keep sandbox, save credits)</>}
+              </button>
+            </div>
+          )}
 
           {/* ═══════ WALLET / QR CODE ═══════ */}
           {walletAddr && (

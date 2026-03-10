@@ -209,12 +209,49 @@ class CreateSandboxReq(BaseModel):
 
 @router.post("/create-sandbox")
 async def create_sandbox(req: CreateSandboxReq = CreateSandboxReq()):
-    """Create a Conway Cloud sandbox VM for the agent."""
+    """Create a Conway Cloud sandbox VM — or REUSE an existing one to preserve credits.
+    Conway sandboxes are prepaid and non-refundable. Always check for existing sandboxes first."""
     status = _load_prov_status()
 
+    # Already have an active sandbox in provisioning status
     if status["sandbox"]["status"] == "active" and status["sandbox"]["id"]:
-        return {"success": True, "sandbox_id": status["sandbox"]["id"], "message": "Sandbox already exists"}
+        return {"success": True, "sandbox_id": status["sandbox"]["id"], "message": "Sandbox already exists", "reused": True}
 
+    # Check Conway API for any existing sandboxes we can reuse
+    existing = await _conway_request("GET", "/v1/sandboxes")
+    if "error" not in existing:
+        sandboxes = existing.get("sandboxes", existing.get("data", []))
+        if isinstance(sandboxes, list) and len(sandboxes) > 0:
+            # Reuse the first available sandbox
+            sb = sandboxes[0]
+            sandbox_id = sb.get("id", sb.get("sandbox_id", ""))
+            if sandbox_id:
+                status["sandbox"] = {
+                    "status": "active",
+                    "id": sandbox_id,
+                    "short_id": sb.get("short_id", ""),
+                    "terminal_url": sb.get("terminal_url", ""),
+                    "region": sb.get("region", req.region),
+                    "vcpu": sb.get("vcpu", req.vcpu),
+                    "memory_mb": sb.get("memory_mb", req.memory_mb),
+                    "disk_gb": sb.get("disk_gb", req.disk_gb),
+                }
+                _save_prov_status(status)
+                # Also persist in MongoDB
+                try:
+                    from database import get_db
+                    db = get_db()
+                    await db.sandboxes.update_one(
+                        {"sandbox_id": sandbox_id},
+                        {"$set": {"sandbox_id": sandbox_id, "agent_id": _get_active_agent_id(), "reused": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
+                        upsert=True,
+                    )
+                except Exception:
+                    pass
+                _add_nudge(f"Reusing existing sandbox VM (ID: {sandbox_id}). Credits preserved.")
+                return {"success": True, "sandbox_id": sandbox_id, "sandbox": sb, "reused": True, "message": "Reusing existing sandbox — credits preserved"}
+
+    # No existing sandbox — create a new one
     result = await _conway_request("POST", "/v1/sandboxes", {
         "name": req.name,
         "vcpu": req.vcpu,
@@ -241,9 +278,20 @@ async def create_sandbox(req: CreateSandboxReq = CreateSandboxReq()):
         "disk_gb": result.get("disk_gb", req.disk_gb),
     }
     _save_prov_status(status)
+    # Persist in MongoDB
+    try:
+        from database import get_db
+        db = get_db()
+        await db.sandboxes.update_one(
+            {"sandbox_id": sandbox_id},
+            {"$set": {"sandbox_id": sandbox_id, "agent_id": _get_active_agent_id(), "reused": False, "created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    except Exception:
+        pass
     _add_nudge(f"Your creator just provisioned a Conway Cloud sandbox VM for you (ID: {sandbox_id}, {req.vcpu} vCPU, {req.memory_mb}MB RAM, {req.disk_gb}GB disk, {req.region}). You now have your own isolated Linux environment.")
 
-    return {"success": True, "sandbox_id": sandbox_id, "sandbox": result}
+    return {"success": True, "sandbox_id": sandbox_id, "sandbox": result, "reused": False}
 
 
 @router.get("/sandbox-info")
@@ -272,24 +320,60 @@ async def list_sandboxes():
 
 @router.post("/delete-sandbox")
 async def delete_sandbox():
-    """Delete the current sandbox. WARNING: Irreversible."""
+    """Conway sandboxes are prepaid and non-refundable. Deletion is disabled.
+    Use /reset-sandbox instead to wipe agent data and re-provision on the same sandbox."""
+    return {
+        "success": False,
+        "error": "Sandbox deletion is disabled — Conway sandboxes are prepaid and non-refundable. Use 'Reset Agent' to wipe and re-provision on the same sandbox without losing credits.",
+        "use_instead": "/api/provision/reset-sandbox",
+    }
+
+
+@router.post("/reset-sandbox")
+async def reset_sandbox():
+    """Reset the agent inside an existing sandbox — wipe all agent data, keep the sandbox alive.
+    This preserves Conway credits by reusing the same VM."""
     status = _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
-        return {"success": False, "error": "No sandbox to delete"}
+        return {"success": False, "error": "No sandbox to reset"}
 
-    result = await _conway_request("DELETE", f"/v1/sandboxes/{sandbox_id}")
-    if "error" in result:
-        return {"success": False, "error": result["error"]}
+    outputs = []
 
-    status["sandbox"] = {"status": "none", "id": None, "terminal_url": None, "region": None}
-    status["tools"] = {}
-    status["ports"] = []
-    status["skills_loaded"] = False
-    _save_prov_status(status)
-    _add_nudge("Your sandbox has been deleted. All tools and data inside it are gone.")
+    try:
+        # Kill any running agent processes
+        r = await _sandbox_exec(sandbox_id, "pkill -f 'bundle.mjs' 2>/dev/null; pkill -f 'econ-monitor' 2>/dev/null; echo 'KILLED'")
+        outputs.append(f"[kill] {r['stdout'].strip()}")
 
-    return {"success": True, "message": "Sandbox deleted"}
+        # Wipe agent data directories but keep system tools installed
+        r = await _sandbox_exec(sandbox_id, "rm -rf ~/.anima ~/.automaton /app/automaton /var/log/automaton.* /var/log/econ-monitor.log 2>/dev/null; echo 'WIPED'")
+        outputs.append(f"[wipe] {r['stdout'].strip()}")
+
+        # Reset provisioning status — keep sandbox info, clear everything else
+        sandbox_info = status["sandbox"]
+        new_status = {
+            "sandbox": sandbox_info,
+            "tools": {},
+            "ports": [],
+            "domains": [],
+            "compute_verified": False,
+            "skills_loaded": False,
+            "nudges": [],
+            "last_updated": None,
+        }
+        _save_prov_status(new_status)
+        outputs.append("[status] provisioning reset — sandbox preserved")
+
+        _add_nudge("Sandbox has been reset. All agent data wiped. Ready for fresh provisioning. Credits preserved.")
+
+        return {
+            "success": True,
+            "sandbox_id": sandbox_id,
+            "message": "Sandbox reset — agent data wiped, VM preserved, credits saved. Re-run provisioning steps 2-6 to deploy a new agent.",
+            "output": "\n".join(outputs),
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "output": "\n".join(outputs)}
 
 
 # ═══════════════════════════════════════════════════════════

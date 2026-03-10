@@ -1,0 +1,88 @@
+{
+  "summary": "Iteration 17: Sandbox Management Tests - Conway sandboxes are prepaid and non-refundable. All 11 backend tests pass (100%), all frontend UI tests pass (100%). Key features verified: delete-sandbox blocked with non-refundable message, reset-sandbox returns 'no sandbox' when none exists, create-sandbox checks for existing sandboxes, list-sandboxes returns Conway API data, credits balance/purchase work, Telegram health/test messages work, Conway health returns all services healthy.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_17_sandbox_management.py",
+    "/app/test_reports/pytest/pytest_iteration17.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "delete-sandbox correctly blocked with message: 'Sandbox deletion is disabled — Conway sandboxes are prepaid and non-refundable. Use Reset Agent to wipe and re-provision'",
+    "reset-sandbox correctly returns 'No sandbox to reset' when no sandbox exists",
+    "create-sandbox endpoint checks GET /v1/sandboxes for existing sandboxes before creating new ones (line 221 in agent_setup.py)",
+    "list-sandboxes returns sandbox list from Conway API",
+    "Credits balance shows $0.00 (correct for test API key)",
+    "Credits purchase generates QR code with x402 payment protocol (USDC on Base)",
+    "Telegram bot @AnimaFundbot verified alive",
+    "Conway health returns all_healthy with cloud, domains, inference services",
+    "Reset Agent button correctly hidden when no sandbox exists (hasSandbox check in App.js line 573)",
+    "VM spec displayed: 1 vCPU, 512MB, 5GB — $5/mo",
+    "Provisioning stepper shows 6/6 steps with proper gating by credits",
+    "Info box shows $5k survival threshold and 50% creator split"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_17_sandbox_management.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 tests passed)",
+    "frontend": "100% (All UI features verified)"
+  },
+  "test_credentials": "CONWAY_API_KEY (0 credits - expected), TELEGRAM_BOT_TOKEN (verified alive)",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 17 focused on sandbox management - verifying Conway's non-refundable prepaid sandbox protection. All backend endpoints tested with real API calls (no mocks). delete-sandbox is blocked, reset-sandbox checks for existing sandbox, create-sandbox reuses existing sandboxes. Frontend correctly hides Reset Agent button when no sandbox exists. Conway API key has 0 credits which is expected for testing.",
+  "backend_apis_tested": [
+    "POST /api/provision/delete-sandbox - 200 OK (success=false, error mentions non-refundable, use_instead=/api/provision/reset-sandbox)",
+    "POST /api/provision/reset-sandbox - 200 OK (error='No sandbox to reset' when no sandbox exists)",
+    "POST /api/provision/create-sandbox - 200 OK (checks for existing sandboxes, returns error with 0 credits)",
+    "GET /api/provision/list-sandboxes - 200 OK (returns sandbox list from Conway API)",
+    "GET /api/provision/status - 200 OK (agent_id, sandbox status, tools, skills_loaded, credits_cents)",
+    "GET /api/credits/balance - 200 OK (credits_cents=0, credits_usd=0)",
+    "POST /api/credits/purchase - 200 OK (QR code, pay_to address, amount_usdc, instructions)",
+    "GET /api/telegram/health - 200 OK (anima-fund bot_alive=true)",
+    "POST /api/telegram/test/anima-fund - 200 OK (success=true, message sent)",
+    "GET /api/conway/health - 200 OK (all_healthy=true, services: cloud, domains, inference)",
+    "GET /api/provision/sandbox-info - 200 OK (returns error='No sandbox' when no sandbox exists)"
+  ],
+  "frontend_features_verified": {
+    "genesis_screen": {
+      "credits_funding_panel": "PASS - data-testid='credits-funding-panel'",
+      "balance_display": "PASS - shows $0.00",
+      "tier_buttons": "PASS - $5, $25, $100, $500, $1000, $2500",
+      "add_credits_button": "PASS - data-testid='get-payment-btn'",
+      "payment_qr": "PASS - displays QR code after clicking Add Credits",
+      "pay_to_address": "PASS - shows USDC address on Base network",
+      "instructions": "PASS - shows 4-step payment instructions",
+      "balance_polling": "PASS - 'Watching for payment... balance updates every 5s'"
+    },
+    "provisioning_stepper": {
+      "step_count": "PASS - 6/6 steps found",
+      "step_sandbox": "PASS - VM spec: 1 vCPU, 512MB, 5GB — $5/mo",
+      "step_terminal": "PASS - Conway Terminal + wallet + API key",
+      "step_openclaw": "PASS - Autonomous browser + MCP bridge",
+      "step_claudecode": "PASS - Self-modification via MCP",
+      "step_skills": "PASS - Push skill definitions into sandbox",
+      "step_deploy": "PASS - Create Anima"
+    },
+    "reset_agent_button": "PASS - correctly hidden when no sandbox exists",
+    "info_box": {
+      "seed_funding_message": "PASS - $5 VM + $5 credits = $10 total",
+      "survival_threshold": "PASS - $5,000",
+      "creator_split": "PASS - 50%"
+    },
+    "dashboard": {
+      "navigation": "PASS - all sidebar items present",
+      "agent_selector": "PASS - Anima Fund with green status dot",
+      "sse_indicator": "PASS - LIVE / WAITING FOR ENGINE"
+    }
+  }
+}
