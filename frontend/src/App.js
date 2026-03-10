@@ -55,11 +55,8 @@ function AppInner() {
   const [stepOutputs, setStepOutputs] = useState({});
   const [expandedStep, setExpandedStep] = useState(null);
 
-  // Credits funding state
+  // Credits state (kept for SSE updates)
   const [creditBalance, setCreditBalance] = useState(null);
-  const [creditTiers, setCreditTiers] = useState([]);
-  const [vmPricing, setVmPricing] = useState([]);
-  const [selectedTier, setSelectedTier] = useState(5);
 
   // Fetch agent list
   const fetchAgents = useCallback(async () => {
@@ -279,13 +276,13 @@ function AppInner() {
 
   const canRunStep = (step) => {
     if (step.id === 'sandbox') {
-      // Allow if credits >= $5 OR if sandbox already exists (reuse)
-      return (creditBalance !== null && creditBalance >= 500) || hasSandbox;
+      // Allow if API key is connected OR sandbox already exists
+      return (keyStatus?.configured && keyStatus?.valid) || hasSandbox;
     }
     return hasSandbox;
   };
 
-  const hasEnoughCredits = (creditBalance !== null && creditBalance >= 500) || hasSandbox;
+  const hasConnectedKey = keyStatus?.configured && keyStatus?.valid;
 
   const allProvDone = PROVISION_STEPS.every(s => isStepDone(s.id));
   const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
@@ -388,97 +385,12 @@ function AppInner() {
             <div style={{ fontSize: '10px', color: '#60EE79', marginTop: '3px' }}>50% of all profit (fees, carry, revenue) to creator. $10K threshold to launch fund.</div>
           </div>
 
-          {/* ═══════ CREDITS FUNDING ═══════ */}
-          <div data-testid="credits-funding-panel" style={{ background: '#18181b', border: `1px solid ${hasEnoughCredits ? '#166534' : '#92400e'}`, borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Wallet style={{ width: '14px', height: '14px', color: hasEnoughCredits ? '#34D399' : '#FBBF24' }} />
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Conway Credits</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span data-testid="credit-balance" style={{ fontSize: '13px', fontWeight: 900, fontFamily: 'JetBrains Mono, monospace', color: hasEnoughCredits ? '#34D399' : creditBalance === 0 ? '#EF4444' : '#FBBF24' }}>
-                  ${creditBalance !== null ? (creditBalance / 100).toFixed(2) : '...'}
-                </span>
-                <button data-testid="refresh-balance-btn" onClick={fetchCreditBalance} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex' }}>
-                  <RefreshCw style={{ width: '12px', height: '12px', color: '#71717a' }} />
-                </button>
-              </div>
-            </div>
-
-            {/* Status message */}
-            {!hasEnoughCredits && (
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a', background: '#1c1917' }}>
-                <div style={{ fontSize: '11px', color: '#FBBF24', lineHeight: 1.6 }}>
-                  <strong>Fund your account</strong> to create a sandbox VM. The Small VM (1 vCPU, 512MB, 5GB) costs <strong>$5/mo</strong>. The agent must earn to survive.
-                  {creditBalance !== null && creditBalance > 0 && <span> You have ${(creditBalance / 100).toFixed(2)} — need ${((500 - creditBalance) / 100).toFixed(2)} more.</span>}
-                </div>
-              </div>
-            )}
-            {hasEnoughCredits && !hasSandbox && (
-              <div style={{ padding: '8px 14px', borderBottom: '1px solid #27272a', background: '#052e16' }}>
-                <div style={{ fontSize: '11px', color: '#34D399' }}>Credits loaded. You can now create your sandbox below.</div>
-              </div>
-            )}
-
-            {/* Tier selector + Buy on Conway */}
-            {!hasEnoughCredits && (
-              <div style={{ padding: '12px 14px' }}>
-                {/* How much to buy */}
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  {[5, 25, 100].map(amt => (
-                    <button key={amt} data-testid={`tier-${amt}`}
-                      onClick={() => setSelectedTier(amt)}
-                      style={{
-                        padding: '6px 12px', borderRadius: '6px', border: `1px solid ${selectedTier === amt ? '#fff' : '#27272a'}`,
-                        background: selectedTier === amt ? '#fff' : '#09090b',
-                        color: selectedTier === amt ? '#09090b' : '#a1a1aa',
-                        fontSize: '11px', fontWeight: 800, cursor: 'pointer',
-                      }}>
-                      ${amt}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Buy Credits button — opens Conway dashboard */}
-                <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer"
-                  data-testid="buy-credits-btn"
-                  style={{
-                    width: '100%', padding: '10px', borderRadius: '6px', border: 'none',
-                    background: '#FBBF24', color: '#09090b',
-                    fontSize: '12px', fontWeight: 800, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    textDecoration: 'none',
-                  }}>
-                  <Wallet style={{ width: '12px', height: '12px' }} />
-                  Buy ${selectedTier} Credits on Conway
-                  <ExternalLink style={{ width: '10px', height: '10px' }} />
-                </a>
-
-                {/* How it works */}
-                <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8, marginTop: '10px', padding: '10px', background: '#09090b', borderRadius: '6px', border: '1px solid #27272a' }}>
-                  <div style={{ fontWeight: 700, color: '#a1a1aa', marginBottom: '4px' }}>How to add credits:</div>
-                  <div>1. Click above to open Conway Cloud</div>
-                  <div>2. Connect your wallet (MetaMask, Coinbase, WalletConnect)</div>
-                  <div>3. Purchase credits with USDC on Base</div>
-                  <div>4. Balance updates here automatically</div>
-                </div>
-
-                {/* Auto-polling indicator */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', padding: '6px 10px', background: '#18181b', borderRadius: '6px' }}>
-                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FBBF24', animation: 'pulse 2s infinite' }} />
-                  <span style={{ fontSize: '10px', color: '#a1a1aa' }}>Watching for credits... balance refreshes every 5s</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ═══════ CONWAY API KEY INPUT ═══════ */}
+          {/* ═══════ CONNECT YOUR VM ═══════ */}
           <div data-testid="conway-key-panel" style={{ background: '#18181b', border: `1px solid ${keyStatus?.configured && keyStatus?.valid ? '#166534' : '#27272a'}`, borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <KeyRound style={{ width: '14px', height: '14px', color: keyStatus?.configured && keyStatus?.valid ? '#34D399' : '#FBBF24' }} />
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Conway API Key</span>
+                <KeyRound style={{ width: '14px', height: '14px', color: keyStatus?.configured && keyStatus?.valid ? '#34D399' : '#a1a1aa' }} />
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Connect Your VM</span>
               </div>
               {keyStatus?.configured && keyStatus?.valid && (
                 <span style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: '#34D399' }}>
@@ -489,14 +401,14 @@ function AppInner() {
 
             {keyStatus?.configured && keyStatus?.valid ? (
               <div style={{ padding: '10px 14px', background: '#052e16' }}>
-                <div style={{ fontSize: '11px', color: '#34D399' }}>
-                  API key connected and valid. Balance: ${keyStatus.credits_cents !== undefined ? (keyStatus.credits_cents / 100).toFixed(2) : '...'} — this key is stored permanently and survives redeployments.
+                <div style={{ fontSize: '11px', color: '#34D399', lineHeight: 1.6 }}>
+                  VM connected. Credits: ${keyStatus.credits_cents !== undefined ? (keyStatus.credits_cents / 100).toFixed(2) : '...'}
                 </div>
               </div>
             ) : (
               <div style={{ padding: '12px 14px' }}>
                 <div style={{ fontSize: '11px', color: '#a1a1aa', lineHeight: 1.6, marginBottom: '10px' }}>
-                  After signing up on Conway, paste your API key here. This connects your Conway account to the platform and persists across redeployments.
+                  Enter your Conway API key to connect your sandbox VM to this agent.
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <input
@@ -519,21 +431,20 @@ function AppInner() {
                     disabled={!conwayKeyInput.trim() || settingKey}
                     style={{
                       padding: '8px 16px', borderRadius: '6px', border: 'none',
-                      background: !conwayKeyInput.trim() || settingKey ? '#27272a' : '#FBBF24',
+                      background: !conwayKeyInput.trim() || settingKey ? '#27272a' : '#fff',
                       color: !conwayKeyInput.trim() || settingKey ? '#52525b' : '#09090b',
                       fontSize: '11px', fontWeight: 800, cursor: !conwayKeyInput.trim() || settingKey ? 'not-allowed' : 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px',
                     }}
                   >
-                    {settingKey ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Validating...</> : 'Connect'}
+                    {settingKey ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Connecting...</> : 'Connect'}
                   </button>
                 </div>
-                <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8, marginTop: '8px', padding: '8px 10px', background: '#09090b', borderRadius: '6px', border: '1px solid #27272a' }}>
-                  <div style={{ fontWeight: 700, color: '#a1a1aa', marginBottom: '2px' }}>How to get your API key:</div>
-                  <div>1. Go to <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer" style={{ color: '#5B9CFF' }}>app.conway.tech</a> and sign up with your wallet</div>
-                  <div>2. Go to Settings or API Keys section</div>
-                  <div>3. Copy your API key (starts with cnwy_k_...)</div>
-                  <div>4. Paste it above and click Connect</div>
+                <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                  <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: '10px', color: '#71717a', textDecoration: 'none' }}>
+                    Don't have an API key? <span style={{ color: '#5B9CFF', textDecoration: 'underline' }}>Sign up on Conway</span> <ExternalLink style={{ width: '9px', height: '9px', display: 'inline', verticalAlign: 'middle' }} />
+                  </a>
                 </div>
               </div>
             )}
