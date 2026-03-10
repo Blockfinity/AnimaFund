@@ -63,7 +63,14 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - Auto-balance polling (5s) when payment panel is shown
 - Create Sandbox disabled until balance >= $25 (2500 cents)
 
+### Agent Self-Funding Survival Protocol (P1)
+- Updated `genesis-prompt.md` with SURVIVAL section: credits = existence
+- Agent monitors credits every turn, calculates runway (hours remaining)
+- Self-funding via x402_fetch to Conway purchase endpoint using its own USDC wallet
+- Survival tiers (NORMAL → CONSERVATION → SURVIVAL → CRITICAL → EMERGENCY)
+- Auto-buy protocol: wallet > $10 AND credits < $10 → buy $5 credits
+- Telegram alerts to creator when credits drop below $5
+
 ## Backlog
-### P1: Update genesis-prompt.md — instruct agent to monitor/top-up Conway credits with x402 wallet
 ### P1: Live dashboard data from sandbox (replace empty defaults with real sandbox queries)
 ### P2: Smart contracts, Android device control, self-hosted engine
