@@ -1,0 +1,136 @@
+{
+  "summary": "Completed iteration 11 testing for Conway Domains API alignment changes. All 19 backend tests passed (100%). Frontend fully verified with AnimaVM page having 6-step provisioning stepper and 7 monitor tabs. Public domain endpoints (search, check, pricing) return real data from api.conway.domains with success=true. Authenticated endpoints correctly return sandbox required errors. Skills endpoint includes all new domain tools. Genesis-prompt.md correctly updated with gpt-5.2/gpt-5-nano model names.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_11_conway_domains.py",
+    "/app/test_reports/pytest/pytest_iteration11.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Conway Domains API correctly split into public (no auth) and authenticated (sandbox required) endpoints",
+    "New _domains_public_request helper correctly uses https://api.conway.domains base URL",
+    "Public endpoints (domain-search, domain-check, domain-pricing) use correct query params (q= not query=)",
+    "Skills list in agents.py correctly includes all new domain tools (domain_check, domain_pricing, domain_renew, domain_dns_*, domain_privacy, domain_nameservers)",
+    "Genesis-prompt.md model list updated from outdated GPT-4o to current gpt-5.2/gpt-5-nano"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_11_conway_domains.py"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 tests passed)",
+    "frontend": "100% (all UI elements verified via Playwright)"
+  },
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 11 tested Conway Domains API alignment. Key changes: 1) Public domain endpoints (search, check, pricing) now correctly use api.conway.domains base URL with proper query params and return real data. 2) Authenticated endpoints (list, register, renew, DNS management, privacy, nameservers, info, transactions) correctly require sandbox with Conway Terminal. 3) Skills list includes all new domain tools. 4) Genesis-prompt.md model names updated to gpt-5.2/gpt-5-nano. All 19 tests pass.",
+  "features_verified": {
+    "public_domain_endpoints": {
+      "domain_search": {
+        "endpoint": "POST /api/provision/domain-search",
+        "payload": {"query": "test", "tlds": "com,ai"},
+        "returns_success_true": true,
+        "returns_results_array": true,
+        "source": "api.conway.domains",
+        "verified": true
+      },
+      "domain_check": {
+        "endpoint": "POST /api/provision/domain-check",
+        "payload": {"domains": "test.com,test.ai"},
+        "returns_success_true": true,
+        "returns_domains_array": true,
+        "source": "api.conway.domains",
+        "verified": true
+      },
+      "domain_pricing": {
+        "endpoint": "GET /api/provision/domain-pricing?tlds=com,ai,io,xyz",
+        "returns_success_true": true,
+        "returns_pricing_array": true,
+        "source": "api.conway.domains",
+        "verified": true
+      }
+    },
+    "authenticated_domain_endpoints": {
+      "all_require_sandbox": true,
+      "endpoints_tested": [
+        "GET /api/provision/domain-list",
+        "POST /api/provision/domain-register",
+        "POST /api/provision/domain-renew",
+        "GET /api/provision/domain-dns-list",
+        "POST /api/provision/domain-dns-add",
+        "PUT /api/provision/domain-privacy",
+        "PUT /api/provision/domain-nameservers",
+        "GET /api/provision/domain-info",
+        "GET /api/provision/domain-transactions"
+      ],
+      "all_return_success_false": true,
+      "all_error_mentions_sandbox": true,
+      "verified": true
+    },
+    "skills_endpoint": {
+      "endpoint": "GET /api/skills/available",
+      "includes_domain_tools": [
+        "domain_check",
+        "domain_pricing",
+        "domain_renew",
+        "domain_dns_list",
+        "domain_dns_add",
+        "domain_dns_update",
+        "domain_dns_delete",
+        "domain_privacy",
+        "domain_nameservers"
+      ],
+      "verified": true
+    },
+    "genesis_prompt_content": {
+      "line_204_has_gpt52": true,
+      "line_204_has_gpt5_nano": true,
+      "line_204_no_gpt4o": true,
+      "line_204_no_o3_mini": true,
+      "phase_0_test_10_uses_gpt5_nano": true,
+      "verified": true
+    },
+    "existing_endpoints_still_working": {
+      "health": true,
+      "provision_status": true,
+      "agents": true,
+      "nudge": true,
+      "verified": true
+    },
+    "frontend_ui": {
+      "sidebar_anima_vm_first": true,
+      "anima_vm_page_loads": true,
+      "provision_stepper_6_steps": true,
+      "monitor_tabs_7_tabs": true,
+      "verified": true
+    }
+  },
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (status=ok)",
+    "GET /api/provision/status - 200 OK (returns agent_id)",
+    "GET /api/agents - 200 OK (returns agents list)",
+    "POST /api/provision/nudge - 200 OK",
+    "POST /api/provision/domain-search - 200 OK (success=true, results array, source=api.conway.domains)",
+    "POST /api/provision/domain-check - 200 OK (success=true, domains array, source=api.conway.domains)",
+    "GET /api/provision/domain-pricing - 200 OK (success=true, pricing array, source=api.conway.domains)",
+    "GET /api/provision/domain-list - 200 OK (success=false, error mentions sandbox)",
+    "POST /api/provision/domain-register - 200 OK (success=false, error mentions sandbox)",
+    "POST /api/provision/domain-renew - 200 OK (success=false, error mentions sandbox)",
+    "GET /api/provision/domain-dns-list - 200 OK (success=false, error mentions sandbox)",
+    "POST /api/provision/domain-dns-add - 200 OK (success=false, error mentions sandbox)",
+    "PUT /api/provision/domain-privacy - 200 OK (success=false, error mentions sandbox)",
+    "PUT /api/provision/domain-nameservers - 200 OK (success=false, error mentions sandbox)",
+    "GET /api/provision/domain-info - 200 OK (success=false, error mentions sandbox)",
+    "GET /api/provision/domain-transactions - 200 OK (success=false, error mentions sandbox)",
+    "GET /api/skills/available - 200 OK (includes all new domain tools)"
+  ]
+}

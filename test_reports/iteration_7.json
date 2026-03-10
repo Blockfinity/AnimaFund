@@ -1,0 +1,107 @@
+{
+  "summary": "Completed iteration 7 testing for real-time embedded terminal view in Anima VM page. All 23 backend API tests passed (100%). Frontend verified: Header breadcrumb shows 'Anima VM', Terminal tab exists (data-testid='tab-terminal'), Terminal shows 'No sandbox provisioned' message (data-testid='terminal-no-sandbox') when no sandbox exists, all 7 monitor tabs work (Live Feed, Terminal, Exec Log, Agent Logs, Browsing, VMs, Message), stepper with 6 steps works correctly, POST /api/provision/web-terminal endpoint correctly returns error when no sandbox.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_anima_vm_api.py",
+    "/app/test_reports/pytest/pytest_anima_vm_iteration7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LiveTerminal component correctly implements 3 states: no-sandbox, connect (has sandbox but no session), and active view with iframe",
+    "Header.js pageLabels correctly includes 'animavm': 'Anima VM'",
+    "Terminal tab correctly added to monitor tabs with data-testid='tab-terminal'",
+    "All data-testid attributes properly implemented: terminal-no-sandbox, terminal-connect, connect-terminal-btn, terminal-view, terminal-iframe, terminal-external-link, reconnect-terminal-btn",
+    "POST /api/provision/web-terminal endpoint correctly handles no-sandbox case with appropriate error message",
+    "Terminal iframe uses proper sandbox attribute for security"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_anima_vm_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "N/A - no auth required for these endpoints",
+  "seed_data_creation": "N/A - no new seed data created",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 7 added LiveTerminal component to AnimaVM.js. The terminal tab shows 3 states: (1) terminal-no-sandbox when no sandbox provisioned, (2) terminal-connect with connect-terminal-btn when sandbox exists but no terminal session, (3) terminal-view with terminal-iframe when session active. Backend POST /api/provision/web-terminal creates terminal session and returns terminal_url. Header breadcrumb correctly shows 'Anima VM' via pageLabels in Header.js. All 7 monitor tabs: tab-live, tab-terminal, tab-console, tab-logs, tab-browsing, tab-sandboxes, tab-message. All 6 stepper steps: step-sandbox, step-terminal, step-openclaw, step-claudecode, step-skills, step-deploy.",
+  "features_verified": {
+    "header_breadcrumb": {
+      "page": "animavm",
+      "label": "Anima VM",
+      "verified": true
+    },
+    "terminal_tab": {
+      "testid": "tab-terminal",
+      "label": "Terminal",
+      "exists": true,
+      "icon": "Terminal from lucide-react"
+    },
+    "terminal_states": {
+      "no_sandbox": {
+        "testid": "terminal-no-sandbox",
+        "shows_message": "No sandbox provisioned",
+        "verified": true
+      },
+      "connect_state": {
+        "testid": "terminal-connect",
+        "connect_button_testid": "connect-terminal-btn",
+        "shows_when": "sandbox exists but no terminal session"
+      },
+      "active_view": {
+        "testid": "terminal-view",
+        "iframe_testid": "terminal-iframe",
+        "external_link_testid": "terminal-external-link",
+        "reconnect_btn_testid": "reconnect-terminal-btn",
+        "shows_when": "terminal_url available"
+      }
+    },
+    "monitor_tabs": {
+      "total": 7,
+      "tabs": [
+        {"id": "tab-live", "label": "Live Feed"},
+        {"id": "tab-terminal", "label": "Terminal"},
+        {"id": "tab-console", "label": "Exec Log"},
+        {"id": "tab-logs", "label": "Agent Logs"},
+        {"id": "tab-browsing", "label": "Browsing"},
+        {"id": "tab-sandboxes", "label": "VMs"},
+        {"id": "tab-message", "label": "Message"}
+      ],
+      "all_clickable": true
+    },
+    "stepper": {
+      "testid": "provision-stepper",
+      "toggle_testid": "stepper-toggle",
+      "steps": ["step-sandbox", "step-terminal", "step-openclaw", "step-claudecode", "step-skills", "step-deploy"],
+      "run_buttons": ["run-sandbox", "run-terminal", "run-openclaw", "run-claudecode", "run-skills", "run-deploy"],
+      "all_verified": true
+    },
+    "backend_web_terminal_api": {
+      "endpoint": "POST /api/provision/web-terminal",
+      "response_without_sandbox": {"success": false, "error": "No sandbox yet. Create one first."},
+      "response_with_sandbox": {"success": true, "terminal_url": "https://..."},
+      "verified": true
+    }
+  },
+  "backend_apis_tested": [
+    "GET /api/provision/status - 200 OK with sandbox, tools, nudges, terminal_url",
+    "GET /api/provision/phase-state - 200 OK",
+    "GET /api/openclaw/status - 200 OK with openclaw, sandbox_summary, has_activity",
+    "GET /api/openclaw/actions - 200 OK with actions list and categories",
+    "GET /api/openclaw/sandboxes - 200 OK with live/created sandboxes",
+    "GET /api/openclaw/browsing - 200 OK with sessions list",
+    "GET /api/openclaw/sandbox-exec-log - 200 OK with log list",
+    "POST /api/provision/web-terminal - 200 OK (returns error without sandbox, terminal_url with sandbox)",
+    "POST /api/provision/nudge - 200 OK",
+    "POST /api/provision/nudge/custom - 200 OK"
+  ]
+}

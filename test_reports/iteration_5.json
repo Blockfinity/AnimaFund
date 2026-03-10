@@ -1,0 +1,81 @@
+{
+  "summary": "Completed iteration 5 testing for Anima Fund - Complete Conway ecosystem. All 32 backend API tests passed (100%). Frontend verified: 4 Infrastructure items (sandbox, terminal, openclaw, claude code), 10 status chips (9 always visible + 1 conditional wallet chip), phase state display present. All new/updated endpoints work correctly: install-claude-code fails gracefully without sandbox, status returns wallet_address field, install-terminal has auto-wallet description, install-openclaw uses sandbox API key, deploy-agent has Phase 0 description. Genesis prompt verified with 15 functional tool tests and $5k Phase 1 revenue strategies. System-prompt.ts has 15 tool test tracking. Security verified: no host installations.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_provision_api_v5.py",
+    "/app/test_reports/pytest/pytest_provision_v5.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Security verified: No conway-terminal, openclaw, or claude installed on host system",
+    "install-claude-code endpoint returns 'No sandbox yet. Create one first.' when no sandbox",
+    "Status endpoint correctly returns wallet_address field (empty string when no wallet)",
+    "install-terminal description correctly shows 'MCP server + auto-wallet + API key + all tools'",
+    "install-openclaw reads sandbox's own API key from ~/.conway/config.json",
+    "deploy-agent correctly pushes engine + genesis + phase-state.json into sandbox",
+    "Frontend has 10 status chips (9 always visible, Wallet chip conditional on wallet_address presence)",
+    "Genesis prompt has 15 functional tool tests: curl, git, node, python3, telegram, wallet, credits, sandbox, domains, compute, openclaw, x402, pty, files, self_modification",
+    "Genesis prompt has $5k Phase 1 strategies: crypto memes, prediction markets, DeFi trading, paid APIs, gambling, bounties",
+    "Genesis prompt has x402_fetch, x402_discover, browse_page, wallet_info, domain_search tools documented",
+    "system-prompt.ts has 15 tool test tracking in Phase 0 with allTools array",
+    "system-prompt.ts has Claude Code MCP integration instructions ('claude mcp add conway conway-terminal')"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_provision_api_v5.py"
+  ],
+  "success_rate": {
+    "backend": "100% (32/32 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "Conway API Key: cnwy_k_lWSyQNftsEMNiTknTVW_DNLW71MVeK_u (0 credits)",
+  "seed_data_creation": "Test nudges sent via API verification",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 5 adds: install-claude-code endpoint, wallet_address in status, 15 tool tests in genesis prompt (vs 10 in iteration 4), $5k Phase 1 revenue strategies. All sandbox-dependent endpoints gracefully fail with 'No sandbox'. Conway has 0 credits. Frontend has 4 Infrastructure items (sandbox, terminal, openclaw, claude code) and 10 status chips (Wallet chip only shows when wallet_address present). Genesis prompt now includes x402 payments, browsing, self-modification, PTY sessions, file management tools.",
+  "features_verified": {
+    "new_backend_apis": [
+      "POST /api/provision/install-claude-code - fails gracefully with 'No sandbox yet. Create one first.'"
+    ],
+    "updated_backend_apis": [
+      "GET /api/provision/status - now returns wallet_address field (empty when no wallet)",
+      "POST /api/provision/install-terminal - description: 'MCP server + auto-wallet + API key + all tools'",
+      "POST /api/provision/install-openclaw - reads sandbox's own API key from ~/.conway/config.json",
+      "POST /api/provision/deploy-agent - pushes engine + genesis + phase-state.json into sandbox"
+    ],
+    "frontend_ui": {
+      "sections": ["Infrastructure (4 items)", "Capabilities (3 items)", "Deploy (2 items)", "Communicate (1 item)"],
+      "infrastructure_items": ["Create Sandbox", "Install Conway Terminal", "Install OpenClaw", "Install Claude Code"],
+      "status_chips": ["VM: none", "Terminal: no", "OpenClaw: no", "Claude Code: no", "Compute: no", "Ports: 0", "Skills: no", "Engine: no", "Credits: $0.00", "Wallet: (conditional)"],
+      "phase_state_display": "Present, shows /15 counter when phase_state has tool_tests",
+      "deploy_agent_description": "Push engine + config into sandbox, start agent (born in Phase 0)"
+    },
+    "genesis_prompt_content": {
+      "tool_tests_count": 15,
+      "tool_tests_list": ["curl", "git", "node", "python3", "telegram", "wallet", "credits", "sandbox", "domains", "compute", "openclaw", "x402", "pty", "files", "self_modification"],
+      "phase_1_target": "$5,000",
+      "phase_1_strategies": ["crypto memes", "prediction markets", "DeFi trading", "paid API services", "content generation", "gambling", "bounties", "consulting"],
+      "x402_tools": ["x402_fetch", "x402_discover", "x402_check"],
+      "browser_tools": ["browse_page", "discover_agents", "send_message"],
+      "wallet_tools": ["wallet_info", "wallet_networks"],
+      "claude_code_mcp": "claude mcp add conway conway-terminal -e CONWAY_API_KEY=<key>"
+    },
+    "system_prompt_content": {
+      "phase_0_tracking": "15 tools tracked in allTools array",
+      "tool_test_display": "${passed}/15 tools tested",
+      "phase_enforcement": "Layer 5.6 PHASE ENFORCEMENT block with FORBIDDEN actions per phase"
+    },
+    "security_checks": [
+      "No conway-terminal installed on host",
+      "No openclaw installed on host", 
+      "No claude installed on host"
+    ]
+  }
+}

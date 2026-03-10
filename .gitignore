@@ -16,10 +16,6 @@ automaton/dist/**/
 !automaton/dist/bundle.mjs
 .pnpm-store/
 
-# Environment files
-*.env
-*.env.*
-
 # Runtime state (created by engine at runtime)
 *.db
 *.db-journal
@@ -28,50 +24,3 @@ automaton/dist/**/
 
 # Logs
 *.log
-
-# Test reports
-test_reports/
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*

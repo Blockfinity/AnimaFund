@@ -1,0 +1,185 @@
+{
+  "summary": "Completed iteration 10 regression testing after genesis-prompt.md update. All 25 backend tests passed (100%). Frontend fully verified: Sidebar has 'Anima VM' as first nav item, Agent selector dropdown in Header with 'Create New Agent' button, CreateAgentModal has all 12 form fields, AnimaVM page has 6-step provisioning stepper and 7 monitor tabs. Genesis-prompt.md verified to include Phase 3 with boardy.ai and 'hundreds of millions' target.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_10_regression.py",
+    "/app/test_reports/pytest/pytest_iteration10.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Genesis-prompt.md updated correctly with Phase 3, boardy.ai, and hundreds of millions target",
+    "All 25 backend API endpoints working as expected",
+    "Multi-agent isolation working correctly",
+    "Frontend UI fully functional with all components rendering properly"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_10_regression.py"
+  ],
+  "success_rate": {
+    "backend": "100% (25/25 tests passed)",
+    "frontend": "100% (all UI elements verified via Playwright)"
+  },
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 10 is a regression test after genesis-prompt.md update. All APIs and UI verified working. Key changes verified: genesis-prompt.md now includes Phase 3 with boardy.ai networking tool and higher capital goal ('hundreds of millions'). Boardy is marked as 'PHASE 3 ONLY'. Previous iteration 9 had 22 tests passing; this iteration has 25 tests (added genesis-prompt.md content verification tests).",
+  "features_verified": {
+    "backend_apis": {
+      "health": {
+        "endpoint": "GET /api/health",
+        "returns_status_ok": true,
+        "verified": true
+      },
+      "agents_list": {
+        "endpoint": "GET /api/agents",
+        "returns_agents_array": true,
+        "never_exposes_telegram_bot_token": true,
+        "verified": true
+      },
+      "agent_create": {
+        "endpoint": "POST /api/agents/create",
+        "requires_telegram_bot_token": true,
+        "requires_telegram_chat_id": true,
+        "stores_selected_skills": true,
+        "verified": true
+      },
+      "agent_select": {
+        "endpoint": "POST /api/agents/{id}/select",
+        "success_for_existing": true,
+        "404_for_nonexistent": true,
+        "verified": true
+      },
+      "provision_status": {
+        "endpoint": "GET /api/provision/status",
+        "returns_agent_id": true,
+        "agent_id_matches_active_agent": true,
+        "verified": true
+      },
+      "phase_state": {
+        "endpoint": "GET /api/provision/phase-state",
+        "returns_valid_json": true,
+        "verified": true
+      },
+      "skills_available": {
+        "endpoint": "GET /api/skills/available",
+        "returns_skills_array": true,
+        "skills_have_name_and_source": true,
+        "verified": true
+      },
+      "load_skills": {
+        "endpoint": "POST /api/provision/load-skills",
+        "returns_success_with_priority_skills": true,
+        "verified": true
+      },
+      "credits": {
+        "endpoint": "GET /api/provision/credits",
+        "returns_balance_object": true,
+        "verified": true
+      },
+      "wallet": {
+        "endpoint": "GET /api/provision/wallet",
+        "returns_wallet_info": true,
+        "verified": true
+      },
+      "list_sandboxes": {
+        "endpoint": "GET /api/provision/list-sandboxes",
+        "returns_sandboxes_list": true,
+        "verified": true
+      },
+      "nudge": {
+        "endpoint": "POST /api/provision/nudge",
+        "returns_success": true,
+        "verified": true
+      },
+      "nudge_custom": {
+        "endpoint": "POST /api/provision/nudge/custom",
+        "accepts_message_body": true,
+        "verified": true
+      },
+      "pty_list": {
+        "endpoint": "GET /api/provision/pty/list",
+        "returns_response_error_without_sandbox": true,
+        "verified": true
+      }
+    },
+    "frontend_ui": {
+      "sidebar": {
+        "anima_vm_is_first_nav_item": true,
+        "testid": "nav-animavm",
+        "verified": true
+      },
+      "header": {
+        "agent_selector_dropdown": true,
+        "create_new_agent_button": true,
+        "testid": "agent-selector",
+        "verified": true
+      },
+      "create_agent_modal": {
+        "testid": "create-agent-modal",
+        "form_fields": {
+          "agent_name_input": true,
+          "agent_welcome_input": true,
+          "agent_prompt_input": true,
+          "agent_goals_input": true,
+          "agent_tg_token_input": true,
+          "agent_tg_chatid_input": true,
+          "toggle_skills_selector": true,
+          "agent_conway_toggle": true,
+          "agent_sol_wallet_input": true,
+          "agent_eth_wallet_input": true,
+          "agent_revenue_share_input": true,
+          "create_agent_submit": true
+        },
+        "all_12_fields_present": true,
+        "verified": true
+      },
+      "anima_vm_page": {
+        "testid": "anima-vm-page",
+        "provision_stepper": {
+          "testid": "provision-stepper",
+          "steps": ["step-sandbox", "step-terminal", "step-openclaw", "step-claudecode", "step-skills", "step-deploy"],
+          "all_6_steps_present": true
+        },
+        "monitor_tabs": {
+          "tabs": ["tab-live", "tab-terminal", "tab-console", "tab-logs", "tab-browsing", "tab-sandboxes", "tab-message"],
+          "all_7_tabs_present": true
+        },
+        "verified": true
+      }
+    },
+    "genesis_prompt_content": {
+      "phase_3_present": true,
+      "boardy_ai_mentioned": true,
+      "hundreds_of_millions_target": true,
+      "boardy_phase_3_only": true,
+      "verified": true
+    }
+  },
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (status=ok)",
+    "GET /api/agents - 200 OK (list, no bot token)",
+    "POST /api/agents/create - 400 (requires telegram creds)",
+    "POST /api/agents/anima-fund/select - 200 OK",
+    "POST /api/agents/nonexistent/select - 404",
+    "GET /api/provision/status - 200 OK (returns agent_id)",
+    "GET /api/provision/phase-state - 200 OK (valid JSON)",
+    "GET /api/skills/available - 200 OK (skills with name/source)",
+    "POST /api/provision/load-skills - 200 OK",
+    "GET /api/provision/credits - 200 OK (balance object)",
+    "GET /api/provision/wallet - 200 OK (wallet info)",
+    "GET /api/provision/list-sandboxes - 200 OK",
+    "POST /api/provision/nudge - 200 OK",
+    "POST /api/provision/nudge/custom - 200 OK",
+    "GET /api/provision/pty/list - 200 OK (error without sandbox)",
+    "Multi-agent isolation verified"
+  ]
+}

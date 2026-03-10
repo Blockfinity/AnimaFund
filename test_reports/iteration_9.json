@@ -1,0 +1,154 @@
+{
+  "summary": "Completed iteration 9 testing for multi-agent system, per-agent provisioning isolation, agent CRUD, and AnimaVM page. All 22 backend tests passed (100%). Frontend verified: Sidebar has Anima VM as first item, Agent selector dropdown with Create New Agent button, CreateAgentModal has all form fields (name, welcome message, genesis prompt, goals, telegram bot token/chat ID, skills selector, conway toggle, wallets, revenue share), AnimaVM page has 6-step provisioning stepper and all 7 monitor tabs working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_9_agents_and_isolation.py",
+    "/app/test_reports/pytest/pytest_iteration9.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Per-agent provisioning isolation correctly implemented via _get_active_agent_id() in agent_setup.py (lines 25-34)",
+    "Provisioning status correctly includes agent_id field from active agent",
+    "Agent creation properly validates Telegram credentials before creation",
+    "selected_skills stored in MongoDB and used by load-skills endpoint",
+    "Frontend CreateAgentModal correctly does NOT call /start endpoint - only creates agent then redirects to AnimaVM",
+    "Sidebar correctly has Anima VM as first nav item (navItems array in Sidebar.js line 8)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_9_agents_and_isolation.py"
+  ],
+  "success_rate": {
+    "backend": "100% (22/22 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 9 verified multi-agent architecture. Key endpoints: GET /api/provision/status now returns agent_id field matching active agent, POST /api/agents/create stores selected_skills in DB, POST /api/agents/{id}/select switches active agent and affects all provisioning endpoints. Frontend: CreateAgentModal opens from Header dropdown 'Create New Agent' button, has all required form fields including skills selector. AnimaVM page has 6-step provisioning stepper (sandbox, terminal, openclaw, claudecode, skills, deploy) and 7 monitor tabs (live, terminal, console, logs, browsing, sandboxes, message). Agent creation requires valid Telegram bot token and chat ID - frontend calls Telegram API directly to verify before backend create. No APIs are mocked.",
+  "features_verified": {
+    "backend_apis": {
+      "provision_status": {
+        "endpoint": "GET /api/provision/status",
+        "returns_agent_id": true,
+        "default_agent_id": "anima-fund",
+        "verified": true
+      },
+      "agents_list": {
+        "endpoint": "GET /api/agents",
+        "returns_agents_array": true,
+        "excludes_telegram_bot_token": true,
+        "verified": true
+      },
+      "agent_create": {
+        "endpoint": "POST /api/agents/create",
+        "requires_telegram_token": true,
+        "requires_telegram_chat_id": true,
+        "stores_selected_skills": true,
+        "verified": true
+      },
+      "agent_select": {
+        "endpoint": "POST /api/agents/{id}/select",
+        "updates_active_agent_id": true,
+        "affects_provision_status": true,
+        "verified": true
+      },
+      "phase_state": {
+        "endpoint": "GET /api/provision/phase-state",
+        "returns_valid_json": true,
+        "verified": true
+      },
+      "skills_available": {
+        "endpoint": "GET /api/skills/available",
+        "returns_skills_array": true,
+        "skills_have_name_source": true,
+        "verified": true
+      },
+      "load_skills": {
+        "endpoint": "POST /api/provision/load-skills",
+        "includes_priority_skills_from_agent_db": true,
+        "verified": true
+      }
+    },
+    "frontend_ui": {
+      "sidebar": {
+        "anima_vm_first_item": true,
+        "all_nav_items_present": true,
+        "testid": "nav-animavm",
+        "verified": true
+      },
+      "agent_selector": {
+        "in_header": true,
+        "shows_current_agent": true,
+        "has_create_new_agent_button": true,
+        "testid": "agent-selector",
+        "verified": true
+      },
+      "create_agent_modal": {
+        "opens_from_header": true,
+        "form_fields": {
+          "agent_name_input": true,
+          "agent_welcome_input": true,
+          "agent_prompt_input": true,
+          "agent_goals_input": true,
+          "agent_tg_token_input": true,
+          "agent_tg_chatid_input": true,
+          "toggle_skills_selector": true,
+          "agent_conway_toggle": true,
+          "agent_sol_wallet_input": true,
+          "agent_eth_wallet_input": true,
+          "agent_revenue_share_input": true,
+          "create_agent_submit": true
+        },
+        "skills_selector_expandable": true,
+        "skills_selector_has_search": true,
+        "testid": "create-agent-modal",
+        "verified": true
+      },
+      "anima_vm_page": {
+        "testid": "anima-vm-page",
+        "provision_stepper": {
+          "testid": "provision-stepper",
+          "steps": ["step-sandbox", "step-terminal", "step-openclaw", "step-claudecode", "step-skills", "step-deploy"],
+          "all_6_steps_visible": true
+        },
+        "monitor_tabs": {
+          "tabs": ["tab-live", "tab-terminal", "tab-console", "tab-logs", "tab-browsing", "tab-sandboxes", "tab-message"],
+          "all_7_tabs_work": true
+        },
+        "verified": true
+      }
+    },
+    "per_agent_isolation": {
+      "default_agent_status": "anima-fund",
+      "provision_status_returns_correct_agent_id": true,
+      "agent_selection_updates_provisioning_context": true,
+      "verified": true
+    }
+  },
+  "backend_apis_tested": [
+    "GET /api/provision/status - 200 OK (returns agent_id)",
+    "GET /api/agents - 200 OK (lists agents, excludes bot token)",
+    "POST /api/agents/create - 400 (requires telegram creds)",
+    "POST /api/agents/anima-fund/select - 200 OK",
+    "POST /api/agents/nonexistent/select - 404 Not Found",
+    "GET /api/provision/phase-state - 200 OK",
+    "GET /api/skills/available - 200 OK",
+    "POST /api/provision/load-skills - 200 OK",
+    "GET /api/provision/credits - 200 OK",
+    "GET /api/provision/wallet - 200 OK",
+    "GET /api/provision/list-sandboxes - 200 OK",
+    "POST /api/provision/nudge - 200 OK",
+    "POST /api/provision/nudge/custom - 200 OK",
+    "GET /api/provision/pty/list - 200 OK (returns error without sandbox)",
+    "POST /api/provision/pty/create - 200 OK (returns error without sandbox)"
+  ]
+}

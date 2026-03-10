@@ -1,0 +1,93 @@
+{
+  "summary": "Completed iteration 12 testing for skills provisioning pipeline rewrite and genesis prompt security hardening. All 19 backend tests passed (100%). Frontend AnimaVM page verified with 6-step provisioning stepper and 7 monitor tabs. Key changes verified: 1) Skills now push to ~/.openclaw/skills/ (no .anima/skills references in agent_setup.py), 2) genesis-prompt.md contains SKILL DISCOVERY section with npx clawhub commands and openclaw skills list, 3) Security section includes ClawHavoc warning, skill-vetter recommendation, and 'NEVER attempt to connect to localhost' warning. No localhost/127.0.0.1 references outside security warnings.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_12_skills_pipeline.py",
+    "/app/test_reports/pytest/pytest_iteration12.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Skills path correctly changed from ~/.anima/skills/ to ~/.openclaw/skills/ in all locations in agent_setup.py",
+    "load-skills endpoint now creates ~/.openclaw/skills-manifest.json inside sandbox with discovery commands",
+    "deploy-agent endpoint also pushes skills to ~/.openclaw/skills/ path",
+    "genesis-prompt.md SKILL DISCOVERY section (lines 271-310) contains comprehensive skill management instructions",
+    "npx clawhub commands for search/install/list/update correctly documented",
+    "openclaw skills list command documented for discovering loaded skills",
+    "ClawHavoc security warning mentions 340+ malicious skills incident",
+    "skill-vetter recommendation for auditing suspicious skills",
+    "SECURITY section line 346 contains 'NEVER attempt to connect to localhost' warning",
+    "No localhost/127.0.0.1 references outside security context"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_12_skills_pipeline.py"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 tests passed)",
+    "frontend": "100% (AnimaVM page loads with 6 stepper steps and 7 monitor tabs)"
+  },
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 12 tested skills provisioning pipeline rewrite and genesis prompt security hardening. All tests pass. Key verified changes: 1) agent_setup.py uses ~/.openclaw/skills/ path everywhere (no .anima/skills references), 2) load-skills endpoint runs 'npx clawhub@latest install' inside sandbox and writes skills-manifest.json, 3) genesis-prompt.md has SKILL DISCOVERY section with clawhub/openclaw commands, 4) Security section hardened with localhost warning and skill-vetter recommendation.",
+  "features_verified": {
+    "backend_endpoints": {
+      "health": {"status": "pass", "returns": "status=ok"},
+      "provision_status": {"status": "pass", "returns": "skills_loaded field present"},
+      "agents_list": {"status": "pass", "returns": "agents array"},
+      "skills_available": {"status": "pass", "returns": "domain tools included"},
+      "nudge": {"status": "pass", "returns": "success=true"},
+      "load_skills_without_sandbox": {"status": "pass", "returns": "success=false, error mentions 'No sandbox'"},
+      "verify_sandbox_without_sandbox": {"status": "pass", "returns": "success=false, error mentions sandbox"},
+      "deploy_agent_without_sandbox": {"status": "pass", "returns": "success=false, error mentions sandbox"},
+      "domain_search_regression": {"status": "pass", "returns": "success=true"},
+      "domain_pricing_regression": {"status": "pass", "returns": "success=true"}
+    },
+    "genesis_prompt_content": {
+      "skill_discovery_section": {"status": "pass", "line": 271},
+      "npx_clawhub_search": {"status": "pass", "line": 283},
+      "npx_clawhub_install": {"status": "pass", "line": 284},
+      "openclaw_skills_list": {"status": "pass", "line": 277},
+      "clawhavoc_warning": {"status": "pass", "line": 297},
+      "localhost_security_warning": {"status": "pass", "line": 346},
+      "skill_vetter_recommendation": {"status": "pass", "line": 298},
+      "no_localhost_outside_warnings": {"status": "pass"}
+    },
+    "agent_setup_code_paths": {
+      "uses_openclaw_skills_path": {"status": "pass", "lines": [1211, 1217, 1218, 1250, 1255, 1269, 1408, 1409, 1411]},
+      "no_anima_skills_path": {"status": "pass", "verified": "grep found 0 matches for .anima/skills"}
+    },
+    "frontend_ui": {
+      "sidebar_anima_vm_first": {"status": "pass", "position": 0},
+      "anima_vm_page_loads": {"status": "pass"},
+      "provision_stepper_6_steps": {
+        "status": "pass",
+        "steps": ["Create Sandbox", "Install Terminal", "Install OpenClaw", "Install Claude Code", "Load Skills", "Deploy Agent"]
+      },
+      "monitor_tabs_7_tabs": {
+        "status": "pass",
+        "tabs": ["Live Feed", "Terminal", "Exec Log", "Agent Logs", "Browsing", "VMs", "Message"]
+      }
+    }
+  },
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (status=ok)",
+    "GET /api/provision/status - 200 OK (returns agent_id, skills_loaded)",
+    "GET /api/agents - 200 OK (returns agents list)",
+    "GET /api/skills/available - 200 OK (includes domain tools)",
+    "POST /api/provision/nudge - 200 OK (success=true)",
+    "POST /api/provision/load-skills - 200 OK (success=false without sandbox)",
+    "POST /api/provision/verify-sandbox - 200 OK (success=false without sandbox)",
+    "POST /api/provision/deploy-agent - 200 OK (success=false without sandbox)",
+    "POST /api/provision/domain-search - 200 OK (success=true - regression)",
+    "GET /api/provision/domain-pricing - 200 OK (success=true - regression)"
+  ]
+}

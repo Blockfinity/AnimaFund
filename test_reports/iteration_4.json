@@ -1,0 +1,75 @@
+{
+  "summary": "Completed iteration 4 testing for Anima Fund - Complete overhaul. All 25 backend API tests passed (100%). Frontend UI verified: 4 sections (Infrastructure, Capabilities, Deploy, Communicate), 8 status chips including Engine, Deploy Agent button visible in Deploy section with Phase 0 description, phase state display NOT shown (correct without sandbox/engine), agent logs viewer NOT shown (correct without engine). All new endpoints (deploy-agent, agent-logs, phase-state) fail gracefully without sandbox. Genesis prompt verified with 4-phase system and 10 functional tool tests. System-prompt.ts verified with loadPhaseState function and Layer 5.6 phase enforcement. Security verified: no conway-terminal or openclaw installed on host.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_provision_api_v4.py",
+    "/app/test_reports/pytest/pytest_provision_v4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Security verified: No conway-terminal or openclaw installed on host system",
+    "New endpoints deploy-agent, agent-logs, phase-state all fail gracefully with 'No sandbox' error",
+    "Genesis prompt has complete 4-phase system with Phase 0 (tool testing), Phase 1 ($5k), Phase 2 ($10k), Phase 3 (create fund)",
+    "Genesis prompt has 10 specific functional tool tests (curl, git, node, python3, telegram, conway terminal, sandbox, domains, compute, port exposure)",
+    "system-prompt.ts has loadPhaseState function that reads ~/.anima/phase-state.json",
+    "system-prompt.ts has Layer 5.6 PHASE ENFORCEMENT block with phase-specific rules and FORBIDDEN actions",
+    "Status endpoint returns all expected fields including tools dict for engine status",
+    "8 status chips displayed: VM, Terminal, OpenClaw, Compute, Ports, Skills, Engine, Credits"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_provision_api_v4.py"
+  ],
+  "success_rate": {
+    "backend": "100% (25/25 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "Conway API Key: cnwy_k_lWSyQNftsEMNiTknTVW_DNLW71MVeK_u (0 credits)",
+  "seed_data_creation": "Test nudges sent via API verification",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 4 adds major changes: Deploy Agent endpoint (pushes engine + config into sandbox), agent-logs endpoint (reads from sandbox), phase-state endpoint (tracks Phase 0/1/2/3). Genesis prompt completely rewritten with 4-phase mandatory system and 10 functional tool tests. system-prompt.ts now has loadPhaseState() and Layer 5.6 phase enforcement. All sandbox-dependent endpoints gracefully fail with 'No sandbox'. Conway has 0 credits so sandbox creation will fail. Frontend has 4 sections (Infrastructure, Capabilities, Deploy, Communicate) and 8 status chips including Engine.",
+  "features_verified": {
+    "new_backend_apis": [
+      "POST /api/provision/deploy-agent - fails gracefully with 'No sandbox. Create one first.'",
+      "GET /api/provision/agent-logs - fails gracefully with 'No sandbox'",
+      "GET /api/provision/phase-state - returns error 'No sandbox and no local phase state'"
+    ],
+    "existing_backend_apis": [
+      "GET /api/provision/status - returns all fields including tools dict for engine",
+      "POST /api/provision/create-sandbox - fails with 'Insufficient credits' (0 credits)",
+      "POST /api/provision/nudge - sends autonomy nudge message",
+      "POST /api/provision/nudge/custom - sends custom message"
+    ],
+    "frontend_ui": [
+      "4 sections: Infrastructure (3 items), Capabilities (3 items), Deploy (2 items), Communicate (1 item)",
+      "8 status chips: VM (none), Terminal (no), OpenClaw (no), Compute (no), Ports (0), Skills (no), Engine (no), Credits ($0.00)",
+      "Deploy Agent button visible in Deploy section with description 'Push engine + config into sandbox, start agent (born in Phase 0)'",
+      "Phase state display NOT shown (correct - no phase data without sandbox/engine)",
+      "Agent logs viewer NOT shown (correct - no engine deployed)",
+      "Custom nudge input and Send button present"
+    ],
+    "genesis_prompt_content": [
+      "4-phase system: Phase 0 (Tool Testing), Phase 1 (Earn $5,000), Phase 2 (Earn $10,000), Phase 3 (Create Fund)",
+      "10 functional tool tests: curl, git, node, python3, telegram, conway terminal, sandbox, domains, compute, port exposure",
+      "Revenue targets: $5,000 (Phase 1), $10,000 (Phase 2)"
+    ],
+    "system_prompt_content": [
+      "loadPhaseState function that reads ~/.anima/phase-state.json",
+      "Layer 5.6 PHASE ENFORCEMENT block with phase-specific rules",
+      "Phase 0 FORBIDDEN actions: create_goal, spawn_child, domain_register",
+      "Phase 1 rules: 1-hour deadline, no building products, only revenue activities"
+    ],
+    "security_checks": [
+      "No conway-terminal installed on host (which conway-terminal returns nothing)",
+      "No openclaw installed on host (which openclaw returns nothing)"
+    ]
+  }
+}

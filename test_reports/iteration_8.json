@@ -1,0 +1,124 @@
+{
+  "summary": "Completed iteration 8 testing for PTY session endpoints and port-url endpoint. All 29 backend API tests passed (100%). Frontend verified: Terminal tab shows 'No sandbox provisioned' message (data-testid='terminal-no-sandbox'), all 7 monitor tabs switch correctly (tab-live, tab-terminal, tab-console, tab-logs, tab-browsing, tab-sandboxes, tab-message), stepper shows all 6 steps. All new PTY endpoints correctly return {success: false, error: 'No sandbox'} when no sandbox provisioned.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pty_and_port_url.py",
+    "/app/test_reports/pytest/pytest_pty_iteration8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PTY endpoints correctly implemented in agent_setup.py (lines 505-630)",
+    "All PTY endpoints check for sandbox_id and return proper error if none",
+    "port-url endpoint returns correct format with sandbox short_id",
+    "LiveTerminal component in AnimaVM.js correctly shows PTY session UI",
+    "Terminal tab shows 'No sandbox provisioned' message when hasSandbox is false"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pty_and_port_url.py"
+  ],
+  "success_rate": {
+    "backend": "100% (29/29 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "N/A",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 8 added PTY session endpoints and port-url endpoint. Backend: POST /api/provision/pty/create, POST /api/provision/pty/write, GET /api/provision/pty/read, POST /api/provision/pty/resize, DELETE /api/provision/pty/{session_id}, GET /api/provision/pty/list, GET /api/provision/port-url. Frontend: LiveTerminal component enhanced with PTY session management (create bash/python3/node buttons, session tabs, input/output). All 7 monitor tabs work: tab-live, tab-terminal, tab-console, tab-logs, tab-browsing, tab-sandboxes, tab-message. All 6 stepper steps: step-sandbox, step-terminal, step-openclaw, step-claudecode, step-skills, step-deploy.",
+  "features_verified": {
+    "pty_endpoints": {
+      "pty_create": {
+        "endpoint": "POST /api/provision/pty/create",
+        "accepts": {"command": "string", "cols": "int", "rows": "int"},
+        "no_sandbox_response": {"success": false, "error": "No sandbox yet. Create one first."},
+        "verified": true
+      },
+      "pty_write": {
+        "endpoint": "POST /api/provision/pty/write",
+        "accepts": {"session_id": "string", "input": "string"},
+        "no_sandbox_response": {"success": false, "error": "No sandbox"},
+        "verified": true
+      },
+      "pty_read": {
+        "endpoint": "GET /api/provision/pty/read?session_id=X&full=bool",
+        "no_sandbox_response": {"success": false, "error": "No sandbox"},
+        "verified": true
+      },
+      "pty_resize": {
+        "endpoint": "POST /api/provision/pty/resize",
+        "accepts": {"session_id": "string", "cols": "int", "rows": "int"},
+        "no_sandbox_response": {"success": false, "error": "No sandbox"},
+        "verified": true
+      },
+      "pty_close": {
+        "endpoint": "DELETE /api/provision/pty/{session_id}",
+        "no_sandbox_response": {"success": false, "error": "No sandbox"},
+        "verified": true
+      },
+      "pty_list": {
+        "endpoint": "GET /api/provision/pty/list",
+        "no_sandbox_response": {"success": false, "error": "No sandbox"},
+        "verified": true
+      }
+    },
+    "port_url_endpoint": {
+      "endpoint": "GET /api/provision/port-url?port=3000",
+      "no_sandbox_response": {"success": false, "error": "No sandbox"},
+      "verified": true
+    },
+    "existing_endpoints_still_work": {
+      "status": true,
+      "web_terminal": true,
+      "create_sandbox": true,
+      "list_sandboxes": true,
+      "nudge": true,
+      "custom_nudge": true,
+      "credits": true,
+      "wallet": true,
+      "phase_state": true
+    },
+    "frontend_terminal_tab": {
+      "no_sandbox_message": {
+        "testid": "terminal-no-sandbox",
+        "message": "No sandbox provisioned",
+        "verified": true
+      }
+    },
+    "monitor_tabs": {
+      "total": 7,
+      "tabs": ["tab-live", "tab-terminal", "tab-console", "tab-logs", "tab-browsing", "tab-sandboxes", "tab-message"],
+      "all_switch_correctly": true
+    },
+    "stepper": {
+      "total_steps": 6,
+      "steps": ["step-sandbox", "step-terminal", "step-openclaw", "step-claudecode", "step-skills", "step-deploy"],
+      "all_visible": true
+    }
+  },
+  "backend_apis_tested": [
+    "POST /api/provision/pty/create - 200 OK (returns error without sandbox)",
+    "POST /api/provision/pty/write - 200 OK (returns error without sandbox)",
+    "GET /api/provision/pty/read - 200 OK (returns error without sandbox)",
+    "POST /api/provision/pty/resize - 200 OK (returns error without sandbox)",
+    "DELETE /api/provision/pty/{session_id} - 200 OK (returns error without sandbox)",
+    "GET /api/provision/pty/list - 200 OK (returns error without sandbox)",
+    "GET /api/provision/port-url - 200 OK (returns error without sandbox)",
+    "GET /api/provision/status - 200 OK",
+    "POST /api/provision/web-terminal - 200 OK",
+    "POST /api/provision/create-sandbox - 200 OK",
+    "GET /api/provision/list-sandboxes - 200 OK",
+    "POST /api/provision/nudge - 200 OK",
+    "POST /api/provision/nudge/custom - 200 OK",
+    "GET /api/provision/credits - 200 OK",
+    "GET /api/provision/wallet - 200 OK",
+    "GET /api/provision/phase-state - 200 OK"
+  ]
+}
