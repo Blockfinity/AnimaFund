@@ -16,6 +16,7 @@ import Configuration from './pages/Configuration';
 import Skills from './pages/Skills';
 import Infrastructure from './pages/Infrastructure';
 import OpenClawViewer from './pages/OpenClawViewer';
+import AgentSetup from './pages/AgentSetup';
 import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -353,6 +354,7 @@ function AppInner() {
   const renderPage = () => {
     switch (currentPage) {
       case 'fundhq': return <FundHQ fundName={fundName} selectedAgent={selectedAgent} />;
+      case 'setup': return <AgentSetup selectedAgent={selectedAgent} />;
       case 'mind': return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'agents': return <Agents selectedAgent={selectedAgent} />;
       case 'infra': return <Infrastructure selectedAgent={selectedAgent} />;

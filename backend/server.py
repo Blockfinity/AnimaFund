@@ -29,7 +29,7 @@ from telegram_notify import notify_state_change, notify_turn, notify_error, send
 from database import get_db
 from payment_tracker import get_payment_status
 
-from routers import agents, genesis, live, telegram, infrastructure, conway, openclaw
+from routers import agents, genesis, live, telegram, infrastructure, conway, openclaw, agent_setup
 
 # ─── Telegram log monitor state ───
 _monitor_task = None
@@ -212,6 +212,7 @@ app.include_router(telegram.router)
 app.include_router(infrastructure.router)
 app.include_router(conway.router)
 app.include_router(openclaw.router)
+app.include_router(agent_setup.router)
 
 
 # ═══════════════════════════════════════════════════════════
