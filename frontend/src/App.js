@@ -20,7 +20,7 @@ import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
 import {
   Server, Terminal, Eye, Cpu, FileText, Rocket,
   CheckCircle2, Loader2, ChevronDown, Play, RotateCcw, Shield, Zap,
-  Wallet, RefreshCw, ExternalLink
+  Wallet, RefreshCw, ExternalLink, KeyRound
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -81,6 +81,50 @@ function AppInner() {
   }, []);
 
   useEffect(() => { fetchProvStatus(); }, [fetchProvStatus]);
+
+  // Conway API key input state
+  const [conwayKeyInput, setConwayKeyInput] = useState('');
+  const [keyStatus, setKeyStatus] = useState(null); // null | 'checking' | {configured, valid, ...}
+  const [settingKey, setSettingKey] = useState(false);
+
+  // Check if Conway API key is already configured
+  const checkKeyStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/credits/key-status`);
+      if (res.ok) {
+        const data = await res.json();
+        setKeyStatus(data);
+        if (data.configured && data.valid && data.credits_cents !== undefined) {
+          setCreditBalance(data.credits_cents);
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { checkKeyStatus(); }, [checkKeyStatus]);
+
+  const submitConwayKey = async () => {
+    if (!conwayKeyInput.trim()) return;
+    setSettingKey(true);
+    try {
+      const res = await fetch(`${API}/api/credits/set-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: conwayKeyInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        setCreditBalance(data.credits_cents);
+        setConwayKeyInput('');
+        await checkKeyStatus();
+        await fetchCreditBalance();
+      } else {
+        toast.error(data.error || 'Failed to set key');
+      }
+    } catch (e) { toast.error(e.message); }
+    setSettingKey(false);
+  };
 
   // Fetch credit balance — initial load only, SSE handles real-time updates
   const fetchCreditBalance = useCallback(async () => {
@@ -424,6 +468,72 @@ function AppInner() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', padding: '6px 10px', background: '#18181b', borderRadius: '6px' }}>
                   <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FBBF24', animation: 'pulse 2s infinite' }} />
                   <span style={{ fontSize: '10px', color: '#a1a1aa' }}>Watching for credits... balance refreshes every 5s</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ═══════ CONWAY API KEY INPUT ═══════ */}
+          <div data-testid="conway-key-panel" style={{ background: '#18181b', border: `1px solid ${keyStatus?.configured && keyStatus?.valid ? '#166534' : '#27272a'}`, borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <KeyRound style={{ width: '14px', height: '14px', color: keyStatus?.configured && keyStatus?.valid ? '#34D399' : '#FBBF24' }} />
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Conway API Key</span>
+              </div>
+              {keyStatus?.configured && keyStatus?.valid && (
+                <span style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: '#34D399' }}>
+                  {keyStatus.key_prefix}
+                </span>
+              )}
+            </div>
+
+            {keyStatus?.configured && keyStatus?.valid ? (
+              <div style={{ padding: '10px 14px', background: '#052e16' }}>
+                <div style={{ fontSize: '11px', color: '#34D399' }}>
+                  API key connected and valid. Balance: ${keyStatus.credits_cents !== undefined ? (keyStatus.credits_cents / 100).toFixed(2) : '...'} — this key is stored permanently and survives redeployments.
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', color: '#a1a1aa', lineHeight: 1.6, marginBottom: '10px' }}>
+                  After signing up on Conway, paste your API key here. This connects your Conway account to the platform and persists across redeployments.
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    data-testid="conway-key-input"
+                    type="password"
+                    value={conwayKeyInput}
+                    onChange={e => setConwayKeyInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && submitConwayKey()}
+                    placeholder="cnwy_k_..."
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #27272a',
+                      background: '#09090b', color: '#fff', fontSize: '12px',
+                      fontFamily: 'JetBrains Mono, monospace',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    data-testid="save-conway-key-btn"
+                    onClick={submitConwayKey}
+                    disabled={!conwayKeyInput.trim() || settingKey}
+                    style={{
+                      padding: '8px 16px', borderRadius: '6px', border: 'none',
+                      background: !conwayKeyInput.trim() || settingKey ? '#27272a' : '#FBBF24',
+                      color: !conwayKeyInput.trim() || settingKey ? '#52525b' : '#09090b',
+                      fontSize: '11px', fontWeight: 800, cursor: !conwayKeyInput.trim() || settingKey ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '4px',
+                    }}
+                  >
+                    {settingKey ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Validating...</> : 'Connect'}
+                  </button>
+                </div>
+                <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8, marginTop: '8px', padding: '8px 10px', background: '#09090b', borderRadius: '6px', border: '1px solid #27272a' }}>
+                  <div style={{ fontWeight: 700, color: '#a1a1aa', marginBottom: '2px' }}>How to get your API key:</div>
+                  <div>1. Go to <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer" style={{ color: '#5B9CFF' }}>app.conway.tech</a> and sign up with your wallet</div>
+                  <div>2. Go to Settings or API Keys section</div>
+                  <div>3. Copy your API key (starts with cnwy_k_...)</div>
+                  <div>4. Paste it above and click Connect</div>
                 </div>
               </div>
             )}

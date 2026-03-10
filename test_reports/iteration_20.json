@@ -1,0 +1,81 @@
+{
+  "summary": "Iteration 20: Conway API Key Input Feature - All backend tests pass (11/11). Frontend Genesis screen verified: Conway API Key panel shows 'connected and valid' state with key prefix, MongoDB persistence mentioned, all 6 provisioning steps visible, Buy Credits link opens external site correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_20_conway_api_key.py",
+    "/app/test_reports/pytest/pytest_iteration20.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "POST /api/credits/set-key correctly validates key format (must start with cnwy_)",
+    "POST /api/credits/set-key validates against Conway API before persisting",
+    "MongoDB persistence for Conway API key implemented in platform_config collection",
+    "Server startup _restore_conway_key_from_db() correctly restores key from MongoDB",
+    "GET /api/credits/key-status returns configured:true/false, valid:true/false, key_prefix",
+    "Frontend Conway API Key panel shows green confirmation when key is valid",
+    "Frontend shows 'survives redeployments' message confirming MongoDB persistence",
+    "All 6 provisioning steps have data-testid attributes for testing"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_20_conway_api_key.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 tests passed)",
+    "frontend": "100% (All Conway API key features verified)"
+  },
+  "test_credentials": {
+    "CONWAY_API_KEY": "cnwy_k_HUFTefVvBakA_QMFbzeb9ps8rKXYIaGe",
+    "note": "Valid key with 0 credits (expected)"
+  },
+  "seed_data_creation": "",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 20 verified the Conway API key input feature. Key is stored in MongoDB (platform_config collection) and auto-restored on startup. Genesis screen shows 'connected and valid' green state when key is configured. All endpoints tested: set-key, key-status, balance, verify, history. Note: Key has 0 credits which is expected for this test environment.",
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK (status=ok)",
+    "GET /api/credits/key-status - 200 OK (configured=true, valid=true, key_prefix=cnwy_k_HUFTe...)",
+    "POST /api/credits/set-key (invalid format) - 200 OK (success=false, error mentions cnwy_)",
+    "POST /api/credits/set-key (empty) - 200 OK (success=false)",
+    "POST /api/credits/set-key (whitespace) - 200 OK (success=false)",
+    "POST /api/credits/set-key (valid key) - 200 OK (success=true, credits_cents, key_prefix)",
+    "GET /api/credits/balance - 200 OK (credits_cents=0, credits_usd=0.0)",
+    "POST /api/credits/verify - 200 OK (verified=true, message)",
+    "GET /api/credits/history - 200 OK (purchases[], verifications[])",
+    "GET /api/provision/status - 200 OK (credits_cents, sandbox, tools)"
+  ],
+  "frontend_features_verified": {
+    "genesis_screen": {
+      "conway_key_panel": "PASS - data-testid='conway-key-panel' shows 'connected and valid'",
+      "key_prefix_display": "PASS - Shows 'cnwy_k_HUFTe...'",
+      "mongodb_persistence_msg": "PASS - 'survives redeployments' message shown",
+      "credits_panel": "PASS - data-testid='credits-funding-panel'",
+      "credit_balance": "PASS - Shows $0.00",
+      "tier_buttons": "PASS - $5, $25, $100 tier buttons visible",
+      "buy_credits_btn": "PASS - Links to https://app.conway.tech (external)",
+      "refresh_balance_btn": "PASS - data-testid='refresh-balance-btn'",
+      "provision_stepper": {
+        "step_sandbox": "PASS - Create Sandbox",
+        "step_terminal": "PASS - Install Terminal",
+        "step_openclaw": "PASS - Install OpenClaw",
+        "step_claudecode": "PASS - Install Claude Code",
+        "step_skills": "PASS - Load Skills",
+        "step_deploy": "PASS - Create Anima"
+      },
+      "dashboard_btn": "PASS - data-testid='go-to-dashboard-btn'"
+    }
+  },
+  "new_features_tested": {
+    "api_key_input_field": "Genesis screen shows key input when not configured, green confirmation when valid",
+    "mongodb_persistence": "Key stored in platform_config collection, auto-restored on server startup",
+    "key_validation": "Keys validated against Conway API before persisting",
+    "key_format_check": "Invalid format (not starting with cnwy_) rejected with error message"
+  }
+}

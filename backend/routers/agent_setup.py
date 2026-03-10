@@ -44,6 +44,7 @@ def _get_prov_status_file() -> str:
 
 
 def _get_conway_api_key() -> str:
+    """Get Conway API key — checks env first, then local config, then MongoDB."""
     key = os.environ.get("CONWAY_API_KEY", "")
     if not key:
         config_path = os.path.join(ANIMA_DIR, "config.json")
@@ -54,6 +55,57 @@ def _get_conway_api_key() -> str:
             except Exception:
                 pass
     return key
+
+
+async def _persist_conway_key(api_key: str):
+    """Persist a Conway API key discovered from the sandbox into the platform.
+    Updates: runtime env var, local config file, and MongoDB."""
+    if not api_key:
+        return
+    # 1. Runtime env var (immediate effect for poller + credits router)
+    os.environ["CONWAY_API_KEY"] = api_key
+    # 2. Local config file
+    config_path = os.path.join(ANIMA_DIR, "config.json")
+    try:
+        existing = {}
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                existing = json.load(f)
+        existing["apiKey"] = api_key
+        with open(config_path, "w") as f:
+            json.dump(existing, f, indent=2)
+    except Exception:
+        pass
+    # 3. MongoDB (survives redeploys)
+    try:
+        from database import get_db
+        db = get_db()
+        await db.platform_config.update_one(
+            {"key": "conway_api_key"},
+            {"$set": {"key": "conway_api_key", "value": api_key, "updated_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    except Exception:
+        pass
+    # 4. Update backend .env file for persistence across restarts
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    try:
+        lines = []
+        found = False
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                for line in f:
+                    if line.startswith("CONWAY_API_KEY="):
+                        lines.append(f"CONWAY_API_KEY={api_key}\n")
+                        found = True
+                    else:
+                        lines.append(line)
+        if not found:
+            lines.append(f"CONWAY_API_KEY={api_key}\n")
+        with open(env_path, "w") as f:
+            f.writelines(lines)
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════
@@ -413,14 +465,22 @@ async def install_terminal():
         r = await _sandbox_exec(sandbox_id, "curl -fsSL https://conway.tech/terminal.sh | sh 2>&1 | tail -15")
     outputs.append(f"[conway-terminal] exit={r['exit_code']}\n{r['stdout']}")
 
-    # 4. Read the agent's wallet from inside the sandbox
+    # 4. Read the agent's wallet AND API key from inside the sandbox
     r_wallet = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null || echo '{}'")
     wallet_address = ""
+    sandbox_api_key = ""
     try:
         config_data = json.loads(r_wallet["stdout"])
         wallet_address = config_data.get("walletAddress", "")
+        sandbox_api_key = config_data.get("apiKey", "")
     except Exception:
         pass
+
+    # 5. Persist the API key from the sandbox back to the platform
+    # This closes the loop: sandbox creates key → platform auto-discovers it
+    if sandbox_api_key and sandbox_api_key != api_key:
+        await _persist_conway_key(sandbox_api_key)
+        outputs.append(f"[key-sync] Conway API key auto-synced from sandbox to platform")
 
     # 5. Verify
     r_ver = await _sandbox_exec(sandbox_id, "conway-terminal --version 2>&1")
@@ -437,9 +497,40 @@ async def install_terminal():
         _save_prov_status(status)
         wallet_msg = f" Wallet: {wallet_address}" if wallet_address else ""
         _add_nudge(f"Conway Terminal installed in your sandbox.{wallet_msg} You now have ALL Conway MCP tools: sandboxes, compute, domains, payments (x402/USDC), PTY sessions, and self-modification. Your wallet was auto-created — check ~/.conway/config.json.")
-        return {"success": True, "wallet_address": wallet_address, "output": "\n".join(outputs)}
+        return {"success": True, "wallet_address": wallet_address, "api_key_synced": bool(sandbox_api_key and sandbox_api_key != api_key), "output": "\n".join(outputs)}
     else:
         return {"success": False, "error": "Install failed", "output": "\n".join(outputs)}
+
+
+@router.post("/sync-key")
+async def sync_key_from_sandbox():
+    """Force-pull the Conway API key from the running sandbox and persist it.
+    Use when the sandbox has a key the platform doesn't know about."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox yet."}
+
+    r = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null || echo '{}'")
+    try:
+        config_data = json.loads(r["stdout"])
+        sandbox_key = config_data.get("apiKey", "")
+        if not sandbox_key:
+            return {"success": False, "error": "No API key found in sandbox ~/.conway/config.json"}
+
+        current_key = _get_conway_api_key()
+        if sandbox_key == current_key:
+            return {"success": True, "message": "Key already in sync", "key_prefix": sandbox_key[:12] + "..."}
+
+        await _persist_conway_key(sandbox_key)
+        return {
+            "success": True,
+            "message": "Conway API key synced from sandbox to platform",
+            "key_prefix": sandbox_key[:12] + "...",
+            "wallet_address": config_data.get("walletAddress", ""),
+        }
+    except Exception as e:
+        return {"success": False, "error": f"Failed to parse sandbox config: {e}"}
 
 
 @router.post("/install-openclaw")

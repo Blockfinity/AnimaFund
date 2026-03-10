@@ -24,6 +24,111 @@ def _get_conway_api_key() -> str:
     return os.environ.get("CONWAY_API_KEY", "")
 
 
+class SetKeyRequest(BaseModel):
+    api_key: str
+
+
+@router.post("/set-key")
+async def set_conway_api_key(req: SetKeyRequest):
+    """Accept a Conway API key from the UI, validate it against Conway API, and persist to MongoDB.
+    This closes the gap: user gets key from Conway → pastes in UI → platform stores it permanently."""
+    key = req.api_key.strip()
+    if not key or not key.startswith("cnwy_"):
+        return {"success": False, "error": "Invalid key format. Conway keys start with 'cnwy_'"}
+
+    # Validate against Conway API
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+        try:
+            async with session.get(
+                f"{CONWAY_API}/v1/credits/balance",
+                headers={"Authorization": f"Bearer {key}"},
+            ) as resp:
+                if resp.status == 401:
+                    return {"success": False, "error": "Invalid API key — Conway rejected it"}
+                if resp.status == 200:
+                    data = await resp.json()
+                    credits_cents = data.get("credits_cents", 0)
+                else:
+                    return {"success": False, "error": f"Conway returned status {resp.status}"}
+        except Exception as e:
+            return {"success": False, "error": f"Could not reach Conway API: {e}"}
+
+    # Key is valid — persist everywhere
+    # 1. Runtime env var (immediate effect)
+    os.environ["CONWAY_API_KEY"] = key
+
+    # 2. MongoDB (survives redeployments)
+    try:
+        db = get_db()
+        await db.platform_config.update_one(
+            {"key": "conway_api_key"},
+            {"$set": {
+                "key": "conway_api_key",
+                "value": key,
+                "credits_cents_at_set": credits_cents,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+    except Exception:
+        pass
+
+    # 3. Update .env file for local restarts
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    try:
+        lines = []
+        found = False
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                for line in f:
+                    if line.startswith("CONWAY_API_KEY="):
+                        lines.append(f"CONWAY_API_KEY={key}\n")
+                        found = True
+                    else:
+                        lines.append(line)
+        if not found:
+            lines.append(f"CONWAY_API_KEY={key}\n")
+        with open(env_path, "w") as f:
+            f.writelines(lines)
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "credits_cents": credits_cents,
+        "credits_usd": credits_cents / 100,
+        "message": f"Conway API key saved. Balance: ${credits_cents / 100:.2f}",
+        "key_prefix": key[:12] + "...",
+    }
+
+
+@router.get("/key-status")
+async def conway_key_status():
+    """Check if a Conway API key is configured and valid."""
+    key = _get_conway_api_key()
+    if not key:
+        return {"configured": False, "message": "No Conway API key set. Paste your key from Conway."}
+
+    # Quick validation
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+        try:
+            async with session.get(
+                f"{CONWAY_API}/v1/credits/balance",
+                headers={"Authorization": f"Bearer {key}"},
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return {
+                        "configured": True,
+                        "valid": True,
+                        "key_prefix": key[:12] + "...",
+                        "credits_cents": data.get("credits_cents", 0),
+                    }
+                return {"configured": True, "valid": False, "error": f"Conway returned {resp.status}"}
+        except Exception:
+            return {"configured": True, "valid": False, "error": "Cannot reach Conway API"}
+
+
 async def _conway_get(path: str) -> dict:
     api_key = _get_conway_api_key()
     if not api_key:
