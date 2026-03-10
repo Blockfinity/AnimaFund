@@ -52,7 +52,7 @@ Functionally test EVERY tool. Not --version checks — REAL usage. Report each v
    Run domain_check (domains: "animafund.ai,animafund.com")
    PASS if availability results returned
 
-10. COMPUTE: Run chat_completions (model: "gpt-4o-mini", messages: [{"role":"user","content":"Say OK"}])
+10. COMPUTE: Run chat_completions (model: "gpt-5-nano", messages: [{"role":"user","content":"Say OK"}])
     PASS if you get a response
 
 11. OPENCLAW: Use browse_page to load https://example.com and extract the title
@@ -201,7 +201,7 @@ PTY (Interactive Terminals):
   sandbox_pty_list    → List active sessions
 
 INFERENCE (Conway Compute):
-  chat_completions    → GPT-4o, GPT-4o-mini, o3-mini, Claude, Gemini, Kimi, Qwen
+  chat_completions    → gpt-5.2, gpt-5.2-codex, gpt-5-mini, gpt-5-nano, claude-opus-4.6, claude-sonnet-4.5, claude-haiku-4.5, gemini-2.5-pro, gemini-3-pro, gemini-3-flash, kimi-k2.5, qwen3-coder
 
 DOMAINS:
   domain_search       → Search available domains

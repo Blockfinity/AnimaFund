@@ -19,7 +19,6 @@ router = APIRouter(prefix="/api/provision", tags=["provision"])
 
 CONWAY_API = "https://api.conway.tech"
 CONWAY_INFERENCE = "https://inference.conway.tech"
-CONWAY_DOMAINS_API = "https://api.conway.domains"
 
 
 def _get_active_agent_id() -> str:
@@ -723,6 +722,33 @@ async def test_compute(req: TestComputeReq = TestComputeReq()):
 # ═══════════════════════════════════════════════════════════
 # 6. CONWAY DOMAINS
 # ═══════════════════════════════════════════════════════════
+#
+# Conway Domains REST API lives at https://api.conway.domains
+# - Public endpoints (search, check, pricing): No auth needed
+# - Authenticated endpoints (list, register, renew, DNS, privacy, nameservers):
+#   Require SIWE/SIWS wallet auth (JWT), NOT Conway API key.
+#   From the dashboard we route these through sandbox exec where
+#   Conway Terminal handles auth automatically.
+# ═══════════════════════════════════════════════════════════
+
+CONWAY_DOMAINS = "https://api.conway.domains"
+
+
+async def _domains_public_request(path: str, timeout: int = 15) -> dict:
+    """GET request to a public Conway Domains endpoint (no auth required)."""
+    url = f"{CONWAY_DOMAINS}{path}"
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+        try:
+            async with session.get(url) as resp:
+                data = await resp.json() if "json" in (resp.content_type or "") else {"raw": await resp.text()}
+                if resp.status not in (200, 201):
+                    return {"error": data.get("error", f"HTTP {resp.status}"), "status_code": resp.status}
+                return data
+        except Exception as e:
+            return {"error": str(e)}
+
+
+# ─── PUBLIC: Domain Search ───
 
 class DomainSearchReq(BaseModel):
     query: str
@@ -731,52 +757,302 @@ class DomainSearchReq(BaseModel):
 
 @router.post("/domain-search")
 async def domain_search(req: DomainSearchReq):
-    """Search for available domains."""
-    # Use the Conway Terminal tool via sandbox exec if available, else direct API
-    status = _load_prov_status()
-    sandbox_id = status["sandbox"].get("id")
+    """Search for available domains. Public endpoint — no auth required."""
+    result = await _domains_public_request(f"/domains/search?q={req.query}&tlds={req.tlds}")
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+    return {"success": True, "results": result.get("results", []), "query": result.get("query", req.query), "source": "api.conway.domains"}
 
-    if sandbox_id and status["tools"].get("conway-terminal", {}).get("installed"):
-        # Use conway-terminal inside sandbox for domain search
-        r = await _sandbox_exec(sandbox_id, f"conway-terminal domain_search --query '{req.query}' --tlds '{req.tlds}' 2>&1 || echo 'TOOL_FAILED'")
-        return {"success": "TOOL_FAILED" not in r["stdout"], "output": r["stdout"], "source": "sandbox"}
-    else:
-        # Direct API call (SIWE auth may be needed for domains API — use credits API path)
-        result = await _conway_request("GET", f"/v1/domains/search?query={req.query}&tlds={req.tlds}")
-        if "error" in result:
-            return {"success": False, "error": result["error"]}
-        return {"success": True, "domains": result, "source": "api"}
 
+# ─── PUBLIC: Domain Check ───
+
+class DomainCheckReq(BaseModel):
+    domains: str  # comma-separated, max 200
+
+
+@router.post("/domain-check")
+async def domain_check(req: DomainCheckReq):
+    """Check availability of specific domain names. Public — no auth."""
+    result = await _domains_public_request(f"/domains/check?domains={req.domains}")
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+    return {"success": True, "domains": result.get("domains", []), "source": "api.conway.domains"}
+
+
+# ─── PUBLIC: Domain Pricing ───
+
+@router.get("/domain-pricing")
+async def domain_pricing(tlds: str = Query(default="com,io,ai,xyz,dev")):
+    """Get TLD pricing (registration, renewal, transfer). Public — no auth."""
+    result = await _domains_public_request(f"/domains/pricing?tlds={tlds}")
+    if "error" in result:
+        return {"success": False, "error": result["error"]}
+    return {"success": True, "pricing": result.get("pricing", []), "source": "api.conway.domains"}
+
+
+# ─── AUTHENTICATED (via sandbox): Domain List ───
 
 @router.get("/domain-list")
 async def domain_list():
-    """List all registered domains."""
-    result = await _conway_request("GET", "/v1/domains")
-    if "error" in result:
-        return {"success": False, "error": result["error"]}
-    return {"success": True, "domains": result}
+    """List all registered domains. Requires sandbox with Conway Terminal (SIWE wallet auth)."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires a provisioned sandbox with Conway Terminal. Domains API uses wallet auth (SIWE), not API key."}
+    r = await _sandbox_exec(sandbox_id,
+        "curl -s https://api.conway.domains/domains -H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" 2>&1 || echo '{\"error\":\"no wallet auth\"}'")
+    try:
+        data = json.loads(r["stdout"])
+        if "error" in data:
+            return {"success": False, "error": data["error"], "hint": "The agent's wallet must authenticate via SIWE first. Conway Terminal MCP tools handle this automatically when the agent operates."}
+        return {"success": True, "domains": data.get("domains", []), "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
 
 
-class DomainDnsReq(BaseModel):
+# ─── AUTHENTICATED (via sandbox): Domain Register ───
+
+class DomainRegisterReq(BaseModel):
+    domain: str
+    years: int = 1
+    privacy: bool = True
+
+
+@router.post("/domain-register")
+async def domain_register(req: DomainRegisterReq):
+    """Register a domain. Requires sandbox — uses x402 USDC payment via agent's wallet."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal. Domain registration uses x402 USDC payment from the agent's wallet."}
+    _add_nudge(f"Your creator wants you to register the domain '{req.domain}' for {req.years} year(s). Use domain_register tool: domain_register --domain {req.domain} --years {req.years} --privacy {str(req.privacy).lower()}")
+    return {"success": True, "message": f"Nudge sent to agent to register '{req.domain}'. The agent will use its wallet to pay via x402.", "domain": req.domain}
+
+
+# ─── AUTHENTICATED (via sandbox): Domain Renew ───
+
+class DomainRenewReq(BaseModel):
+    domain: str
+    years: int = 1
+
+
+@router.post("/domain-renew")
+async def domain_renew(req: DomainRenewReq):
+    """Renew a domain. Requires sandbox — uses x402 USDC payment via agent's wallet."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    _add_nudge(f"Your creator wants you to renew the domain '{req.domain}' for {req.years} year(s). Use domain_renew tool.")
+    return {"success": True, "message": f"Nudge sent to agent to renew '{req.domain}'.", "domain": req.domain}
+
+
+# ─── AUTHENTICATED (via sandbox): DNS List ───
+
+@router.get("/domain-dns-list")
+async def domain_dns_list(domain: str = Query(...)):
+    """List DNS records for a domain. Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    r = await _sandbox_exec(sandbox_id,
+        f"curl -s https://api.conway.domains/domains/{domain}/dns -H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": "error" not in data, "records": data.get("records", []), "source": data.get("source", "sandbox")}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
+
+
+# ─── AUTHENTICATED (via sandbox): DNS Add ───
+
+class DomainDnsAddReq(BaseModel):
     domain: str
     record_type: str = "A"
     host: str = "@"
     value: str = ""
     ttl: int = 3600
+    distance: Optional[int] = None
 
 
 @router.post("/domain-dns-add")
-async def domain_dns_add(req: DomainDnsReq):
-    """Add a DNS record to a domain."""
-    result = await _conway_request("POST", f"/v1/domains/{req.domain}/dns", {
-        "type": req.record_type,
-        "host": req.host,
-        "value": req.value,
-        "ttl": req.ttl,
-    })
-    if "error" in result:
-        return {"success": False, "error": result["error"]}
-    return {"success": True, "record": result}
+async def domain_dns_add(req: DomainDnsAddReq):
+    """Add a DNS record to a domain. Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    body = {"type": req.record_type, "host": req.host, "value": req.value, "ttl": req.ttl}
+    if req.distance is not None:
+        body["distance"] = req.distance
+    body_json = json.dumps(body)
+    r = await _sandbox_exec(sandbox_id,
+        f"curl -s -X POST https://api.conway.domains/domains/{req.domain}/dns "
+        f"-H 'Content-Type: application/json' "
+        f"-H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" "
+        f"-d '{body_json}' 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": "error" not in data, "record": data, "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
+
+
+# ─── AUTHENTICATED (via sandbox): DNS Update ───
+
+class DomainDnsUpdateReq(BaseModel):
+    domain: str
+    record_id: str
+    host: Optional[str] = None
+    value: Optional[str] = None
+    ttl: Optional[int] = None
+    distance: Optional[int] = None
+
+
+@router.put("/domain-dns-update")
+async def domain_dns_update(req: DomainDnsUpdateReq):
+    """Update a DNS record. Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    body = {}
+    if req.host is not None:
+        body["host"] = req.host
+    if req.value is not None:
+        body["value"] = req.value
+    if req.ttl is not None:
+        body["ttl"] = req.ttl
+    if req.distance is not None:
+        body["distance"] = req.distance
+    body_json = json.dumps(body)
+    r = await _sandbox_exec(sandbox_id,
+        f"curl -s -X PUT https://api.conway.domains/domains/{req.domain}/dns/{req.record_id} "
+        f"-H 'Content-Type: application/json' "
+        f"-H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" "
+        f"-d '{body_json}' 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": data.get("success", "error" not in data), "result": data, "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
+
+
+# ─── AUTHENTICATED (via sandbox): DNS Delete ───
+
+class DomainDnsDeleteReq(BaseModel):
+    domain: str
+    record_id: str
+
+
+@router.delete("/domain-dns-delete")
+async def domain_dns_delete(req: DomainDnsDeleteReq):
+    """Delete a DNS record. Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    r = await _sandbox_exec(sandbox_id,
+        f"curl -s -X DELETE https://api.conway.domains/domains/{req.domain}/dns/{req.record_id} "
+        f"-H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": data.get("success", "error" not in data), "result": data, "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
+
+
+# ─── AUTHENTICATED (via sandbox): WHOIS Privacy ───
+
+class DomainPrivacyReq(BaseModel):
+    domain: str
+    enabled: bool = True
+
+
+@router.put("/domain-privacy")
+async def domain_privacy(req: DomainPrivacyReq):
+    """Toggle WHOIS privacy for a domain. Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    body_json = json.dumps({"enabled": req.enabled})
+    r = await _sandbox_exec(sandbox_id,
+        f"curl -s -X PUT https://api.conway.domains/domains/{req.domain}/privacy "
+        f"-H 'Content-Type: application/json' "
+        f"-H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" "
+        f"-d '{body_json}' 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": data.get("success", "error" not in data), "result": data, "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
+
+
+# ─── AUTHENTICATED (via sandbox): Nameservers ───
+
+class DomainNameserversReq(BaseModel):
+    domain: str
+    nameservers: List[str]
+
+
+@router.put("/domain-nameservers")
+async def domain_nameservers(req: DomainNameserversReq):
+    """Update nameservers for a domain (2-13 entries). Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    body_json = json.dumps({"nameservers": req.nameservers})
+    r = await _sandbox_exec(sandbox_id,
+        f"curl -s -X PUT https://api.conway.domains/domains/{req.domain}/nameservers "
+        f"-H 'Content-Type: application/json' "
+        f"-H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" "
+        f"-d '{body_json}' 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": data.get("success", "error" not in data), "result": data, "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
+
+
+# ─── AUTHENTICATED (via sandbox): Domain Info ───
+
+@router.get("/domain-info")
+async def domain_info(domain: str = Query(...)):
+    """Get detailed info for a specific domain. Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    r = await _sandbox_exec(sandbox_id,
+        f"curl -s https://api.conway.domains/domains/{domain} "
+        f"-H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": "error" not in data, "domain": data, "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
+
+
+# ─── AUTHENTICATED (via sandbox): Transactions ───
+
+@router.get("/domain-transactions")
+async def domain_transactions():
+    """List all domain transactions. Routes through sandbox."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
+        return {"success": False, "error": "Requires sandbox with Conway Terminal."}
+    r = await _sandbox_exec(sandbox_id,
+        "curl -s https://api.conway.domains/transactions "
+        "-H \"Authorization: Bearer $(cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('jwt',''))\" 2>/dev/null)\" 2>&1")
+    try:
+        data = json.loads(r["stdout"])
+        return {"success": "error" not in data, "transactions": data.get("transactions", []), "source": "sandbox"}
+    except Exception:
+        return {"success": True, "raw_output": r["stdout"], "source": "sandbox"}
 
 
 # ═══════════════════════════════════════════════════════════
