@@ -24,7 +24,7 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 3. Frontend verifies Telegram (getMe + sendMessage) before backend call
 4. Backend stores config + selected_skills in MongoDB (no host engine start)
 5. App auto-navigates to AnimaVM page for that agent
-6. User provisions via AnimaVM stepper: Sandbox → Terminal → OpenClaw → Claude Code → Skills → Deploy
+6. User provisions via AnimaVM stepper: Sandbox -> Terminal -> OpenClaw -> Claude Code -> Skills -> Deploy
 7. Skills step loads both local skills AND agent-selected priority skills from DB
 
 ## Conway Cloud API Coverage (Verified Feb 2026)
@@ -50,9 +50,10 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 | 0 | Test ALL 15 tools | No goals, no business |
 | 1 | Earn $5,000 by any means | No products, no fund |
 | 2 | Earn $10,000 | No fund |
-| 3 | Create the Fund | Full autonomy |
+| 3 | Create the Fund (hundreds of millions target) + Use boardy.ai | Full autonomy |
 
-## Testing: 9 iterations, all 100% pass rate
+## Testing: 10 iterations, all 100% pass rate
+- Iteration 10 (Mar 2026): Full regression after genesis-prompt.md update - 25/25 backend, 100% frontend
 - Deployment agent: PASS (ready for Kubernetes)
 
 ## Completed Work
@@ -63,12 +64,15 @@ Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs insi
 - UI/UX Refactor: single Anima VM page with collapsing stepper
 - Embedded web terminal + PTY sessions
 - Full Conway docs audit (all 9 pages verified)
-- **Per-agent provisioning isolation (Feb 2026)**
-- **Agent creation no longer starts engine on host**
-- **Skills flow: creation → DB → provisioning stepper**
-- **Deployment verification passed**
+- Per-agent provisioning isolation (Feb 2026)
+- Agent creation no longer starts engine on host
+- Skills flow: creation -> DB -> provisioning stepper
+- Deployment verification passed
+- Genesis prompt updated: boardy.ai (Phase 3 only), hundreds of millions fund target (Mar 2026)
+- Full E2E regression test passed post-prompt update (Mar 2026)
 
 ## Backlog
-### P0: Fund Conway credits → full end-to-end provisioning test with real sandbox
-### P1: End-to-end phase progression testing
+### P0: Fund Conway credits -> full end-to-end provisioning test with real sandbox
+### P1: Real-time embedded terminal/browser views in AnimaVM (iframes functional, need live integration)
 ### P2: Smart contracts, Android device control, self-hosted engine
+### P3: End-to-end phase progression testing with real Conway sandbox
