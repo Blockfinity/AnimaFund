@@ -10,7 +10,7 @@ import time
 # Get backend URL from environment
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 if not BASE_URL:
-    BASE_URL = "https://ai-venture-capital.preview.emergentagent.com"
+    BASE_URL = "https://anima-audit.preview.emergentagent.com"
 
 
 class TestHealthEndpoints:

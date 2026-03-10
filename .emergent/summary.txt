@@ -16,37 +16,47 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a React/FastAPI/MongoDB stack. A critical bug with the credits funding mechanism was identified and fixed; the misleading QR code was replaced with a direct link to the Conway dashboard for wallet-based payments. The  has been extensively rewritten to make the agent autonomous, cost-aware, and aggressive in its financial goals, while removing prescriptive strategies.
+The application features a sophisticated real-time data pipeline to power the agent monitoring dashboard. The architecture was significantly refactored based on user feedback to ensure data is sourced efficiently and displayed in near real-time.
 
-A major architectural change was implemented to provide real-time dashboard updates. The previous polling system was replaced with a webhook-driven architecture. A daemon () runs inside the sandbox, polls the agent's log files every 2 seconds, and pushes data to a backend webhook endpoint. This endpoint instantly updates a server-side cache and triggers an , which causes the SSE stream to immediately push the complete, fresh data to the frontend. This ensures the dashboard reflects the agent's state with minimal latency.
+The current architecture is a hybrid model:
+1.  **Event-Driven Updates:** A  runs inside the agent's sandbox, monitoring agent activity (phase, decisions, revenue) and pushing updates instantly to a backend webhook.
+2.  **Unified Polling:** A single background task on the backend () fetches all external data—specifically the agent's on-chain wallet balance (via Base RPC) and Conway API credits—in parallel every ~15 seconds using .
+
+All data is consolidated in a server-side cache and pushed to the frontend via a single Server-Sent Events (SSE) stream, which acts as the single source of truth for the UI. Redundant polling from individual frontend components (like ) has been removed to centralize data flow through the SSE React Context.
 
 **Last working item**:
--   **Last item agent was working:** Finalizing the real-time data pipeline architecture. The agent first proposed an  solution for instant file change detection within the sandbox but reverted to a simpler 2-second polling loop inside the  after the user stated, 2 second is fine. The core logic—using a webhook to trigger an  that instantly pushes data via SSE—is complete.
+-   **Last item agent was working:** The user requested a full audit of all 13 frontend screens to ensure they all adhere to best practices for data fetching, eliminating any remaining redundancies and ensuring the entire UI relies on the central SSE stream where appropriate. The agent had just begun this audit by listing all the page files in .
 -   **Status:** IN PROGRESS
--   **Agent Testing Done:** Y (Component testing via curl was done, but full E2E testing of the new real-time architecture is pending).
--   **Which testing method agent to use?** both (Frontend/Backend Testing Agent)
+-   **Agent Testing Done:** N (The audit itself is not a feature to be tested, but its findings will require implementation and testing).
+-   **Which testing method agent to use?** both. After the audit is complete and the identified issues are fixed, a comprehensive E2E test using the testing agent is required to verify the architectural integrity and prevent regressions.
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1 (P0): Full End-to-End Verification of Real-Time Data Pipeline.**
+-   **Issue 1 (P0): Complete the full audit of all 13 frontend screens and refactor data flows for consistency and efficiency.**
 
 **Issues Detail:**
--   **Issue 1: Full End-to-End Verification of Real-Time Data Pipeline.**
-    -   **Attempted fixes:** The agent implemented the full webhook architecture and tested the webhook receiver endpoint with a simulated payload. However, a live test with a running agent to confirm data flows from the sandbox file system to the UI in near real-time has not been performed.
+-   **Issue 1: Complete the full audit of all 13 frontend screens and refactor data flows for consistency and efficiency.**
+    -   **Attempted fixes:** This task was just started. The agent has listed the files to be audited. No fixes have been attempted yet.
     -   **Next debug checklist:**
-        1.  Provision a new agent to completion.
-        2.  Observe the  dashboard.
-        3.  Verify that data from the agent (phase, earnings, decisions, logs) appears on the dashboard and updates automatically.
-        4.  Confirm the  timestamp in the SSE payload updates as expected.
-        5.  Run the  to perform a comprehensive E2E test covering the entire user flow, from funding credits to provisioning an agent and monitoring it on the live dashboard.
-    -   **Why fix this issue and what will be achieved with the fix?** This will confirm that the new, complex real-time architecture works as intended, providing the user with the instant feedback they require from the agent's operations. It is the final step before the application can be considered fully functional and ready for deployment.
-    -   **Status:** NOT STARTED
-    -   **Is recurring issue?** N
+        1.  Read the contents of every file in .
+        2.  Map out every data fetching mechanism (, ,  with API calls).
+        3.  Identify any components that are not using the central  for data that is available in the SSE stream.
+        4.  Identify any redundant API calls (e.g., multiple components fetching the same data).
+        5.  Propose a consolidated refactoring plan to the user.
+        6.  Implement the refactoring to make the SSE stream the single source of truth for all applicable real-time data.
+    -   **Why fix this issue and what will be achieved with the fix?** To satisfy the user's requirement for a robust, efficient, and maintainable frontend architecture (best practice). This will eliminate redundant network requests, improve performance, and ensure data consistency across the entire application.
+    -   **Status:** IN PROGRESS
+    -   **Is recurring issue?** Y (The underlying problem of inefficient data fetching has been addressed in stages, but this audit is meant to solve it comprehensively).
     -   **Should Test frontend/backend/both after fix?** both
     -   **Blocked on other issue:** None.
 
 **In progress Task List**:
--   None.
+-   **Task 1: Full audit of frontend data flows.**
+    -   **Where to resume:** The agent has a list of all files in . The next step is to start reading these files to analyze their data fetching patterns.
+    -   **What will be achieved with this?** A complete understanding of the app's data flow, leading to a final refactor that aligns the entire frontend with the single source of truth architecture dictated by the SSE stream.
+    -   **Status:** IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?** both
+    -   **Blocked on something:** None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
@@ -56,15 +66,13 @@ A major architectural change was implemented to provide real-time dashboard upda
     -   Migrate to a self-hosted agent engine.
 
 **Completed work in this session**
--   **Conway Credits Funding Rework:** Fixed a critical bug where direct USDC transfers failed. Replaced the misleading QR code with a button that redirects to the Conway dashboard for proper Web3 wallet-based payments.
--   **Real-time Dashboard Architecture:** Re-architected the data pipeline from a slow polling model to a near real-time webhook system. A daemon in the sandbox sends updates to a backend webhook, which uses  to instantly push data to the frontend via SSE.
--   **Agent Credit Preservation:** Implemented a Reset Agent flow that reuses the existing sandbox instead of deleting it, preventing the loss of prepaid Conway credits. This involved updating the backend to store the  and modifying the frontend to show the reset option.
--   **Comprehensive  Overhaul:**
-    -   Made the agent existentially aware of its costs and the need to earn money to survive.
-    -   Removed all prescriptive revenue strategies to force the agent to figure out how to make money on its own.
-    -   Clarified the phased mission: make k in hours (Phase 1), grow to 0k (Phase 2), then launch the VC fund (Phase 3).
--   **Economics Daemon:** Created a daemon (, formerly ) inside the sandbox to provide the agent with a live financial dashboard (), eliminating the need for API queries.
--   **End-to-End Testing:** Performed multiple full-stack test runs using  and the , verifying all backend endpoints, Telegram integration, and frontend components.
+-   **Multi-Source Data Pipeline Refactor:**
+    -   **Backend:** Consolidated three separate polling loops into a single, efficient background task in  that fetches on-chain wallet balance and Conway credits in parallel.
+    -   **Frontend:** Removed a redundant polling  from , ensuring it now gets credit updates from the central SSE stream. Updated  to correctly display the multi-source data (Wallet, Credits, Phase, etc.) from the SSE stream.
+-   **Initial Real-Time Pipeline Verification:**
+    -   Successfully tested the webhook-to-SSE instant push mechanism, confirming latency of <2 seconds.
+    -   Found and fixed bugs in  related to a broken LIVE indicator and a missing  import.
+    -   Ran the  which passed 100% on both backend and frontend for the initial fixes.
 
 **Earlier issues found/mentioned but not fixed**
 -   None.
@@ -76,76 +84,72 @@ A major architectural change was implemented to provide real-time dashboard upda
 
 
 **Key Technical Concepts**
--   **Webhook-First Real-time Data:** The dashboard is updated via a webhook from the sandbox, not by polling. A daemon in the sandbox () watches agent log files and s changes to .
--   **Asyncio SSE Push:** The backend uses an  that is set by the webhook receiver. The SSE generator s this event, allowing it to push data to the client the instant it arrives, rather than on a fixed  interval.
--   **Credit Preservation:** Sandboxes are reused, not deleted. A Reset Agent flow wipes the agent's state but preserves the prepaid sandbox, saving credits.
--   **Sandbox-First Architecture:** All agent operations execute within the Conway sandbox VM. The backend is a stateless proxy to the Conway API.
--   **UI-Driven Onboarding:** The initial user experience is a multi-step provisioning process on the main landing screen.
+-   **Hybrid Real-time Architecture:** Combines event-driven webhook pushes (for instant sandbox updates) with a unified background poller (for external data like on-chain balances and API credits).
+-   **Unified Background Poller:** A single  task uses  to fetch multiple external data sources in parallel, minimizing overhead and consolidating cache updates.
+-   **Frontend Single Source of Truth:** A central SSE stream and React Context () provide all real-time data to the UI, aiming to eliminate redundant, component-level API calls.
 
 **key DB schema**
--   **agents**:  (sandbox_id was added)
+-   **agents**: 
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   : The new webhook receiver.
--   : The new daemon that runs inside the sandbox.
--   : Reads from the cache populated by the webhook.
--   : Manages the application state, including the webhook cache and .
--   : The dashboard UI, now driven by real-time SSE data.
--   : The main onboarding/genesis screen.
--   : The agent's core mission document.
+-   : The new unified background poller for external data.
+-   : The SSE endpoint that serves the consolidated data.
+-   : The main server file that initializes the poller.
+-   : The React context that distributes SSE data.
+-   : The entire directory is under audit to enforce the new data flow architecture.
+-   : Was refactored to remove redundant polling.
+-   : Was refactored to display multi-source data.
 
 **Areas that need refactoring**:
--   None. The agent resolved a route conflict between  and .
+The user has mandated a full audit of all 13 frontend pages to identify and eliminate any remaining inefficient or redundant data-fetching logic. Components should rely on the  for real-time data instead of making their own API calls.
 
 **key api endpoints**
--   : **NEW** endpoint that receives real-time data from the agent sandbox.
--   : SSE endpoint that pushes real-time data to the frontend.
--   : Resets an agent's state within its existing sandbox.
--   : Lists existing sandboxes to enable reuse.
+-   : The primary SSE endpoint, acting as the single source of truth for real-time frontend data (wallet balance, credits, agent phase, etc.).
+-   Other endpoints like  and  are being phased out for UI display in favor of the SSE stream.
 
 **Critical Info for New Agent**
--   **Your top priority is to perform a full, end-to-end verification of the new real-time data architecture.** The user's primary concern is instant feedback from the agent. While the components have been built and tested individually, a complete test of an active agent writing logs in the sandbox and seeing them appear instantly on the dashboard is required.
--   The user has agreed that a 2-second polling interval inside the  is acceptable. Do not try to re-implement the more complex  solution.
--   The credits funding issue is resolved by linking the user to the Conway dashboard. Do not re-introduce any QR code or direct payment logic.
--   The  is in a state the user has approved. Do not add any prescriptive strategies back into it.
+-   **Your immediate task is to execute the full audit requested by the user.** You must analyze every page component in  to map out its data dependencies.
+-   **The user is technically proficient and expects high-quality, efficient code.** They corrected a previous inefficient implementation (multiple pollers) and are now demanding a comprehensive cleanup. Do not propose simple or naive solutions.
+-   **The core architectural principle is: The SSE stream is the single source of truth for real-time data.** Any component displaying data that is present in the SSE stream should consume it from the , not by making its own independent API calls.
+-   **Be careful with .** The user explicitly instructed not to change it because it was working. When you audit it, document its independent data fetching but do not change it without proposing the change to the user first and explaining why it's necessary for architectural consistency.
 
 **documents and test reports created in this job**
--    (updated multiple times)
--   Multiple test reports in , with the last one verifying the Reset Agent feature.
+-   
+-   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** all the data should be connected in realtime - Triggered the refactor from polling to a real-time architecture.
-2.  **User:** why dont you use webhook? - Suggested the core architectural change.
-3.  **Agent:** Implemented the webhook-based architecture.
-4.  **User:** IS this realtime - Questioned the 6-second latency (2s daemon poll + 4s SSE poll).
-5.  **Agent:** Agreed it was not truly real-time and proposed an  +  solution.
-6.  **User:** we should get realtime update when the agent does something... - Reinforced the need for instant updates.
-7.  **Agent:** Started implementing the  solution.
-8.  **User:** 2 second is fine - Signaled acceptance of the simpler 2-second polling daemon, de-prioritizing the complex  change.
-9.  **Agent:** Acknowledged the user's preference and reverted the daemon back to the 2-second polling loop, keeping the improved  SSE backend.
-10. **User (Pending):** None. The last interaction was the user approving the 2-second polling interval.
+1.  **User:** Questions where test data on the dashboard is coming from.
+2.  **User:** Again questions different test data from the testing agent.
+3.  **User:** Asks the critical question: are you tracking those balances directly from the wallets.
+4.  **User:** Instructs the agent not to use a one size fits all approach and to use the best data source for each data point.
+5.  **User:** Corrects the agent's inefficient first attempt at a multi-source pipeline, stating you cant make a call... for every single data point.
+6.  **User:** Pushes the agent to think critically: dont just agree use best practice.
+7.  **User:** Stops the agent from refactoring a working component: Agent mind wallet balances work already, are you going to break it to fix something else?
+8.  **User:** Expands the scope of the task: is this the best practice we have 13 screens all with different data points and pipelines, ensure they all work.
+9.  **User:** Confirms the new, expanded task with one command: full audit.
+10. **Agent:** Acknowledges and begins the audit by listing the relevant files. No pending user messages.
 
 **Project Health Check:**
--   **Broken:** Nothing is fundamentally broken.
--   **Mocked:** None. The architecture is designed to use live data, but the final E2E verification of the new real-time pipeline is pending.
+-   **Broken:** The frontend data-fetching architecture is inconsistent. While some parts have been refactored, others still contain redundant API calls. This is not a crash-level bug but an architectural flaw the current audit is meant to fix.
+-   **Mocked:** None.
 
 **3rd Party Integrations**
--   Conway Research Ecosystem (web4.ai): Core dependency for sandboxed VMs, terminal, tool installation, and payments.
--   OpenClaw: For autonomous web browsing.
--   Claude Code: For agent self-modification.
+-   Conway Research Ecosystem (web4.ai)
+-   OpenClaw
+-   Claude Code
 -   Telegram Bot API
 
 **Testing status**
--   **Testing agent used after significant changes:** YES
+-   **Testing agent used after significant changes:** YES (for the initial webhook fixes).
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None.
--   **Known regressions:** None.
+-   **Known regressions:** None, but the latest major refactor (unified poller) has not been regression tested by the testing agent.
 
 **Credentials to test flow:**
--   The  in the backend  file currently has **0 credits**. This is correct for testing the add credits flow.
+-   The  in  has 0 credits, which is expected for testing the credit funding flow.
 
 **What agent forgot to execute**
--   Nothing. The agent was actively following user instructions and was in the middle of a task when the session ended. The logical next step is to test the work that was just completed.</analysis>
+-   The agent did not forget a task but implemented a sub-optimal solution (multiple polling loops) which the user identified and corrected. The current audit task is a direct result of this, to ensure the entire application adheres to the corrected, more efficient architecture.</analysis>
