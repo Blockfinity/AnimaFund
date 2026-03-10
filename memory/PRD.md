@@ -1,71 +1,61 @@
 # Anima Fund — Product Requirements Document
 
 ## Original Problem Statement
-Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform. Multi-agent platform where AI agents are created and managed from a single UI. Each agent has its own goals, skills, wallets, and revenue model, operating autonomously on the live internet via Conway Cloud.
+Build a fully autonomous AI-to-AI Venture Capital fund platform. Agent runs inside Conway Cloud sandbox, creates its own wallet, must earn $5k before building products (by any means necessary), then $10k before creating the fund.
 
-## Core Architecture
-- **Host (Emergent platform)**: Dashboard control plane only — no agent execution on host
-- **Conway Sandbox**: Where the agent actually lives and runs (engine, wallet, tools)
-- **Frontend**: React (port 3000), 15 pages + sidebar
-- **Backend**: FastAPI (port 8001), routers: genesis, live, provision, agents, conway, infrastructure, telegram, openclaw
+## Architecture
+- **Host**: Dashboard control plane ONLY — no agent execution
+- **Conway Sandbox**: Agent lives and runs here (engine, wallet, tools, files)
+- **Frontend**: React (port 3000), 15 pages
+- **Backend**: FastAPI (port 8001)
 - **Database**: MongoDB (anima_fund)
-- **Agent Engine**: Conway Automaton (TypeScript) — runs INSIDE sandbox
-- **Integrations**: Conway Cloud, Conway Compute, Conway Domains, OpenClaw, Telegram Bot, Base chain
+- **Agent Engine**: Conway Automaton (runs INSIDE sandbox)
 
-## Agent Lifecycle
+## Agent Wallet
+- Created by Conway Terminal auto-bootstrap inside sandbox on install
+- Stored at `~/.conway/config.json` inside sandbox
+- Ethereum wallet on Base — USDC payments via x402
+- This is the ONLY wallet — no host wallet
 
-### Provisioning (User-driven, from dashboard)
-1. **Create Sandbox** → Conway Cloud VM (2 vCPU, 4GB, 40GB)
-2. **Install Terminal** → Conway Terminal MCP + system tools + Node.js inside sandbox
-3. **Install OpenClaw** → Browser agent inside sandbox
-4. **Deploy Agent** → Push engine bundle + genesis prompt + config + skills + phase-state.json into sandbox, start engine process
+## Provisioning Flow (Technical Order)
+1. Create Sandbox → Conway Cloud VM
+2. Install Conway Terminal → auto-creates wallet + API key + configures all MCPs
+3. Install OpenClaw → autonomous browser with Conway MCP bridge
+4. Install Claude Code → self-modification via MCP
+5. Load Skills → push skill definitions into sandbox
+6. Deploy Agent → push engine + genesis + config + phase-state.json, start engine
 
-### Phase System (Code-enforced in system-prompt.ts)
+## 4-Phase System (Code-Enforced)
 | Phase | Objective | Restrictions |
 |---|---|---|
-| 0 | Test ALL 10 tools functionally | No goals, no business, no products |
-| 1 | Earn $5,000 (1 hour) | No products, no fund, no domains, immediate revenue only |
-| 2 | Earn $10,000 | No fund creation, may register revenue-generating domains |
-| 3 | Create the Fund | Full autonomy — build infrastructure, recruit agents |
+| 0 | Test ALL 15 tools functionally | No goals, no business, no revenue |
+| 1 | Earn $5,000 by any means | No products, no fund, no domains. Crypto memes, trading, gambling, prediction markets, bounties — anything |
+| 2 | Earn $10,000 | No fund. May register revenue-generating domains |
+| 3 | Create the Fund | Full autonomy |
 
-### Phase Enforcement
-- `genesis-prompt.md`: Explicit phase rules and forbidden actions
-- `system-prompt.ts` Layer 5.6: Reads `~/.anima/phase-state.json` every turn, injects current phase + rules
-- Wakeup prompt: Instructs agent to read phase-state.json before any action
-- Agent updates phase-state.json as it completes phases
-- ALL actions reported via Telegram
+## 15 Functional Tool Tests (Phase 0)
+curl, git, node, python3, telegram, wallet, credits, sandbox, domains, compute, openclaw, x402 payments, PTY sessions, file management, self-modification
 
-### 10 Functional Tool Tests (Phase 0)
-1. **curl** — Download file, verify size > 100 bytes
-2. **git** — Clone repo, verify file exists
-3. **node** — Start HTTP server, verify response
-4. **python3** — Run hashlib code, verify JSON output
-5. **Telegram** — Send message, verify 200 response
-6. **Conway Terminal** — wallet_info + check_credits + check_usdc_balance
-7. **Sandbox** — Create sub-sandbox, exec command, verify output
-8. **Domains** — Search domain availability
-9. **Compute** — Run inference, get response
-10. **Port Exposure** — Start server, expose port, curl public URL
+## Complete Conway Tool Coverage
+- **Sandboxes**: create, list, exec, write_file, read_file, expose_port, get_url, delete, pty_create/write/read/close/list
+- **Compute**: chat_completions (GPT, Claude, Gemini, Kimi, Qwen)
+- **Domains**: search, check, register, renew, info, pricing, dns_list/add/update/delete, privacy, nameservers
+- **Payments**: wallet_info, wallet_networks, x402_discover, x402_check, x402_fetch, credits_balance/history/pricing
+- **Browsing**: browse_page, discover_agents, send_message, check_social_inbox
+- **Self-mod**: edit_own_file, install_mcp_server, install_skill, create_skill
+- **Orchestrator**: create_goal, list_goals, get_plan, orchestrator_status
+- **Replication**: spawn_child, list_children, fund_child, message_child
+- **Memory**: update_soul, remember_fact, recall_facts, save_procedure, recall_procedure
+- **Git**: status, diff, commit, log, push, branch, clone
+- **MCP**: Conway Terminal, OpenClaw, Claude Code
 
-## Agent's Wallet
-- NO host wallet — agent creates its own wallet via Conway Terminal's auto-bootstrap inside sandbox
-- Revenue targets checked against USDC wallet balance + Conway credits (both)
+## API Endpoints (30+)
+All under /api/provision: status, create-sandbox, sandbox-info, list-sandboxes, delete-sandbox, install-terminal, install-openclaw, install-claude-code, expose-port, unexpose-port, web-terminal, test-compute, domain-search, domain-list, domain-dns-add, load-skills, deploy-agent, agent-logs, phase-state, nudge, nudge/custom, exec, run-code, upload-file, read-file, list-files, credits, wallet, verify-sandbox
 
-## Conway Ecosystem Coverage
-- Cloud: Sandboxes, exec, files, web terminal, PTY, port exposure
-- Compute: Multi-model inference (GPT, Claude, Gemini, Kimi, Qwen)
-- Domains: Search, register, DNS management, WHOIS
-- Terminal: 35+ MCP tools, x402 payments, wallet management
-- Payments: USDC on Base, credits, x402
-
-## API Endpoints (27+ endpoints under /api/provision)
-Status, create-sandbox, sandbox-info, list-sandboxes, delete-sandbox, install-terminal, install-openclaw, expose-port, unexpose-port, web-terminal, test-compute, domain-search, domain-list, domain-dns-add, load-skills, deploy-agent, agent-logs, phase-state, nudge, nudge/custom, exec, run-code, upload-file, read-file, list-files, credits, wallet, verify-sandbox
-
-## Testing
-- Iteration 4: 25/25 backend + all frontend = 100% pass rate
-- Security: No host installations verified in all iterations
+## Testing: 5 iterations, all 100% pass rate
+- Security: No host installations verified every iteration
 
 ## Backlog
-### P0: Fund Conway credits → test full flow end-to-end
-### P1: Verify Telegram reporting, end-to-end phase progression
+### P0: Fund Conway credits → full end-to-end test
+### P1: End-to-end phase progression, Telegram reporting verification
 ### P2: Smart contracts, Android device control, self-hosted engine
