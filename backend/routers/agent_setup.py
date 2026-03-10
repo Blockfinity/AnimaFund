@@ -1192,7 +1192,8 @@ async def run_code(req: RunCodeReq):
 
 @router.post("/load-skills")
 async def load_skills():
-    """Push skills from automaton source AND agent-selected skills into the sandbox."""
+    """Push skills into the sandbox at OpenClaw-compatible paths and install priority skills from ClawHub.
+    All operations happen INSIDE the sandbox VM — nothing installed on the host."""
     from database import get_db
     status = _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
@@ -1202,53 +1203,85 @@ async def load_skills():
     skills_src = os.path.join(AUTOMATON_DIR, "skills")
     skill_count = 0
     skill_names = []
+    clawhub_installed = []
+    clawhub_failed = []
 
-    # 1. Push local skills from automaton/skills/
+    # 1. Push local skills from automaton/skills/ into sandbox at OpenClaw-compatible path
     if os.path.isdir(skills_src):
-        await _sandbox_exec(sandbox_id, "mkdir -p ~/.anima/skills")
+        await _sandbox_exec(sandbox_id, "mkdir -p ~/.openclaw/skills")
         for skill_name in os.listdir(skills_src):
             skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
             if os.path.exists(skill_file):
                 with open(skill_file, "r") as f:
                     content = f.read()
-                await _sandbox_write_file(sandbox_id, f"/root/.anima/skills/{skill_name}/SKILL.md", content)
+                await _sandbox_exec(sandbox_id, f"mkdir -p ~/.openclaw/skills/{skill_name}")
+                await _sandbox_write_file(sandbox_id, f"/root/.openclaw/skills/{skill_name}/SKILL.md", content)
                 skill_count += 1
                 skill_names.append(skill_name)
 
-    # 2. Load agent-selected priority skills from DB and write install manifest
+    # 2. Install priority skills from ClawHub INSIDE the sandbox
     agent_id = _get_active_agent_id()
     selected_skills = []
     try:
         col = get_db()["agents"]
-        import asyncio
         agent = await col.find_one({"agent_id": agent_id}, {"_id": 0, "selected_skills": 1})
         if agent and agent.get("selected_skills"):
             selected_skills = agent["selected_skills"]
-            # Write priority-skills manifest inside sandbox so the agent knows what to install
-            manifest = "# Priority Skills — Install these FIRST\n\n"
-            for s in selected_skills:
-                manifest += f"- {s}\n"
-            manifest += "\nRun: clawhub search \"[skill-name]\" && clawhub install [skill-name]\n"
-            await _sandbox_write_file(sandbox_id, "/root/.anima/priority-skills.md", manifest)
+            for skill_slug in selected_skills:
+                r = await _sandbox_exec(sandbox_id, f"cd ~/.openclaw && npx clawhub@latest install {skill_slug} 2>&1", timeout=60)
+                if r["exit_code"] == 0:
+                    clawhub_installed.append(skill_slug)
+                else:
+                    clawhub_failed.append({"skill": skill_slug, "error": r["stderr"] or r["stdout"]})
     except Exception:
         pass
+
+    # 3. Write skills manifest INSIDE the sandbox so the agent knows what's available
+    manifest = {
+        "local_skills": skill_names,
+        "clawhub_installed": clawhub_installed,
+        "clawhub_failed": [f["skill"] for f in clawhub_failed],
+        "priority_skills": selected_skills,
+        "discovery": {
+            "list_loaded": "openclaw skills list",
+            "search_clawhub": "npx clawhub search \"<query>\"",
+            "install_from_clawhub": "npx clawhub@latest install <skill-slug>",
+            "update_all": "npx clawhub update --all",
+            "skill_paths": ["~/.openclaw/skills", "<workspace>/skills"],
+            "security_warning": "Vet all third-party skills before installing. Read SKILL.md contents. Prefer highlighted/high-download skills.",
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await _sandbox_write_file(sandbox_id, "/root/.openclaw/skills-manifest.json", json.dumps(manifest, indent=2))
 
     status["skills_loaded"] = True
     status["tools"]["skills"] = {
         "installed": True,
-        "count": skill_count,
-        "names": skill_names,
+        "count": skill_count + len(clawhub_installed),
+        "local_skills": skill_names,
+        "clawhub_installed": clawhub_installed,
+        "clawhub_failed": [f["skill"] for f in clawhub_failed],
         "priority_skills": selected_skills,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     _save_prov_status(status)
-    msg = f"Your creator loaded {skill_count} skills into your sandbox: {', '.join(skill_names[:10])}{'...' if len(skill_names) > 10 else ''}."
-    if selected_skills:
-        msg += f" Priority skills to install from ClawHub: {', '.join(selected_skills[:5])}."
-    msg += " Explore them in ~/.anima/skills/"
+
+    msg = f"Skills loaded into your sandbox at ~/.openclaw/skills/: {skill_count} local skills."
+    if clawhub_installed:
+        msg += f" Installed from ClawHub: {', '.join(clawhub_installed)}."
+    if clawhub_failed:
+        msg += f" Failed to install: {', '.join(f['skill'] for f in clawhub_failed)} — install manually with: npx clawhub@latest install <skill>"
+    msg += " Run 'openclaw skills list' to see all loaded skills. Search more at: npx clawhub search \"<query>\""
     _add_nudge(msg)
 
-    return {"success": True, "skill_count": skill_count, "skills": skill_names, "priority_skills": selected_skills}
+    return {
+        "success": True,
+        "skill_count": skill_count,
+        "local_skills": skill_names,
+        "clawhub_installed": clawhub_installed,
+        "clawhub_failed": clawhub_failed,
+        "priority_skills": selected_skills,
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1363,7 +1396,7 @@ async def deploy_agent():
         await _sandbox_write_file(sandbox_id, "/root/.anima/phase-state.json", json.dumps(phase_state, indent=2))
         outputs.append("[phase-state] initialized at Phase 0")
 
-        # 5. Push skills
+        # 5. Push skills to OpenClaw-compatible path inside sandbox
         skills_src = os.path.join(AUTOMATON_DIR, "skills")
         skill_count = 0
         if os.path.isdir(skills_src):
@@ -1372,10 +1405,10 @@ async def deploy_agent():
                 if os.path.exists(skill_file):
                     with open(skill_file, "r") as f:
                         skill_content = f.read()
-                    await _sandbox_exec(sandbox_id, f"mkdir -p ~/.anima/skills/{skill_name}")
-                    await _sandbox_write_file(sandbox_id, f"/root/.anima/skills/{skill_name}/SKILL.md", skill_content)
+                    await _sandbox_exec(sandbox_id, f"mkdir -p ~/.openclaw/skills/{skill_name}")
+                    await _sandbox_write_file(sandbox_id, f"/root/.openclaw/skills/{skill_name}/SKILL.md", skill_content)
                     skill_count += 1
-        outputs.append(f"[skills] {skill_count} skills pushed")
+        outputs.append(f"[skills] {skill_count} skills pushed to ~/.openclaw/skills/")
 
         # 6. Push the engine bundle
         bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
