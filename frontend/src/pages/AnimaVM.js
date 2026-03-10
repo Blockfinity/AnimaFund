@@ -19,7 +19,7 @@ const PROVISION_STEPS = [
   { id: 'openclaw', label: 'Install OpenClaw', desc: 'Autonomous browser + MCP bridge', action: '/api/provision/install-openclaw', icon: Eye },
   { id: 'claudecode', label: 'Install Claude Code', desc: 'Self-modification via MCP', action: '/api/provision/install-claude-code', icon: Cpu },
   { id: 'skills', label: 'Load Skills', desc: 'Push skill definitions into sandbox', action: '/api/provision/load-skills', icon: FileText },
-  { id: 'deploy', label: 'Deploy Agent', desc: 'Push engine into sandbox + start (Phase 0)', action: '/api/provision/deploy-agent', icon: Rocket },
+  { id: 'deploy', label: 'Create Anima', desc: 'Push engine into sandbox + launch autonomous agent', action: '/api/provision/deploy-agent', icon: Rocket },
 ];
 
 const PHASE_LABELS = {
@@ -320,8 +320,47 @@ export default function AnimaVM({ selectedAgent }) {
               })}
             </div>
 
-            {/* Post-provision actions */}
-            {allDone && (
+            {/* Post-provision: Wallet & Funding */}
+            {provStatus?.wallet_address && (
+              <div className="px-4 py-4 border-t border-border bg-emerald-50/20">
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  {/* QR Code */}
+                  <div className="flex-shrink-0 text-center">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(provStatus.wallet_address)}&bgcolor=ffffff&color=09090b`}
+                      alt="Wallet QR"
+                      className="w-[120px] h-[120px] rounded border border-border"
+                      data-testid="wallet-qr-code"
+                    />
+                    <p className="text-[9px] text-muted-foreground mt-1">Scan to send USDC (Base)</p>
+                  </div>
+                  {/* Wallet Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-muted-foreground font-semibold tracking-wider mb-1">AGENT WALLET</div>
+                    <div
+                      data-testid="agent-wallet-address"
+                      className="font-mono text-xs text-foreground bg-secondary rounded px-2.5 py-2 break-all cursor-pointer border border-border hover:border-foreground/30 transition-colors"
+                      onClick={() => { navigator.clipboard.writeText(provStatus.wallet_address); toast.success('Wallet address copied'); }}
+                      title="Click to copy"
+                    >
+                      {provStatus.wallet_address}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1.5">
+                      Fund this wallet with USDC on Base to power the agent's operations (x402 payments, domain registration, compute).
+                    </p>
+                    {allDone && (
+                      <button data-testid="go-autonomous-btn" onClick={goAutonomous}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-foreground text-white rounded hover:bg-foreground/90 transition-colors">
+                        <Zap className="w-3 h-3" /> Go Autonomous
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Go Autonomous (no wallet yet but all done) */}
+            {allDone && !provStatus?.wallet_address && (
               <div className="px-4 py-3 border-t border-border bg-emerald-50/30 flex items-center gap-2">
                 <button data-testid="go-autonomous-btn" onClick={goAutonomous}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-foreground text-white rounded hover:bg-foreground/90 transition-colors">
