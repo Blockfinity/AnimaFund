@@ -82,6 +82,16 @@ function AppInner() {
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
+  // Safety timeout: never stay in 'loading' state forever
+  useEffect(() => {
+    if (view === 'loading') {
+      const timeout = setTimeout(() => {
+        if (viewRef.current === 'loading') setView('genesis');
+      }, 4000);
+      return () => clearTimeout(timeout);
+    }
+  }, [view]);
+
   // Fetch provision status
   const fetchProvStatus = useCallback(async () => {
     try {
@@ -202,7 +212,10 @@ function AppInner() {
 
   const checkStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/genesis/status`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${API}/api/genesis/status`, { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (!res.ok) return;
       const data = await res.json();
 
