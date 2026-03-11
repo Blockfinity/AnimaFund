@@ -312,7 +312,15 @@ function AppInner() {
         setExpandedStep(step.id);
       }
       if (data.reused) toast.success(`${step.label} — reusing existing sandbox (credits preserved)`);
-      else data.success ? toast.success(`${step.label} complete`) : toast.error(data.error || 'Failed');
+      else if (data.success) toast.success(`${step.label} complete`);
+      else {
+        const errMsg = data.error || 'Failed';
+        if (errMsg.toLowerCase().includes('insufficient') || errMsg.toLowerCase().includes('credit')) {
+          toast.error(`${step.label}: Not enough credits on Conway. Add credits at app.conway.tech, then click Refresh on the Conway Account panel.`);
+        } else {
+          toast.error(`${step.label}: ${errMsg}`);
+        }
+      }
       await fetchProvStatus();
     } catch (e) { toast.error(e.message); }
     setRunningStep(null);
@@ -433,13 +441,19 @@ function AppInner() {
             </div>
 
             {keyStatus?.configured && keyStatus?.valid && !editingKey ? (
-              <div style={{ padding: '8px 14px', background: '#052e16', cursor: 'pointer' }}
-                onClick={() => setEditingKey(true)} data-testid="edit-conway-key-btn"
+              <div style={{ padding: '8px 14px', background: '#052e16', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                data-testid="edit-conway-key-btn"
                 title="Click to change API key">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div onClick={() => setEditingKey(true)} style={{ flex: 1, cursor: 'pointer' }}>
                   <span style={{ fontSize: '11px', color: '#34D399' }}>Connected</span>
-                  <span style={{ fontSize: '9px', color: '#166534' }}>click to change</span>
+                  <span style={{ fontSize: '9px', color: '#166534', marginLeft: '8px' }}>click to change</span>
                 </div>
+                <button onClick={(e) => { e.stopPropagation(); fetchCreditBalance(); checkKeyStatus(); toast.info('Refreshing balance...'); }}
+                  data-testid="refresh-balance-btn"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#166534', fontSize: '10px' }}
+                  title="Refresh balance">
+                  Refresh
+                </button>
               </div>
             ) : (
               <div style={{ padding: '12px 14px' }}>
@@ -475,6 +489,12 @@ function AppInner() {
                   >
                     {settingKey ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Connecting...</> : 'Connect'}
                   </button>
+                  {editingKey && (
+                    <button onClick={() => { setEditingKey(false); setConwayKeyInput(''); }}
+                      style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #27272a', background: 'transparent', color: '#71717a', fontSize: '11px', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
                 <div style={{ marginTop: '10px', textAlign: 'center' }}>
                   <a href="https://app.conway.tech" target="_blank" rel="noopener noreferrer"
