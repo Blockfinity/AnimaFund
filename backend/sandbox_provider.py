@@ -236,6 +236,7 @@ async def fly_create_sandbox(specs: dict, agent_id: str = None) -> dict:
                     "autostop": "off",
                 }
             ],
+            "restart": {"policy": "always"},
         },
     }
 

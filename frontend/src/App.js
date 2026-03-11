@@ -310,38 +310,81 @@ function AppInner() {
   const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
   const walletAddress = provStatus?.wallet_address || '';
 
-  const runStep = async (step) => {
+  const runStep = async (step, autoCascade = false) => {
     setRunningStep(step.id);
+    setExpandedStep(step.id);
+
+    // Show "starting..." immediately
+    const startTime = Date.now();
+    setStepOutputs(prev => ({ ...prev, [step.id]: `[${new Date().toLocaleTimeString()}] Starting ${step.label}...\n` }));
+
     try {
       const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
-      // Pass VM tier specs when creating sandbox
       if (step.id === 'sandbox') {
         const tier = VM_TIERS.find(t => t.id === selectedTier) || VM_TIERS[0];
         opts.body = JSON.stringify({ vcpu: tier.vcpu, memory_mb: tier.memory_mb, disk_gb: tier.disk_gb, provider: selectedProvider });
       }
+
       const res = await fetch(`${API}${step.action}`, opts);
       const data = await res.json();
-      if (data.output) {
-        setStepOutputs(prev => ({ ...prev, [step.id]: data.output }));
-        setExpandedStep(step.id);
-      }
-      if (data.reused) toast.success(`${step.label} — reusing existing sandbox (credits preserved)`);
-      else if (data.success) toast.success(`${step.label} complete`);
-      else {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      // Build detailed output log
+      let log = `[${new Date().toLocaleTimeString()}] ${step.label} completed in ${elapsed}s\n`;
+      if (data.output) log += `\n${data.output}\n`;
+      if (data.sandbox_id) log += `Sandbox ID: ${data.sandbox_id}\n`;
+      if (data.provider) log += `Provider: ${data.provider}\n`;
+      if (data.wallet_address) log += `Wallet: ${data.wallet_address}\n`;
+      if (data.error) log += `\nERROR: ${data.error}\n`;
+      if (data.reused) log += `(Reused existing sandbox — credits preserved)\n`;
+
+      setStepOutputs(prev => ({ ...prev, [step.id]: log }));
+
+      let success = false;
+      if (data.reused) {
+        toast.success(`${step.label} — reusing existing sandbox`);
+        success = true;
+      } else if (data.success) {
+        toast.success(`${step.label} complete (${elapsed}s)`);
+        success = true;
+      } else {
         const errMsg = data.error || 'Failed';
-        if (errMsg.toLowerCase().includes('insufficient') || errMsg.toLowerCase().includes('credit')) {
-          toast.error(`${step.label}: Not enough credits on Conway. Add credits at app.conway.tech, then click Refresh on the Conway Account panel.`);
-        } else if (errMsg.toLowerCase().includes('no healthy workers') || errMsg.toLowerCase().includes('bare')) {
-          toast.error(`Conway is at capacity — no VMs available right now. They're adding more servers. Try again in a few minutes.`, { duration: 10000 });
-          setStepOutputs(prev => ({ ...prev, [step.id]: `Conway Cloud capacity issue:\n${errMsg}\n\nThis is temporary — Conway is scaling up. Retry in a few minutes.` }));
-          setExpandedStep(step.id);
+        if (errMsg.toLowerCase().includes('no healthy workers') || errMsg.toLowerCase().includes('bare')) {
+          toast.error(`Conway is at capacity — try again later or switch to Fly.io`, { duration: 10000 });
+        } else if (errMsg.toLowerCase().includes('insufficient') || errMsg.toLowerCase().includes('credit')) {
+          toast.error(`Not enough credits. Add credits at app.conway.tech`);
         } else {
           toast.error(`${step.label}: ${errMsg}`);
         }
       }
+
       await fetchProvStatus();
-    } catch (e) { toast.error(e.message); }
-    setRunningStep(null);
+      setRunningStep(null);
+
+      // Auto-cascade: run next step if this one succeeded
+      if (success && autoCascade) {
+        const stepIdx = PROVISION_STEPS.findIndex(s => s.id === step.id);
+        const nextStep = PROVISION_STEPS[stepIdx + 1];
+        if (nextStep) {
+          // Small delay so UI updates
+          await new Promise(r => setTimeout(r, 800));
+          await runStep(nextStep, true);
+        }
+      }
+    } catch (e) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      setStepOutputs(prev => ({ ...prev, [step.id]: `[${new Date().toLocaleTimeString()}] FAILED after ${elapsed}s\n\nError: ${e.message}\n` }));
+      toast.error(`${step.label}: ${e.message}`);
+      setRunningStep(null);
+    }
+  };
+
+  // Start full provisioning cascade from step 1
+  const runAllSteps = async () => {
+    const firstIncomplete = PROVISION_STEPS.find(s => !isStepDone(s.id));
+    if (firstIncomplete) {
+      await runStep(firstIncomplete, true);
+    }
   };
 
   const resetAgent = async () => {
@@ -597,7 +640,7 @@ function AppInner() {
               <span style={{ fontSize: '10px', color: '#71717a' }}>All tools install inside the agent's <strong style={{ color: '#a1a1aa' }}>sandbox VM</strong>. Nothing runs on the host.</span>
             </div>
 
-            {/* Progress */}
+            {/* Progress + Run All */}
             <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '11px', fontWeight: 700, color: allProvDone ? '#34D399' : '#fff' }}>
                 {allProvDone ? 'Agent Provisioned' : 'Provision Agent'}
@@ -606,6 +649,12 @@ function AppInner() {
               <div style={{ flex: 1, height: '4px', background: '#27272a', borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{ height: '100%', background: allProvDone ? '#34D399' : '#fff', borderRadius: '2px', transition: 'width 0.5s', width: `${(completedCount / PROVISION_STEPS.length) * 100}%` }} />
               </div>
+              {!allProvDone && !runningStep && (hasConnectedKey || selectedProvider === 'fly') && (
+                <button data-testid="run-all-steps" onClick={runAllSteps}
+                  style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#34D399', color: '#09090b', fontSize: '10px', fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Rocket style={{ width: '10px', height: '10px' }} /> Run All
+                </button>
+              )}
             </div>
 
             {/* Steps */}
@@ -638,7 +687,7 @@ function AppInner() {
                       </div>
                     </div>
                     {/* Output toggle */}
-                    {hasOutput && (
+                    {hasOutput && !isActive && (
                       <button onClick={() => setExpandedStep(isExpanded ? null : step.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
                         <ChevronDown style={{ width: '12px', height: '12px', color: '#71717a', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                       </button>
@@ -657,10 +706,12 @@ function AppInner() {
                        <><Play style={{ width: '10px', height: '10px' }} /> Run</>}
                     </button>
                   </div>
-                  {/* Output */}
-                  {isExpanded && hasOutput && (
+                  {/* Output — auto-shown when running, toggleable after */}
+                  {(isActive || (isExpanded && hasOutput)) && (
                     <div style={{ background: '#0a0a0a', padding: '8px 14px', borderTop: '1px solid #1a1a1f' }}>
-                      <pre style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: '#a1a1aa', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: '120px', overflowY: 'auto', margin: 0 }}>{stepOutputs[step.id]}</pre>
+                      <pre style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: isActive ? '#60EE79' : '#a1a1aa', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: '200px', overflowY: 'auto', margin: 0 }}>
+                        {stepOutputs[step.id] || (isActive ? `Starting ${step.label}...` : '')}
+                      </pre>
                     </div>
                   )}
                 </div>
