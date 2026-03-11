@@ -70,6 +70,7 @@ function AppInner() {
 
   // VM tier selection
   const [selectedTier, setSelectedTier] = useState('small');
+  const [selectedProvider, setSelectedProvider] = useState('conway');
 
   // Fetch agent list
   const fetchAgents = useCallback(async () => {
@@ -297,8 +298,8 @@ function AppInner() {
 
   const canRunStep = (step) => {
     if (step.id === 'sandbox') {
-      // Allow if API key is connected OR sandbox already exists
-      return (keyStatus?.configured && keyStatus?.valid) || hasSandbox;
+      // Conway needs API key, Fly.io is always ready
+      return selectedProvider === 'fly' || (keyStatus?.configured && keyStatus?.valid) || hasSandbox;
     }
     return hasSandbox;
   };
@@ -316,7 +317,7 @@ function AppInner() {
       // Pass VM tier specs when creating sandbox
       if (step.id === 'sandbox') {
         const tier = VM_TIERS.find(t => t.id === selectedTier) || VM_TIERS[0];
-        opts.body = JSON.stringify({ vcpu: tier.vcpu, memory_mb: tier.memory_mb, disk_gb: tier.disk_gb });
+        opts.body = JSON.stringify({ vcpu: tier.vcpu, memory_mb: tier.memory_mb, disk_gb: tier.disk_gb, provider: selectedProvider });
       }
       const res = await fetch(`${API}${step.action}`, opts);
       const data = await res.json();
@@ -438,7 +439,38 @@ function AppInner() {
             <div style={{ fontSize: '10px', color: '#60EE79', marginTop: '3px' }}>50% of all profit (fees, carry, revenue) to creator. $10K threshold to launch fund.</div>
           </div>
 
-          {/* ═══════ CONNECT YOUR VM ═══════ */}
+          {/* ═══════ PROVIDER SELECTOR ═══════ */}
+          {!hasSandbox && (
+            <div data-testid="provider-selector" style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Infrastructure Provider</span>
+              </div>
+              <div style={{ padding: '10px', display: 'flex', gap: '6px' }}>
+                {[
+                  { id: 'conway', label: 'Conway Cloud', desc: 'Full VM + wallet + x402' },
+                  { id: 'fly', label: 'Fly.io', desc: 'Fast containers, global edge' },
+                ].map(p => {
+                  const sel = selectedProvider === p.id;
+                  return (
+                    <button key={p.id} data-testid={`provider-${p.id}`}
+                      onClick={() => setSelectedProvider(p.id)}
+                      style={{
+                        flex: 1, padding: '10px 12px', borderRadius: '6px', cursor: 'pointer', textAlign: 'left',
+                        background: sel ? '#1a1a2e' : '#09090b',
+                        border: `1px solid ${sel ? '#fff' : '#27272a'}`,
+                        transition: 'all 0.15s',
+                      }}>
+                      <div style={{ fontWeight: 700, fontSize: '12px', color: sel ? '#fff' : '#a1a1aa' }}>{p.label}</div>
+                      <div style={{ fontSize: '10px', color: '#52525b', marginTop: '2px' }}>{p.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ═══════ CONWAY ACCOUNT (only when Conway provider selected) ═══════ */}
+          {selectedProvider === 'conway' && (
           <div data-testid="conway-key-panel" style={{ background: '#18181b', border: `1px solid ${keyStatus?.configured && keyStatus?.valid ? '#166534' : '#27272a'}`, borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -522,9 +554,10 @@ function AppInner() {
               </div>
             )}
           </div>
+          )}
 
           {/* ═══════ VM TIER SELECTOR ═══════ */}
-          {hasConnectedKey && !hasSandbox && (
+          {(hasConnectedKey || selectedProvider === 'fly') && !hasSandbox && (
             <div data-testid="vm-tier-selector" style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
                 <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Select VM</span>

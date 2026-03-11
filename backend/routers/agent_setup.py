@@ -83,27 +83,17 @@ async def _conway_request(method: str, path: str, body: dict = None, timeout: in
 
 
 async def _sandbox_exec(sandbox_id: str, command: str, timeout: int = 120) -> dict:
-    """Execute a command INSIDE the Conway sandbox VM."""
+    """Execute a command inside the sandbox — dispatches to the right provider."""
     if not sandbox_id:
         return {"error": "No sandbox — create one first", "stdout": "", "stderr": "", "exit_code": -1}
-    result = await _conway_request(
-        "POST",
-        f"/v1/sandboxes/{sandbox_id}/exec",
-        {"command": command},
-        timeout=timeout + 10,
-    )
-    if "error" in result and "stdout" not in result:
-        return {"error": result["error"], "stdout": "", "stderr": result.get("error", ""), "exit_code": -1}
-    return {
-        "stdout": result.get("stdout", ""),
-        "stderr": result.get("stderr", ""),
-        "exit_code": result.get("exitCode", result.get("exit_code", -1)),
-    }
+    from sandbox_provider import sandbox_exec
+    return await sandbox_exec(sandbox_id, command, timeout)
 
 
 async def _sandbox_write_file(sandbox_id: str, file_path: str, content: str) -> dict:
-    """Write a file INSIDE the sandbox."""
-    return await _conway_request("POST", f"/v1/sandboxes/{sandbox_id}/files", {"path": file_path, "content": content})
+    """Write a file inside the sandbox — dispatches to the right provider."""
+    from sandbox_provider import sandbox_write_file
+    return await sandbox_write_file(sandbox_id, file_path, content)
 
 
 async def _sandbox_read_file(sandbox_id: str, file_path: str) -> dict:
@@ -151,93 +141,93 @@ class CreateSandboxReq(BaseModel):
     memory_mb: int = 512
     disk_gb: int = 5
     region: str = "us-east"
+    provider: str = "conway"  # "conway" or "fly"
 
 
 @router.post("/create-sandbox")
-async def create_sandbox(req: CreateSandboxReq = CreateSandboxReq()):
-    """Create a Conway Cloud sandbox VM — or REUSE an existing one to preserve credits.
-    Conway sandboxes are prepaid and non-refundable. Always check for existing sandboxes first."""
+async def create_sandbox_endpoint(req: CreateSandboxReq = CreateSandboxReq()):
+    """Create a sandbox VM/container. Supports Conway Cloud and Fly.io providers."""
     status = await _load_prov_status()
 
-    # Already have an active sandbox in provisioning status
-    if status["sandbox"]["status"] == "active" and status["sandbox"]["id"]:
+    # Already have an active sandbox
+    if status.get("sandbox", {}).get("status") == "active" and status.get("sandbox", {}).get("id"):
         return {"success": True, "sandbox_id": status["sandbox"]["id"], "message": "Sandbox already exists", "reused": True}
 
-    # Check Conway API for any existing sandboxes we can reuse
-    existing = await _conway_request("GET", "/v1/sandboxes")
-    if "error" not in existing:
-        sandboxes = existing.get("sandboxes", existing.get("data", []))
-        if isinstance(sandboxes, list) and len(sandboxes) > 0:
-            # Reuse the first available sandbox
-            sb = sandboxes[0]
-            sandbox_id = sb.get("id", sb.get("sandbox_id", ""))
-            if sandbox_id:
-                status["sandbox"] = {
-                    "status": "active",
-                    "id": sandbox_id,
-                    "short_id": sb.get("short_id", ""),
-                    "terminal_url": sb.get("terminal_url", ""),
-                    "region": sb.get("region", req.region),
-                    "vcpu": sb.get("vcpu", req.vcpu),
-                    "memory_mb": sb.get("memory_mb", req.memory_mb),
-                    "disk_gb": sb.get("disk_gb", req.disk_gb),
-                }
-                await _save_prov_status(status)
-                # Also persist in MongoDB
-                try:
-                    from database import get_db
-                    db = get_db()
-                    await db.sandboxes.update_one(
-                        {"sandbox_id": sandbox_id},
-                        {"$set": {"sandbox_id": sandbox_id, "agent_id": get_active_agent_id(), "reused": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
-                        upsert=True,
-                    )
-                except Exception:
-                    pass
-                await _add_nudge(f"Reusing existing sandbox VM (ID: {sandbox_id}). Credits preserved.")
-                return {"success": True, "sandbox_id": sandbox_id, "sandbox": sb, "reused": True, "message": "Reusing existing sandbox — credits preserved"}
+    provider = req.provider
 
-    # No existing sandbox — create a new one
-    result = await _conway_request("POST", "/v1/sandboxes", {
-        "name": req.name,
-        "vcpu": req.vcpu,
-        "memory_mb": req.memory_mb,
-        "disk_gb": req.disk_gb,
-        "region": req.region,
-    })
+    if provider == "fly":
+        # ─── FLY.IO PROVIDER ───
+        from sandbox_provider import fly_create_sandbox
+        result = await fly_create_sandbox({
+            "vcpu": req.vcpu, "memory_mb": req.memory_mb, "disk_gb": req.disk_gb,
+            "region": req.region, "name": req.name,
+        })
+        if "error" in result:
+            return {"success": False, "error": result["error"], "raw": result.get("raw")}
 
-    if "error" in result:
-        return {"success": False, "error": result["error"]}
+        sandbox_id = result.get("id", result.get("sandbox_id", ""))
+        status["sandbox"] = {
+            "status": "active", "id": sandbox_id,
+            "region": result.get("region", req.region),
+            "vcpu": req.vcpu, "memory_mb": req.memory_mb, "disk_gb": req.disk_gb,
+        }
+        status["provider"] = "fly"
+        status["fly_exec_url"] = result.get("exec_url", "")
+        status["fly_exec_token"] = result.get("exec_token", "")
+        status["fly_app_name"] = result.get("fly_app_name", "")
+        await _save_prov_status(status)
+        await _add_nudge(f"Fly.io Machine provisioned (ID: {sandbox_id}). You have your own isolated container.")
+        return {"success": True, "sandbox_id": sandbox_id, "sandbox": result, "provider": "fly", "reused": False}
 
-    sandbox_id = result.get("id", result.get("sandbox_id", ""))
-    if not sandbox_id:
-        return {"success": False, "error": f"No sandbox ID returned: {json.dumps(result)[:200]}"}
+    else:
+        # ─── CONWAY PROVIDER (default) ───
+        # Check for existing sandboxes to reuse
+        existing = await _conway_request("GET", "/v1/sandboxes")
+        if "error" not in existing:
+            sandboxes = existing.get("sandboxes", existing.get("data", []))
+            if isinstance(sandboxes, list) and len(sandboxes) > 0:
+                sb = sandboxes[0]
+                sandbox_id = sb.get("id", sb.get("sandbox_id", ""))
+                if sandbox_id:
+                    status["sandbox"] = {
+                        "status": "active", "id": sandbox_id,
+                        "short_id": sb.get("short_id", ""),
+                        "terminal_url": sb.get("terminal_url", ""),
+                        "region": sb.get("region", req.region),
+                        "vcpu": sb.get("vcpu", req.vcpu),
+                        "memory_mb": sb.get("memory_mb", req.memory_mb),
+                        "disk_gb": sb.get("disk_gb", req.disk_gb),
+                    }
+                    status["provider"] = "conway"
+                    await _save_prov_status(status)
+                    await _add_nudge(f"Reusing existing sandbox VM (ID: {sandbox_id}). Credits preserved.")
+                    return {"success": True, "sandbox_id": sandbox_id, "sandbox": sb, "reused": True, "provider": "conway"}
 
-    status["sandbox"] = {
-        "status": "active",
-        "id": sandbox_id,
-        "short_id": result.get("short_id", ""),
-        "terminal_url": result.get("terminal_url", ""),
-        "region": result.get("region", req.region),
-        "vcpu": result.get("vcpu", req.vcpu),
-        "memory_mb": result.get("memory_mb", req.memory_mb),
-        "disk_gb": result.get("disk_gb", req.disk_gb),
-    }
-    await _save_prov_status(status)
-    # Persist in MongoDB
-    try:
-        from database import get_db
-        db = get_db()
-        await db.sandboxes.update_one(
-            {"sandbox_id": sandbox_id},
-            {"$set": {"sandbox_id": sandbox_id, "agent_id": get_active_agent_id(), "reused": False, "created_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True,
-        )
-    except Exception:
-        pass
-    await _add_nudge(f"Your creator just provisioned a Conway Cloud sandbox VM for you (ID: {sandbox_id}, {req.vcpu} vCPU, {req.memory_mb}MB RAM, {req.disk_gb}GB disk, {req.region}). You now have your own isolated Linux environment.")
+        # Create new Conway sandbox
+        result = await _conway_request("POST", "/v1/sandboxes", {
+            "name": req.name, "vcpu": req.vcpu, "memory_mb": req.memory_mb,
+            "disk_gb": req.disk_gb, "region": req.region,
+        })
+        if "error" in result:
+            return {"success": False, "error": result["error"]}
 
-    return {"success": True, "sandbox_id": sandbox_id, "sandbox": result, "reused": False}
+        sandbox_id = result.get("id", result.get("sandbox_id", ""))
+        if not sandbox_id:
+            return {"success": False, "error": f"No sandbox ID returned: {json.dumps(result)[:200]}"}
+
+        status["sandbox"] = {
+            "status": "active", "id": sandbox_id,
+            "short_id": result.get("short_id", ""),
+            "terminal_url": result.get("terminal_url", ""),
+            "region": result.get("region", req.region),
+            "vcpu": result.get("vcpu", req.vcpu),
+            "memory_mb": result.get("memory_mb", req.memory_mb),
+            "disk_gb": result.get("disk_gb", req.disk_gb),
+        }
+        status["provider"] = "conway"
+        await _save_prov_status(status)
+        await _add_nudge(f"Conway Cloud sandbox provisioned (ID: {sandbox_id}, {req.vcpu} vCPU, {req.memory_mb}MB RAM).")
+        return {"success": True, "sandbox_id": sandbox_id, "sandbox": result, "provider": "conway", "reused": False}
 
 
 @router.get("/sandbox-info")
