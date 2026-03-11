@@ -1,8 +1,7 @@
 """
-Conway API integration — real-time data from api.conway.tech.
+PLATFORM: Conway API integration — real-time data from api.conway.tech.
 """
 import os
-import json
 import aiohttp
 from fastapi import APIRouter
 
@@ -13,15 +12,15 @@ CONWAY_DOMAINS_API = os.environ.get("CONWAY_DOMAINS_API", "https://api.conway.do
 CONWAY_INFERENCE_API = os.environ.get("CONWAY_INFERENCE", "https://inference.conway.tech")
 
 
-def _get_conway_api_key() -> str:
-    """Conway API key — only from environment, never from host filesystem."""
-    return os.environ.get("CONWAY_API_KEY", "")
+async def _get_conway_api_key() -> str:
+    from agent_state import get_conway_api_key
+    return await get_conway_api_key()
 
 
 @router.get("/conway/balance")
 async def get_conway_balance():
     """Real-time balance from Conway API."""
-    api_key = _get_conway_api_key()
+    api_key = await _get_conway_api_key()
     if not api_key:
         return {"error": "No Conway API key configured", "source": "conway_api"}
 
@@ -59,7 +58,7 @@ async def get_conway_balance():
 @router.get("/conway/sandboxes")
 async def get_conway_sandboxes():
     """List sandboxes from Conway Cloud API."""
-    api_key = _get_conway_api_key()
+    api_key = await _get_conway_api_key()
     if not api_key:
         return {"error": "No Conway API key configured"}
 
@@ -80,7 +79,7 @@ async def get_conway_sandboxes():
 @router.get("/conway/credits/pricing")
 async def get_conway_pricing():
     """Get Conway credits pricing tiers."""
-    api_key = _get_conway_api_key()
+    api_key = await _get_conway_api_key()
     if not api_key:
         return {"error": "No Conway API key configured"}
 
@@ -101,7 +100,7 @@ async def get_conway_pricing():
 @router.get("/conway/credits/history")
 async def get_conway_credits_history():
     """Get Conway credits transaction history."""
-    api_key = _get_conway_api_key()
+    api_key = await _get_conway_api_key()
     if not api_key:
         return {"error": "No Conway API key configured"}
 

@@ -2,7 +2,6 @@
 Live engine data endpoints.
 Reads from the sandbox poller cache — real agent data from the Conway sandbox.
 """
-import os
 import json as _json
 import asyncio
 from datetime import datetime, timezone
@@ -18,24 +17,17 @@ router = APIRouter(prefix="/api", tags=["live"])
 @router.get("/live/identity")
 async def live_identity():
     """Agent identity — from MongoDB."""
-    from routers.genesis import _get_active_agent_id, _load_prov_status
-    from database import get_db
-    agent_id = _get_active_agent_id()
-    prov = _load_prov_status()
-    try:
-        col = get_db()["agents"]
-        doc = await col.find_one({"agent_id": agent_id}, {"_id": 0})
-        if doc:
-            return {
-                "name": doc.get("name", "Anima Fund"),
-                "address": prov.get("wallet_address", ""),
-                "creator": os.environ.get("CREATOR_WALLET", ""),
-                "agent_id": agent_id,
-                "source": "database",
-            }
-    except Exception:
-        pass
-    return {"name": "Anima Fund", "address": prov.get("wallet_address", ""), "agent_id": agent_id, "source": "database"}
+    from agent_state import get_active_agent_id, load_provisioning, get_agent_config
+    agent_id = get_active_agent_id()
+    prov = await load_provisioning()
+    agent_config = await get_agent_config()
+    return {
+        "name": agent_config.get("name", "Anima Fund"),
+        "address": prov.get("wallet_address", ""),
+        "creator": agent_config.get("creator_sol_wallet", ""),
+        "agent_id": agent_id,
+        "source": "database",
+    }
 
 
 @router.get("/live/financials")
@@ -127,8 +119,8 @@ async def live_memory():
 @router.get("/live/tools")
 async def live_installed_tools():
     """Installed tools from provisioning status."""
-    from routers.genesis import _load_prov_status
-    prov = _load_prov_status()
+    from agent_state import load_provisioning
+    prov = await load_provisioning()
     tools = prov.get("tools", {})
     tool_list = [{"name": k, **v} for k, v in tools.items()]
     return {"tools": tool_list, "total": len(tool_list), "source": "sandbox"}

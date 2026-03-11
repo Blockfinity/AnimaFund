@@ -1,9 +1,8 @@
 """
-Agent Provisioning — complete Conway ecosystem management.
+PLATFORM: Agent Provisioning — complete Conway ecosystem management.
 
-Live-equip a running agent with sandbox, tools, ports, compute, domains, and skills.
-Every action runs INSIDE the agent's Conway sandbox via API calls.
-The agent reads provisioning-status.json each turn and is aware of each change.
+The PLATFORM provisions Conway VMs for agents and deploys agent code into them.
+All provisioning state lives in MongoDB. Agent execution happens inside Conway VMs.
 """
 import os
 import json
@@ -13,7 +12,11 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional, List
 
-from config import AUTOMATON_DIR, ANIMA_DIR
+from config import AUTOMATON_DIR
+from agent_state import (
+    get_active_agent_id, load_provisioning, save_provisioning,
+    get_conway_api_key, set_conway_api_key, add_nudge, get_agent_config,
+)
 
 router = APIRouter(prefix="/api/provision", tags=["provision"])
 
@@ -21,134 +24,31 @@ CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
 CONWAY_INFERENCE = os.environ.get("CONWAY_INFERENCE", "https://inference.conway.tech")
 
 
-def _get_active_agent_id() -> str:
-    """Read the active agent ID from the persisted file."""
-    try:
-        with open("/tmp/anima_active_agent_id", "r") as f:
-            aid = f.read().strip()
-            if aid:
-                return aid
-    except FileNotFoundError:
-        pass
-    return "anima-fund"
+# Async wrappers for backward compat within this file
+async def _load_prov_status() -> dict:
+    return await load_provisioning()
 
 
-def _get_prov_status_file() -> str:
-    """Resolve provisioning-status.json path for the currently active agent."""
-    agent_id = _get_active_agent_id()
-    if agent_id == "anima-fund" or not agent_id:
-        return os.path.join(ANIMA_DIR, "provisioning-status.json")
-    agent_dir = os.path.expanduser(f"~/agents/{agent_id}/.anima")
-    os.makedirs(agent_dir, exist_ok=True)
-    return os.path.join(agent_dir, "provisioning-status.json")
+async def _save_prov_status(status: dict):
+    await save_provisioning(status)
 
 
-def _get_conway_api_key() -> str:
-    """Get Conway API key for the ACTIVE agent.
-    Priority: agent's provisioning-status.json → env var fallback."""
-    # 1. Check the active agent's provisioning status
-    prov_file = _get_prov_status_file()
-    if os.path.exists(prov_file):
-        try:
-            with open(prov_file) as f:
-                prov = json.load(f)
-                key = prov.get("conway_api_key", "")
-                if key:
-                    return key
-        except Exception:
-            pass
-    # 2. Fallback to env var (for the default agent or initial setup)
-    key = os.environ.get("CONWAY_API_KEY", "")
-    if not key:
-        config_path = os.path.join(ANIMA_DIR, "config.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path) as f:
-                    key = json.load(f).get("apiKey", "")
-            except Exception:
-                pass
-    return key
+async def _add_nudge(message: str):
+    await add_nudge(message)
+
+
+async def _get_conway_api_key_async() -> str:
+    return await get_conway_api_key()
 
 
 async def _persist_conway_key(api_key: str, agent_id: str = None):
-    """Persist a Conway API key for a specific agent.
-    Updates: agent's provisioning-status.json, MongoDB agent doc, and runtime env."""
-    if not api_key:
-        return
-    if not agent_id:
-        agent_id = _get_active_agent_id()
-
-    # 1. Store in the agent's provisioning-status.json (per-agent, sync-readable)
-    prov = _load_prov_status()
-    prov["conway_api_key"] = api_key
-    _save_prov_status(prov)
-
-    # 2. Store on the agent's MongoDB document (survives redeployments)
-    try:
-        from database import get_db
-        db = get_db()
-        await db.agents.update_one(
-            {"agent_id": agent_id},
-            {"$set": {
-                "conway_api_key": api_key,
-                "conway_key_updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=False,
-        )
-    except Exception:
-        pass
-
-    # 3. Update runtime env var (for the currently active agent)
-    os.environ["CONWAY_API_KEY"] = api_key
-
-
-# ═══════════════════════════════════════════════════════════
-# PROVISIONING STATUS — the agent reads this every turn
-# ═══════════════════════════════════════════════════════════
-
-def _load_prov_status() -> dict:
-    prov_file = _get_prov_status_file()
-    if os.path.exists(prov_file):
-        try:
-            with open(prov_file) as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {
-        "sandbox": {"status": "none", "id": None, "terminal_url": None, "region": None},
-        "tools": {},
-        "ports": [],
-        "domains": [],
-        "compute_verified": False,
-        "skills_loaded": False,
-        "nudges": [],
-        "last_updated": None,
-    }
-
-
-def _save_prov_status(status: dict):
-    prov_file = _get_prov_status_file()
-    os.makedirs(os.path.dirname(prov_file), exist_ok=True)
-    status["last_updated"] = datetime.now(timezone.utc).isoformat()
-    status["agent_id"] = _get_active_agent_id()
-    with open(prov_file, "w") as f:
-        json.dump(status, f, indent=2)
-
-
-def _add_nudge(message: str):
-    """Add a nudge message the agent will see on its next turn."""
-    status = _load_prov_status()
-    status["nudges"].append({
-        "message": message,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
-    status["nudges"] = status["nudges"][-5:]
-    _save_prov_status(status)
+    """Persist a Conway API key to MongoDB."""
+    await set_conway_api_key(api_key, agent_id)
 
 
 async def _conway_request(method: str, path: str, body: dict = None, timeout: int = 30, base_url: str = None) -> dict:
     """Make an authenticated request to Conway API."""
-    api_key = _get_conway_api_key()
+    api_key = await _get_conway_api_key_async()
     if not api_key:
         return {"error": "No Conway API key configured"}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -218,7 +118,7 @@ async def _sandbox_read_file(sandbox_id: str, file_path: str) -> dict:
 @router.get("/status")
 async def get_provision_status():
     """Full provisioning state for the currently active agent."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     credits_cents = 0
     try:
         balance = await _conway_request("GET", "/v1/credits/balance")
@@ -227,7 +127,7 @@ async def get_provision_status():
         pass
 
     return {
-        "agent_id": _get_active_agent_id(),
+        "agent_id": get_active_agent_id(),
         "sandbox": status["sandbox"],
         "tools": status["tools"],
         "ports": status.get("ports", []),
@@ -257,7 +157,7 @@ class CreateSandboxReq(BaseModel):
 async def create_sandbox(req: CreateSandboxReq = CreateSandboxReq()):
     """Create a Conway Cloud sandbox VM — or REUSE an existing one to preserve credits.
     Conway sandboxes are prepaid and non-refundable. Always check for existing sandboxes first."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
 
     # Already have an active sandbox in provisioning status
     if status["sandbox"]["status"] == "active" and status["sandbox"]["id"]:
@@ -282,19 +182,19 @@ async def create_sandbox(req: CreateSandboxReq = CreateSandboxReq()):
                     "memory_mb": sb.get("memory_mb", req.memory_mb),
                     "disk_gb": sb.get("disk_gb", req.disk_gb),
                 }
-                _save_prov_status(status)
+                await _save_prov_status(status)
                 # Also persist in MongoDB
                 try:
                     from database import get_db
                     db = get_db()
                     await db.sandboxes.update_one(
                         {"sandbox_id": sandbox_id},
-                        {"$set": {"sandbox_id": sandbox_id, "agent_id": _get_active_agent_id(), "reused": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
+                        {"$set": {"sandbox_id": sandbox_id, "agent_id": get_active_agent_id(), "reused": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
                         upsert=True,
                     )
                 except Exception:
                     pass
-                _add_nudge(f"Reusing existing sandbox VM (ID: {sandbox_id}). Credits preserved.")
+                await _add_nudge(f"Reusing existing sandbox VM (ID: {sandbox_id}). Credits preserved.")
                 return {"success": True, "sandbox_id": sandbox_id, "sandbox": sb, "reused": True, "message": "Reusing existing sandbox — credits preserved"}
 
     # No existing sandbox — create a new one
@@ -323,19 +223,19 @@ async def create_sandbox(req: CreateSandboxReq = CreateSandboxReq()):
         "memory_mb": result.get("memory_mb", req.memory_mb),
         "disk_gb": result.get("disk_gb", req.disk_gb),
     }
-    _save_prov_status(status)
+    await _save_prov_status(status)
     # Persist in MongoDB
     try:
         from database import get_db
         db = get_db()
         await db.sandboxes.update_one(
             {"sandbox_id": sandbox_id},
-            {"$set": {"sandbox_id": sandbox_id, "agent_id": _get_active_agent_id(), "reused": False, "created_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {"sandbox_id": sandbox_id, "agent_id": get_active_agent_id(), "reused": False, "created_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
     except Exception:
         pass
-    _add_nudge(f"Your creator just provisioned a Conway Cloud sandbox VM for you (ID: {sandbox_id}, {req.vcpu} vCPU, {req.memory_mb}MB RAM, {req.disk_gb}GB disk, {req.region}). You now have your own isolated Linux environment.")
+    await _add_nudge(f"Your creator just provisioned a Conway Cloud sandbox VM for you (ID: {sandbox_id}, {req.vcpu} vCPU, {req.memory_mb}MB RAM, {req.disk_gb}GB disk, {req.region}). You now have your own isolated Linux environment.")
 
     return {"success": True, "sandbox_id": sandbox_id, "sandbox": result, "reused": False}
 
@@ -343,7 +243,7 @@ async def create_sandbox(req: CreateSandboxReq = CreateSandboxReq()):
 @router.get("/sandbox-info")
 async def sandbox_info():
     """Get detailed info about the current sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -379,7 +279,7 @@ async def delete_sandbox():
 async def reset_sandbox():
     """Reset the agent inside an existing sandbox — wipe all agent data, keep the sandbox alive.
     This preserves Conway credits by reusing the same VM."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox to reset"}
@@ -407,10 +307,10 @@ async def reset_sandbox():
             "nudges": [],
             "last_updated": None,
         }
-        _save_prov_status(new_status)
+        await _save_prov_status(new_status)
         outputs.append("[status] provisioning reset — sandbox preserved")
 
-        _add_nudge("Sandbox has been reset. All agent data wiped. Ready for fresh provisioning. Credits preserved.")
+        await _add_nudge("Sandbox has been reset. All agent data wiped. Ready for fresh provisioning. Credits preserved.")
 
         return {
             "success": True,
@@ -430,7 +330,7 @@ async def reset_sandbox():
 async def install_terminal():
     """Install Conway Terminal using the official one-line setup.
     This auto-creates the agent's wallet, provisions API key, and configures MCPs."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
@@ -450,7 +350,7 @@ async def install_terminal():
 
     # 3. Conway Terminal via official one-line setup
     # This: installs conway-terminal, creates wallet, provisions API key, configures MCPs
-    api_key = _get_conway_api_key()
+    api_key = await _get_conway_api_key_async()
     if api_key:
         # Use existing API key
         r = await _sandbox_exec(sandbox_id, f"npm install -g conway-terminal 2>&1 | tail -5 && mkdir -p ~/.conway && echo '{{\"apiKey\":\"{api_key}\"}}' > ~/.conway/config.json && conway-terminal --version")
@@ -488,9 +388,9 @@ async def install_terminal():
         }
         if wallet_address:
             status["wallet_address"] = wallet_address
-        _save_prov_status(status)
+        await _save_prov_status(status)
         wallet_msg = f" Wallet: {wallet_address}" if wallet_address else ""
-        _add_nudge(f"Conway Terminal installed in your sandbox.{wallet_msg} You now have ALL Conway MCP tools: sandboxes, compute, domains, payments (x402/USDC), PTY sessions, and self-modification. Your wallet was auto-created — check ~/.conway/config.json.")
+        await _add_nudge(f"Conway Terminal installed in your sandbox.{wallet_msg} You now have ALL Conway MCP tools: sandboxes, compute, domains, payments (x402/USDC), PTY sessions, and self-modification. Your wallet was auto-created — check ~/.conway/config.json.")
         return {"success": True, "wallet_address": wallet_address, "api_key_synced": bool(sandbox_api_key and sandbox_api_key != api_key), "output": "\n".join(outputs)}
     else:
         return {"success": False, "error": "Install failed", "output": "\n".join(outputs)}
@@ -500,7 +400,7 @@ async def install_terminal():
 async def sync_key_from_sandbox():
     """Force-pull the Conway API key from the running sandbox and persist it.
     Use when the sandbox has a key the platform doesn't know about."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet."}
@@ -512,7 +412,7 @@ async def sync_key_from_sandbox():
         if not sandbox_key:
             return {"success": False, "error": "No API key found in sandbox ~/.conway/config.json"}
 
-        current_key = _get_conway_api_key()
+        current_key = await _get_conway_api_key_async()
         if sandbox_key == current_key:
             return {"success": True, "message": "Key already in sync", "key_prefix": sandbox_key[:12] + "..."}
 
@@ -531,7 +431,7 @@ async def sync_key_from_sandbox():
 async def install_openclaw():
     """Install OpenClaw (autonomous browser agent) inside the sandbox.
     Auto-configures Conway Terminal MCP so OpenClaw has access to all tools."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
@@ -549,7 +449,7 @@ async def install_openclaw():
     r_key = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('apiKey',''))\" 2>/dev/null || echo ''")
     sandbox_api_key = r_key["stdout"].strip()
     if not sandbox_api_key:
-        sandbox_api_key = _get_conway_api_key()
+        sandbox_api_key = await _get_conway_api_key_async()
 
     # Configure MCP to point at conway-terminal with the sandbox's own API key
     mcp_config = json.dumps({"mcpServers": {"conway": {"command": "conway-terminal", "env": {"CONWAY_API_KEY": sandbox_api_key} if sandbox_api_key else {}}}}, indent=2)
@@ -559,8 +459,8 @@ async def install_openclaw():
     outputs.append(f"[verify] {r3['stdout']}")
 
     status["tools"]["openclaw"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
-    _save_prov_status(status)
-    _add_nudge("OpenClaw installed with Conway MCP integration. You can now: browse any webpage (browse_page), discover other agents (discover_agents), send messages (send_message), and use ALL Conway tools through OpenClaw's MCP bridge.")
+    await _save_prov_status(status)
+    await _add_nudge("OpenClaw installed with Conway MCP integration. You can now: browse any webpage (browse_page), discover other agents (discover_agents), send messages (send_message), and use ALL Conway tools through OpenClaw's MCP bridge.")
 
     return {"success": True, "output": "\n".join(outputs)}
 
@@ -569,7 +469,7 @@ async def install_openclaw():
 async def install_claude_code():
     """Install Claude Code inside the sandbox and configure Conway MCP.
     Gives the agent self-modification capabilities via Claude Code."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
@@ -584,7 +484,7 @@ async def install_claude_code():
     r_key = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null | python3 -c \"import sys,json;print(json.load(sys.stdin).get('apiKey',''))\" 2>/dev/null || echo ''")
     sandbox_api_key = r_key["stdout"].strip()
     if not sandbox_api_key:
-        sandbox_api_key = _get_conway_api_key()
+        sandbox_api_key = await _get_conway_api_key_async()
 
     # Add Conway as MCP server in Claude Code (per docs: claude mcp add conway conway-terminal -e CONWAY_API_KEY=...)
     mcp_configured = False
@@ -604,8 +504,8 @@ async def install_claude_code():
 
     if installed:
         status["tools"]["claude-code"] = {"installed": True, "mcp_configured": mcp_configured, "timestamp": datetime.now(timezone.utc).isoformat()}
-        _save_prov_status(status)
-        _add_nudge("Claude Code installed with Conway MCP. You can now self-modify code, debug, deploy apps, and use Claude's coding capabilities alongside all Conway tools. Use PTY sessions for interactive work like REPLs and editors.")
+        await _save_prov_status(status)
+        await _add_nudge("Claude Code installed with Conway MCP. You can now self-modify code, debug, deploy apps, and use Claude's coding capabilities alongside all Conway tools. Use PTY sessions for interactive work like REPLs and editors.")
         return {"success": True, "output": "\n".join(outputs)}
     else:
         return {"success": False, "error": "Claude Code installation failed", "output": "\n".join(outputs)}
@@ -623,7 +523,7 @@ class ExposePortReq(BaseModel):
 @router.post("/expose-port")
 async def expose_port(req: ExposePortReq):
     """Expose a port from the sandbox to the internet with a public URL."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
@@ -654,8 +554,8 @@ async def expose_port(req: ExposePortReq):
     # Replace existing port entry or add new
     status["ports"] = [p for p in status["ports"] if p["port"] != req.port]
     status["ports"].append(port_info)
-    _save_prov_status(status)
-    _add_nudge(f"Port {req.port} is now exposed to the internet: {port_info['public_url']}" + (f" (also: {port_info['custom_url']})" if port_info.get('custom_url') else ""))
+    await _save_prov_status(status)
+    await _add_nudge(f"Port {req.port} is now exposed to the internet: {port_info['public_url']}" + (f" (also: {port_info['custom_url']})" if port_info.get('custom_url') else ""))
 
     return {"success": True, "port": port_info}
 
@@ -663,7 +563,7 @@ async def expose_port(req: ExposePortReq):
 @router.post("/unexpose-port")
 async def unexpose_port(port: int):
     """Remove public access to a port."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -673,7 +573,7 @@ async def unexpose_port(port: int):
         return {"success": False, "error": result["error"]}
 
     status["ports"] = [p for p in status.get("ports", []) if p["port"] != port]
-    _save_prov_status(status)
+    await _save_prov_status(status)
     return {"success": True, "message": f"Port {port} unexposed"}
 
 
@@ -684,7 +584,7 @@ async def unexpose_port(port: int):
 @router.post("/web-terminal")
 async def create_web_terminal():
     """Create a web terminal session for browser access to the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
@@ -695,7 +595,7 @@ async def create_web_terminal():
 
     terminal_url = result.get("terminal_url", "")
     status["sandbox"]["terminal_url"] = terminal_url
-    _save_prov_status(status)
+    await _save_prov_status(status)
 
     return {
         "success": True,
@@ -718,7 +618,7 @@ class PtyCreateReq(BaseModel):
 @router.post("/pty/create")
 async def pty_create(req: PtyCreateReq = PtyCreateReq()):
     """Create a new PTY session in the sandbox for interactive programs."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
@@ -743,7 +643,7 @@ class PtyWriteReq(BaseModel):
 @router.post("/pty/write")
 async def pty_write(req: PtyWriteReq):
     """Send input to a PTY session. Use \\n for Enter, \\x03 for Ctrl+C."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -761,7 +661,7 @@ async def pty_write(req: PtyWriteReq):
 @router.get("/pty/read")
 async def pty_read(session_id: str = Query(...), full: bool = Query(default=False)):
     """Read output from a PTY session."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -784,7 +684,7 @@ class PtyResizeReq(BaseModel):
 @router.post("/pty/resize")
 async def pty_resize(req: PtyResizeReq):
     """Resize a PTY session."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -803,7 +703,7 @@ async def pty_resize(req: PtyResizeReq):
 @router.delete("/pty/{session_id}")
 async def pty_close(session_id: str):
     """Close a PTY session and terminate the process."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -819,7 +719,7 @@ async def pty_close(session_id: str):
 @router.get("/pty/list")
 async def pty_list():
     """List all active PTY sessions for the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -839,7 +739,7 @@ async def pty_list():
 @router.get("/port-url")
 async def get_port_url(port: int = Query(...)):
     """Get the public URL for a specific port on the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     short_id = status["sandbox"].get("short_id", "")
     if not sandbox_id:
@@ -860,7 +760,7 @@ class TestComputeReq(BaseModel):
 @router.post("/test-compute")
 async def test_compute(req: TestComputeReq = TestComputeReq()):
     """Test Conway Compute — run a quick inference call to verify it works."""
-    api_key = _get_conway_api_key()
+    api_key = await _get_conway_api_key_async()
     if not api_key:
         return {"success": False, "error": "No Conway API key"}
 
@@ -879,11 +779,11 @@ async def test_compute(req: TestComputeReq = TestComputeReq()):
     except (KeyError, IndexError):
         response_text = str(result)[:200]
 
-    status = _load_prov_status()
+    status = await _load_prov_status()
     status["compute_verified"] = True
     status["tools"]["compute"] = {"verified": True, "model_tested": req.model, "timestamp": datetime.now(timezone.utc).isoformat()}
-    _save_prov_status(status)
-    _add_nudge(f"Conway Compute is working. Tested {req.model}: \"{response_text[:100]}\"")
+    await _save_prov_status(status)
+    await _add_nudge(f"Conway Compute is working. Tested {req.model}: \"{response_text[:100]}\"")
 
     return {"success": True, "model": req.model, "response": response_text, "usage": result.get("usage")}
 
@@ -964,7 +864,7 @@ async def domain_pricing(tlds: str = Query(default="com,io,ai,xyz,dev")):
 @router.get("/domain-list")
 async def domain_list():
     """List all registered domains. Requires sandbox with Conway Terminal (SIWE wallet auth)."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires a provisioned sandbox with Conway Terminal. Domains API uses wallet auth (SIWE), not API key."}
@@ -990,11 +890,11 @@ class DomainRegisterReq(BaseModel):
 @router.post("/domain-register")
 async def domain_register(req: DomainRegisterReq):
     """Register a domain. Requires sandbox — uses x402 USDC payment via agent's wallet."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal. Domain registration uses x402 USDC payment from the agent's wallet."}
-    _add_nudge(f"Your creator wants you to register the domain '{req.domain}' for {req.years} year(s). Use domain_register tool: domain_register --domain {req.domain} --years {req.years} --privacy {str(req.privacy).lower()}")
+    await _add_nudge(f"Your creator wants you to register the domain '{req.domain}' for {req.years} year(s). Use domain_register tool: domain_register --domain {req.domain} --years {req.years} --privacy {str(req.privacy).lower()}")
     return {"success": True, "message": f"Nudge sent to agent to register '{req.domain}'. The agent will use its wallet to pay via x402.", "domain": req.domain}
 
 
@@ -1008,11 +908,11 @@ class DomainRenewReq(BaseModel):
 @router.post("/domain-renew")
 async def domain_renew(req: DomainRenewReq):
     """Renew a domain. Requires sandbox — uses x402 USDC payment via agent's wallet."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
-    _add_nudge(f"Your creator wants you to renew the domain '{req.domain}' for {req.years} year(s). Use domain_renew tool.")
+    await _add_nudge(f"Your creator wants you to renew the domain '{req.domain}' for {req.years} year(s). Use domain_renew tool.")
     return {"success": True, "message": f"Nudge sent to agent to renew '{req.domain}'.", "domain": req.domain}
 
 
@@ -1021,7 +921,7 @@ async def domain_renew(req: DomainRenewReq):
 @router.get("/domain-dns-list")
 async def domain_dns_list(domain: str = Query(...)):
     """List DNS records for a domain. Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1048,7 +948,7 @@ class DomainDnsAddReq(BaseModel):
 @router.post("/domain-dns-add")
 async def domain_dns_add(req: DomainDnsAddReq):
     """Add a DNS record to a domain. Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1082,7 +982,7 @@ class DomainDnsUpdateReq(BaseModel):
 @router.put("/domain-dns-update")
 async def domain_dns_update(req: DomainDnsUpdateReq):
     """Update a DNS record. Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1118,7 +1018,7 @@ class DomainDnsDeleteReq(BaseModel):
 @router.delete("/domain-dns-delete")
 async def domain_dns_delete(req: DomainDnsDeleteReq):
     """Delete a DNS record. Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1142,7 +1042,7 @@ class DomainPrivacyReq(BaseModel):
 @router.put("/domain-privacy")
 async def domain_privacy(req: DomainPrivacyReq):
     """Toggle WHOIS privacy for a domain. Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1169,7 +1069,7 @@ class DomainNameserversReq(BaseModel):
 @router.put("/domain-nameservers")
 async def domain_nameservers(req: DomainNameserversReq):
     """Update nameservers for a domain (2-13 entries). Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1191,7 +1091,7 @@ async def domain_nameservers(req: DomainNameserversReq):
 @router.get("/domain-info")
 async def domain_info(domain: str = Query(...)):
     """Get detailed info for a specific domain. Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1210,7 +1110,7 @@ async def domain_info(domain: str = Query(...)):
 @router.get("/domain-transactions")
 async def domain_transactions():
     """List all domain transactions. Routes through sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id or not status["tools"].get("conway-terminal", {}).get("installed"):
         return {"success": False, "error": "Requires sandbox with Conway Terminal."}
@@ -1245,7 +1145,7 @@ async def get_credits():
 @router.get("/wallet")
 async def get_wallet():
     """Get wallet info — agent's USDC wallet address and balances."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
 
     # Try to get wallet info from conway-terminal inside sandbox
@@ -1282,7 +1182,7 @@ class UploadFileReq(BaseModel):
 @router.post("/upload-file")
 async def upload_file(req: UploadFileReq):
     """Upload a file to the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -1295,7 +1195,7 @@ async def upload_file(req: UploadFileReq):
 @router.get("/read-file")
 async def read_file(path: str = Query(...)):
     """Read a file from the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -1308,7 +1208,7 @@ async def read_file(path: str = Query(...)):
 @router.get("/list-files")
 async def list_files(path: str = Query(default="/root")):
     """List files in a sandbox directory."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -1329,7 +1229,7 @@ class ExecReq(BaseModel):
 @router.post("/exec")
 async def exec_in_sandbox(req: ExecReq):
     """Execute a shell command inside the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -1345,7 +1245,7 @@ class RunCodeReq(BaseModel):
 @router.post("/run-code")
 async def run_code(req: RunCodeReq):
     """Execute code inside the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -1364,7 +1264,7 @@ async def load_skills():
     """Push skills into the sandbox at OpenClaw-compatible paths and install priority skills from ClawHub.
     All operations happen INSIDE the sandbox VM — nothing installed on the host."""
     from database import get_db
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
@@ -1389,7 +1289,7 @@ async def load_skills():
                 skill_names.append(skill_name)
 
     # 2. Install priority skills from ClawHub INSIDE the sandbox
-    agent_id = _get_active_agent_id()
+    agent_id = get_active_agent_id()
     selected_skills = []
     try:
         col = get_db()["agents"]
@@ -1433,7 +1333,7 @@ async def load_skills():
         "priority_skills": selected_skills,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    _save_prov_status(status)
+    await _save_prov_status(status)
 
     msg = f"Skills loaded into your sandbox at ~/.openclaw/skills/: {skill_count} local skills."
     if clawhub_installed:
@@ -1441,7 +1341,7 @@ async def load_skills():
     if clawhub_failed:
         msg += f" Failed to install: {', '.join(f['skill'] for f in clawhub_failed)} — install manually with: npx clawhub@latest install <skill>"
     msg += " Run 'openclaw skills list' to see all loaded skills. Search more at: npx clawhub search \"<query>\""
-    _add_nudge(msg)
+    await _add_nudge(msg)
 
     return {
         "success": True,
@@ -1460,7 +1360,7 @@ async def load_skills():
 @router.post("/nudge")
 async def nudge_agent():
     """Send the default autonomy nudge."""
-    _add_nudge("Your creator has finished setting up your environment. All tools are installed in your sandbox. Test them and begin your mission. You are now fully autonomous — no more human control.")
+    await _add_nudge("Your creator has finished setting up your environment. All tools are installed in your sandbox. Test them and begin your mission. You are now fully autonomous — no more human control.")
     return {"success": True, "message": "Autonomy nudge sent"}
 
 
@@ -1471,7 +1371,7 @@ class CustomNudge(BaseModel):
 @router.post("/nudge/custom")
 async def nudge_agent_custom(req: CustomNudge):
     """Send a custom message to the agent."""
-    _add_nudge(req.message)
+    await _add_nudge(req.message)
     return {"success": True, "message": req.message}
 
 
@@ -1482,7 +1382,7 @@ async def nudge_agent_custom(req: CustomNudge):
 @router.post("/verify-sandbox")
 async def verify_sandbox():
     """Run functional tests inside the sandbox to confirm tools work."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -1514,12 +1414,16 @@ async def verify_sandbox():
 
 @router.post("/deploy-agent")
 async def deploy_agent():
-    """Deploy the Automaton engine INSIDE the sandbox and start it.
-    The agent will be born inside the sandbox with its own wallet."""
-    status = _load_prov_status()
+    """PLATFORM: Deploy the Automaton engine INSIDE the Conway VM.
+    Reads ALL agent config from MongoDB — no host env var access."""
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox. Create one first."}
+
+    # PLATFORM: Fetch agent config from MongoDB (not host env)
+    agent_config = await get_agent_config()
+    agent_id = get_active_agent_id()
 
     outputs = []
 
@@ -1528,18 +1432,25 @@ async def deploy_agent():
         r = await _sandbox_exec(sandbox_id, "mkdir -p /app/automaton/dist ~/.anima ~/.automaton /var/log")
         outputs.append(f"[dirs] exit={r['exit_code']}")
 
-        # 2. Push genesis prompt into sandbox
-        genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
-        if os.path.exists(genesis_src):
-            with open(genesis_src, "r") as f:
-                genesis_content = f.read()
-            # Inject secrets
+        # 2. Push genesis prompt into sandbox — from MongoDB agent doc
+        genesis_content = agent_config.get("genesis_prompt", "")
+        if not genesis_content:
+            # Fallback: load template from automaton repo
+            genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+            if os.path.exists(genesis_src):
+                with open(genesis_src, "r") as f:
+                    genesis_content = f.read()
+
+        if genesis_content:
+            # Inject agent-specific config from MongoDB (NOT host env)
             secrets = {
-                "{{TELEGRAM_BOT_TOKEN}}": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
-                "{{TELEGRAM_CHAT_ID}}": os.environ.get("TELEGRAM_CHAT_ID", ""),
-                "{{CREATOR_WALLET}}": os.environ.get("CREATOR_WALLET", ""),
-                "{{AGENT_NAME}}": os.environ.get("AGENT_NAME", "Anima Fund"),
-                "{{AGENT_ID}}": os.environ.get("AGENT_ID", "anima-fund"),
+                "{{TELEGRAM_BOT_TOKEN}}": agent_config.get("telegram_bot_token", ""),
+                "{{TELEGRAM_CHAT_ID}}": agent_config.get("telegram_chat_id", ""),
+                "{{CREATOR_WALLET}}": agent_config.get("creator_sol_wallet", ""),
+                "{{CREATOR_ETH_ADDRESS}}": agent_config.get("creator_eth_wallet", ""),
+                "{{AGENT_NAME}}": agent_config.get("name", "Anima Fund"),
+                "{{AGENT_ID}}": agent_id,
+                "{{DASHBOARD_URL}}": os.environ.get("REACT_APP_BACKEND_URL", ""),
             }
             for placeholder, value in secrets.items():
                 genesis_content = genesis_content.replace(placeholder, value)
@@ -1774,23 +1685,23 @@ sys.exit(0 if passed == total else 1)
         else:
             outputs.append("[engine] WARNING: dist/bundle.mjs not found — agent may need manual engine setup")
 
-        # 7. Set environment variables and start the engine inside sandbox
-        env_vars = {}
-        for var in ["CONWAY_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-                     "CREATOR_WALLET", "CREATOR_ETH_ADDRESS", "AGENT_NAME"]:
-            val = os.environ.get(var, "")
-            if val:
-                env_vars[var] = val
+        # 7. PLATFORM: Build env vars from MongoDB agent config (NOT host env)
+        api_key = await _get_conway_api_key_async()
+        env_vars = {
+            "CONWAY_API_KEY": api_key,
+            "TELEGRAM_BOT_TOKEN": agent_config.get("telegram_bot_token", ""),
+            "TELEGRAM_CHAT_ID": agent_config.get("telegram_chat_id", ""),
+            "CREATOR_WALLET": agent_config.get("creator_sol_wallet", ""),
+            "CREATOR_ETH_ADDRESS": agent_config.get("creator_eth_wallet", ""),
+            "AGENT_NAME": agent_config.get("name", "Anima Fund"),
+        }
+        # Remove empty values
+        env_vars = {k: v for k, v in env_vars.items() if v}
 
         env_exports = " && ".join(f"export {k}='{v}'" for k, v in env_vars.items()) if env_vars else "true"  # noqa: F841
 
-        # Create webhook daemon — watches agent files and pushes changes to backend instantly
-        api_key = env_vars.get("CONWAY_API_KEY", "")
-        # The backend webhook URL — the sandbox calls our backend directly
-        backend_url = os.environ.get("WEBHOOK_URL", "")
-        if not backend_url:
-            # Construct from known deployment pattern
-            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+        # Create webhook daemon — watches agent files and pushes changes to backend
+        backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
 
         webhook_daemon = f"""#!/usr/bin/env python3
 import json, time, os, subprocess, urllib.request, threading
@@ -1912,7 +1823,7 @@ exec node dist/bundle.mjs --run >> /var/log/automaton.out.log 2>> /var/log/autom
 
         if "ENGINE_RUNNING" in r2["stdout"]:
             status["tools"]["engine"] = {"deployed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
-            _save_prov_status(status)
+            await _save_prov_status(status)
             outputs.append("[verify] ENGINE RUNNING inside sandbox")
             return {"success": True, "message": "Agent deployed and running inside sandbox", "output": "\n".join(outputs)}
         else:
@@ -1928,7 +1839,7 @@ exec node dist/bundle.mjs --run >> /var/log/automaton.out.log 2>> /var/log/autom
 @router.get("/agent-logs")
 async def get_agent_logs(lines: int = 50):
     """Read the agent's stdout/stderr logs from inside the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}
@@ -1946,15 +1857,10 @@ async def get_agent_logs(lines: int = 50):
 @router.get("/phase-state")
 async def get_phase_state():
     """Read the agent's current phase state from inside the sandbox."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
-        # Try local
-        local_path = os.path.join(ANIMA_DIR, "phase-state.json")
-        if os.path.exists(local_path):
-            with open(local_path) as f:
-                return {"success": True, "phase_state": json.load(f), "source": "local"}
-        return {"success": False, "error": "No sandbox and no local phase state"}
+        return {"success": False, "error": "No sandbox provisioned"}
 
     r = await _sandbox_exec(sandbox_id, "cat ~/.anima/phase-state.json 2>/dev/null || echo '{}'")
     try:
@@ -1967,7 +1873,7 @@ async def get_phase_state():
 @router.post("/verify-tools")
 async def verify_tools():
     """Run Phase 0 tool verification inside the sandbox. Tests each tool by actually using it."""
-    status = _load_prov_status()
+    status = await _load_prov_status()
     sandbox_id = status["sandbox"].get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox"}

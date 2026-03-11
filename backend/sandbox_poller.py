@@ -1,10 +1,6 @@
 """
-Multi-source data pipeline for the Anima Fund dashboard.
-
-Architecture:
-  - ONE unified refresh cycle gathers all external data in parallel
-  - Webhook handler provides instant agent activity updates
-  - SSE stream is the single source of truth for the entire frontend
+PLATFORM: Multi-source data pipeline for the Anima Fund dashboard.
+Monitors REMOTE agent VMs via Conway API. No host engine.
 
 Data sources:
   - On-chain RPC (Base)  → wallet USDC + ETH balance
@@ -20,44 +16,23 @@ from datetime import datetime, timezone
 
 import aiohttp
 
+from agent_state import get_active_agent_id, get_conway_api_key, load_provisioning
+
 logger = logging.getLogger("sandbox_poller")
 
 CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
 USDC_CONTRACT = os.environ.get("USDC_CONTRACT", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
 BASE_RPC = os.environ.get("BASE_RPC", "https://mainnet.base.org")
 
-
-def _get_conway_api_key() -> str:
-    """Get Conway API key for the active agent — reads per-agent provisioning status first."""
-    agent_id = _get_active_agent_id()
-    home = os.path.expanduser("~")
-    if agent_id == "anima-fund":
-        prov_path = os.path.join(home, ".anima", "provisioning-status.json")
-    else:
-        prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
-    try:
-        with open(prov_path, "r") as f:
-            key = json.load(f).get("conway_api_key", "")
-            if key:
-                return key
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    return os.environ.get("CONWAY_API_KEY", "")
-
 _cache = {
-    # ── On-chain wallet (source: Base RPC) ──
     "wallet_address": "",
     "wallet_usdc": 0.0,
     "wallet_eth": 0.0,
     "wallet_last_check": None,
     "wallet_error": None,
-
-    # ── Conway API credits (source: Conway API) ──
     "conway_credits_cents": 0,
     "conway_credits_last_check": None,
     "conway_credits_error": None,
-
-    # ── Agent activity (source: webhook from sandbox daemon) ──
     "economics": {},
     "revenue_log": [],
     "decisions_log": [],
@@ -66,8 +41,6 @@ _cache = {
     "agent_stdout": "",
     "agent_stderr": "",
     "engine_running": False,
-
-    # ── Meta ──
     "sandbox_id": None,
     "last_update": None,
     "update_source": None,
@@ -88,7 +61,6 @@ def get_update_event():
 
 
 def _notify():
-    """Wake all SSE listeners."""
     _update_event.set()
     _update_event.clear()
 
@@ -98,7 +70,6 @@ def _notify():
 # ═══════════════════════════════════════════════════════════
 
 def update_from_webhook(data: dict):
-    """Called by webhook endpoint — instant cache update + SSE notify."""
     if data.get("economics") and isinstance(data["economics"], dict):
         _cache["economics"] = data["economics"]
     if data.get("revenue_log") is not None:
@@ -121,54 +92,25 @@ def update_from_webhook(data: dict):
 
 
 # ═══════════════════════════════════════════════════════════
-# HELPERS
+# HELPERS — read from MongoDB via agent_state
 # ═══════════════════════════════════════════════════════════
 
-def _load_prov_status() -> dict:
-    """Load provisioning status for the active agent."""
-    agent_id = _get_active_agent_id()
-    home = os.path.expanduser("~")
-    if agent_id == "anima-fund":
-        path = os.path.join(home, ".anima", "provisioning-status.json")
-    else:
-        path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def _get_active_agent_id() -> str:
-    try:
-        with open("/tmp/anima_active_agent_id", "r") as f:
-            return f.read().strip() or "anima-fund"
-    except FileNotFoundError:
-        return "anima-fund"
-
-
-def _get_sandbox_id():
-    prov = _load_prov_status()
+async def _get_sandbox_id():
+    prov = await load_provisioning()
     return prov.get("sandbox", {}).get("id") or None
 
 
-def _get_wallet_address() -> str:
-    prov = _load_prov_status()
+async def _get_wallet_address() -> str:
+    prov = await load_provisioning()
     return prov.get("wallet_address", "")
 
 
-# ═══════════════════════════════════════════════════════════
-# UNIFIED REFRESH — one cycle, all external sources, parallel
-# ═══════════════════════════════════════════════════════════
-
 async def _check_onchain_balance(wallet_address: str) -> dict:
-    """Check USDC + ETH balance on Base chain via RPC."""
     if not wallet_address or not wallet_address.startswith("0x"):
         return {"usdc": 0.0, "eth": 0.0, "error": None}
     try:
         addr_padded = "0x70a08231" + wallet_address[2:].lower().zfill(64)
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-            # Parallel: USDC balance + ETH balance
             usdc_task = session.post(BASE_RPC, json={
                 "jsonrpc": "2.0", "id": 1, "method": "eth_call",
                 "params": [{"to": USDC_CONTRACT, "data": addr_padded}, "latest"]
@@ -180,7 +122,6 @@ async def _check_onchain_balance(wallet_address: str) -> dict:
             async with usdc_task as usdc_resp, eth_task as eth_resp:
                 usdc_data = await usdc_resp.json()
                 eth_data = await eth_resp.json()
-
             usdc = int(usdc_data.get("result", "0x0"), 16) / 1e6
             eth = int(eth_data.get("result", "0x0"), 16) / 1e18
         return {"usdc": usdc, "eth": eth, "error": None}
@@ -189,8 +130,7 @@ async def _check_onchain_balance(wallet_address: str) -> dict:
 
 
 async def _fetch_conway_credits() -> dict:
-    """Fetch Conway API credits balance for the active agent's key."""
-    api_key = _get_conway_api_key()
+    api_key = await get_conway_api_key()
     if not api_key:
         return {"credits_cents": 0, "error": "No API key"}
     try:
@@ -207,17 +147,22 @@ async def _fetch_conway_credits() -> dict:
         return {"credits_cents": 0, "error": str(e)}
 
 
+async def _noop_wallet():
+    return {"usdc": 0.0, "eth": 0.0, "error": None}
+
+
+# ═══════════════════════════════════════════════════════════
+# UNIFIED REFRESH — all external sources, parallel, every 10s
+# ═══════════════════════════════════════════════════════════
+
 async def _unified_refresh_loop():
-    """Single background task: refreshes ALL external data in parallel every 10s.
-    Wallet balance + Conway credits fetched together, cache updated atomically."""
     while True:
         try:
-            wallet_addr = _get_wallet_address()
-            _cache["sandbox_id"] = _get_sandbox_id()
+            wallet_addr = await _get_wallet_address()
+            _cache["sandbox_id"] = await _get_sandbox_id()
             if wallet_addr:
                 _cache["wallet_address"] = wallet_addr
 
-            # Fetch all external data in parallel
             wallet_result, credits_result = await asyncio.gather(
                 _check_onchain_balance(wallet_addr) if wallet_addr else _noop_wallet(),
                 _fetch_conway_credits(),
@@ -226,7 +171,6 @@ async def _unified_refresh_loop():
 
             changed = False
 
-            # Update wallet balance
             if isinstance(wallet_result, dict):
                 if (_cache["wallet_usdc"] != wallet_result["usdc"]
                         or _cache["wallet_eth"] != wallet_result["eth"]):
@@ -236,7 +180,6 @@ async def _unified_refresh_loop():
                 _cache["wallet_error"] = wallet_result.get("error")
                 _cache["wallet_last_check"] = datetime.now(timezone.utc).isoformat()
 
-            # Update Conway credits
             if isinstance(credits_result, dict):
                 if _cache["conway_credits_cents"] != credits_result["credits_cents"]:
                     changed = True
@@ -252,16 +195,12 @@ async def _unified_refresh_loop():
         await asyncio.sleep(10)
 
 
-async def _noop_wallet():
-    return {"usdc": 0.0, "eth": 0.0, "error": None}
-
-
 # ═══════════════════════════════════════════════════════════
-# SANDBOX POLL — fallback for agent data when webhooks are stale
+# SANDBOX POLL — fallback when webhooks are stale
 # ═══════════════════════════════════════════════════════════
 
 async def _sandbox_exec(sandbox_id, command):
-    api_key = _get_conway_api_key()
+    api_key = await get_conway_api_key()
     if not api_key:
         return ""
     try:
@@ -277,17 +216,15 @@ async def _sandbox_exec(sandbox_id, command):
 
 
 async def _sandbox_poll_loop():
-    """Fallback: polls sandbox agent files every 20s if webhooks are stale."""
     while True:
         try:
-            sandbox_id = _get_sandbox_id()
+            sandbox_id = await _get_sandbox_id()
             _cache["sandbox_id"] = sandbox_id
             if not sandbox_id:
                 _cache["poll_error"] = "no_sandbox"
                 await asyncio.sleep(20)
                 continue
 
-            # Skip if webhook data is fresh (< 20s old)
             if _cache["last_update"] and _cache["update_source"] == "webhook":
                 try:
                     age = (datetime.now(timezone.utc) - datetime.fromisoformat(_cache["last_update"])).total_seconds()

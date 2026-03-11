@@ -1,0 +1,130 @@
+{
+  "summary": "Iteration 24: MongoDB Refactor Verification — ALL 42 tests passed (32 existing E2E + 10 new MongoDB-specific tests). Frontend UI fully verified working. This validates the MAJOR REFACTOR that migrated all state from host filesystem to MongoDB.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_23_e2e.py",
+    "/app/backend/tests/test_mongodb_refactor.py",
+    "/app/test_reports/pytest/pytest_iteration24.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "agent_state.py correctly centralizes all state access to MongoDB",
+    "server.py startup correctly restores active agent from MongoDB (no filesystem reads)",
+    "agents.py create_agent stores genesis_prompt in MongoDB only (no ~/agents/ filesystem writes)",
+    "credits.py uses agent_state for key management (MongoDB source of truth)",
+    "genesis.py reads provisioning from MongoDB via load_provisioning()",
+    "live.py uses agent_state instead of genesis imports (MongoDB-backed)",
+    "sandbox_poller.py uses agent_state for all state access"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mongodb_refactor.py"
+  ],
+  "success_rate": {
+    "backend": "100% (42/42 tests passed)",
+    "frontend": "100% (All UI features verified)"
+  },
+  "test_credentials": {
+    "CONWAY_API_KEY": "cnwy_k_HUFTefVvBakA_QMFbzeb9ps8rKXYIaGe ($0 balance)",
+    "TELEGRAM_BOT_TOKEN": "8474833303:AAHAhnRoHSIZTEruDu4ic-tPvdzrnTadnrw",
+    "TELEGRAM_CHAT_ID": "8613975358",
+    "App_URL": "https://ai-agent-sandbox-1.preview.emergentagent.com",
+    "MongoDB": "mongodb://localhost:27017, DB: anima_fund"
+  },
+  "seed_data_creation": "Test agent created and deleted during test_create_agent_stores_in_mongodb test",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 24 validated the MongoDB refactor. All state now lives in MongoDB — no host filesystem reads/writes for state. Key modules: agent_state.py (centralized state), server.py (startup restore from MongoDB), agents.py (create stores in MongoDB), credits.py (key management via MongoDB), genesis.py (provisioning from MongoDB), live.py (identity/tools from MongoDB). The refactor preserved all 32 existing API behaviors + 10 new MongoDB-specific tests pass.",
+  "mongodb_refactor_verification": {
+    "provisioning_state_from_mongodb": "PASS - genesis/status and provision/status read from MongoDB agents collection",
+    "conway_key_from_mongodb": "PASS - key-status reads from MongoDB, set-key writes to MongoDB",
+    "agent_creation_mongodb_only": "PASS - POST /agents/create stores genesis_prompt in MongoDB, NOT filesystem",
+    "live_identity_from_mongodb": "PASS - /live/identity reads from agent_state (MongoDB-backed)",
+    "live_tools_from_mongodb": "PASS - /live/tools reads from provisioning state in MongoDB",
+    "agent_selection_mongodb_key": "PASS - /agents/{id}/select loads Conway key from MongoDB"
+  },
+  "backend_apis_tested": [
+    "GET /api/health - 200 OK",
+    "GET /api/payments/status - 200 OK",
+    "GET /api/agents - 200 OK (auto-creates default anima-fund in MongoDB)",
+    "POST /api/agents/anima-fund/select - 200 OK (loads key from MongoDB)",
+    "POST /api/agents/nonexistent/select - 404 Not Found",
+    "DELETE /api/agents/anima-fund - 400 Bad Request",
+    "POST /api/agents/create - 400 Bad Request (requires telegram) / 200 OK with valid input",
+    "DELETE /api/agents/{test-agent} - 200 OK (cleanup)",
+    "GET /api/credits/key-status - 200 OK (reads from MongoDB)",
+    "POST /api/credits/set-key - rejects invalid format",
+    "GET /api/credits/balance - 200 OK (uses MongoDB key)",
+    "POST /api/credits/verify - 200 OK",
+    "GET /api/genesis/status - 200 OK (reads provisioning from MongoDB)",
+    "POST /api/genesis/reset - 200 OK (clears MongoDB provisioning state)",
+    "GET /api/provision/status - 200 OK (reads from MongoDB)",
+    "GET /api/engine/status - 200 OK",
+    "GET /api/conway/health - 200 OK",
+    "GET /api/telegram/status - 200 OK",
+    "GET /api/telegram/health - 200 OK",
+    "POST /api/telegram/test/anima-fund - 200 OK",
+    "POST /api/telegram/send - 200 OK",
+    "GET /api/live/stream - 200 OK (SSE)",
+    "GET /api/live/identity - 200 OK (from MongoDB)",
+    "GET /api/live/financials - 200 OK",
+    "GET /api/live/activity - 200 OK",
+    "GET /api/live/tools - 200 OK (from MongoDB provisioning)",
+    "GET /api/wallet/balance - 200 OK",
+    "GET /api/skills/available - 200 OK (50+ skills)",
+    "GET /api/webhook/status - 200 OK",
+    "POST /api/webhook/agent-update - 200 OK",
+    "GET /api/infrastructure/sandboxes - 200 OK",
+    "GET /api/infrastructure/tools - 200 OK",
+    "PUT /api/agents/nonexistent/telegram - 404 Not Found",
+    "GET /api/openclaw/status - 200 OK",
+    "GET /api/openclaw/sandboxes - 200 OK"
+  ],
+  "frontend_features_verified": {
+    "genesis_screen": {
+      "agent_list_buttons": "PASS - Shows 'Anima Fund' button (selected) and '+ Create' button",
+      "conway_account_panel": "PASS - Shows $0.00 balance with key prefix cnwy_k_HUFTe...",
+      "connected_state": "PASS - Shows 'Connected' status",
+      "refresh_button": "PASS - Refresh button works (shows 'Refreshing balance...' toast)",
+      "vm_tier_selector": "PASS - All 5 tiers visible (Small $5, Medium $8, Large $15, X-Large $25, 2X-Large $45)",
+      "provision_stepper": "PASS - Shows 6 steps with Run buttons"
+    },
+    "create_agent_modal": {
+      "modal_opens": "PASS - Modal opens when clicking '+ Create'",
+      "agent_name_input": "PASS - Text input with placeholder",
+      "welcome_message_input": "PASS - Textarea for creator message",
+      "genesis_prompt_textarea": "PASS - Large textarea with 'Load Standard Template' button",
+      "initial_goals_input": "PASS - Textarea with placeholder goals",
+      "priority_skills_section": "PASS - Expandable section",
+      "conway_terminal_toggle": "PASS - Checkbox checked by default",
+      "telegram_inputs": "PASS - Bot Token and Chat ID inputs (required)",
+      "wallet_inputs": "PASS - SOL and ETH wallet inputs",
+      "submit_button": "PASS - 'Genesis' button at bottom"
+    },
+    "dashboard": {
+      "sidebar_navigation": "PASS - All menu items visible (Anima VM, Agent Mind, Fund HQ, Agents, Infrastructure, Skills, Deal Flow, Portfolio, Financials, Activity, Memory, Configuration, Wallet & Logs)",
+      "header": "PASS - Shows 'Anima Fund' dropdown with green dot, Genesis pill, Wallet pill, LIVE indicator",
+      "agent_mind_page": "PASS - Shows 'Agent Mind — Live Feed' with engine status panel",
+      "sse_indicator": "PASS - Shows 'LIVE' status"
+    },
+    "navigation": {
+      "genesis_to_dashboard": "PASS - 'Go to Dashboard' button works",
+      "dashboard_to_genesis": "PASS - 'Genesis' pill navigates back"
+    }
+  },
+  "refactor_notes": {
+    "key_change_1": "agent_state.py centralizes all state access — single source of truth",
+    "key_change_2": "server.py _restore_active_agent_from_db() reads MongoDB on startup",
+    "key_change_3": "create_agent() stores genesis_prompt in MongoDB only, no ~/agents/ writes",
+    "key_change_4": "get_conway_api_key() reads from MongoDB, falls back to env var only for initial setup",
+    "key_change_5": "load_provisioning() reads from MongoDB agents collection, not filesystem JSON",
+    "key_change_6": "All live/* endpoints use agent_state for identity/tools (MongoDB-backed)"
+  }
+}

@@ -1,6 +1,6 @@
 """
-Agent management routes — CRUD, select, skills listing.
-All agent operations happen inside Conway Cloud sandbox. Nothing on host.
+PLATFORM: Agent management routes — CRUD, select, skills listing.
+The platform creates agent RECORDS in MongoDB. Agents themselves run inside Conway VMs.
 """
 import os
 import json
@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from config import AUTOMATON_DIR
+from agent_state import get_active_agent_id, set_active_agent_id, get_conway_api_key, set_conway_api_key
 
 router = APIRouter(prefix="/api", tags=["agents"])
 
@@ -25,8 +26,8 @@ class CreateAgentRequest(BaseModel):
     revenue_share_percent: int = 50
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
-    include_conway: bool = True  # Include Conway Terminal tools in genesis prompt
-    selected_skills: list = []  # Skills the agent should prioritize installing first
+    include_conway: bool = True
+    selected_skills: list = []
 
 
 @router.get("/skills/available")
@@ -123,7 +124,7 @@ async def list_available_skills():
     ]
     for skill in clawhub_skills:
         if skill["name"] not in seen:
-            skill["installed"] = False  # Available for install from marketplace
+            skill["installed"] = False
             skills.append(skill)
             seen.add(skill["name"])
 
@@ -137,64 +138,64 @@ async def list_agents():
     col = get_db()["agents"]
     agents = await col.find({}, {"_id": 0}).sort("created_at", 1).to_list(100)
     if not agents:
-        # Auto-register the default Anima Fund agent
+        # Auto-register the default Anima Fund agent with pre-loaded system prompt
+        genesis_prompt = ""
+        template_path = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+        if os.path.exists(template_path):
+            with open(template_path, "r") as f:
+                genesis_prompt = f.read()
+
         default = {
             "agent_id": "anima-fund",
             "name": "Anima Fund",
-            "data_dir": "~/.anima",
-            "status": "running",
+            "genesis_prompt": genesis_prompt,
+            "status": "created",
             "is_default": True,
-            "telegram_configured": True,
+            "telegram_configured": bool(
+                os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")
+            ),
+            "telegram_bot_token": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+            "telegram_chat_id": os.environ.get("TELEGRAM_CHAT_ID", ""),
+            "creator_sol_wallet": os.environ.get("CREATOR_WALLET", ""),
+            "creator_eth_wallet": os.environ.get("CREATOR_ETH_ADDRESS", ""),
+            "conway_api_key": os.environ.get("CONWAY_API_KEY", ""),
+            "include_conway": True,
+            "selected_skills": [],
+            "goals": [],
+            "revenue_share_percent": 50,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await col.insert_one(default)
         del default["_id"]
         agents = [default]
 
-    # Sanitize: never expose telegram_bot_token in the list response
+    # Sanitize: never expose sensitive fields in list response
     sanitized = []
     for agent in agents:
-        a = {k: v for k, v in agent.items() if k != "telegram_bot_token"}
-        # For the default agent, check env vars for Telegram config
-        if agent.get("is_default"):
-            a["telegram_configured"] = bool(
-                os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")
-            )
-        elif "telegram_configured" not in a:
-            a["telegram_configured"] = bool(agent.get("telegram_bot_token") and agent.get("telegram_chat_id"))
+        a = {k: v for k, v in agent.items() if k not in ("telegram_bot_token", "genesis_prompt", "provisioning")}
+        a["telegram_configured"] = bool(agent.get("telegram_bot_token") and agent.get("telegram_chat_id"))
         sanitized.append(a)
     return {"agents": sanitized}
 
 
 @router.post("/agents/create")
 async def create_agent(req: CreateAgentRequest):
-    """Create a new agent with its own data directory, genesis prompt, goals, and financial config."""
+    """Create a new agent — stores config in MongoDB only. No host filesystem access.
+    The agent will be deployed to a Conway VM during the provisioning stepper."""
     col = get_db()["agents"]
     agent_id = req.name.lower().replace(" ", "-").replace("_", "-")
 
-    # Check if agent already exists
     existing = await col.find_one({"agent_id": agent_id})
     if existing:
         raise HTTPException(400, f"Agent '{agent_id}' already exists")
 
-    # Each agent gets its own HOME directory so engine reads from $HOME/.anima/
-    # The engine's getAutomatonDir() returns $HOME/.anima
-    # We create .anima as main dir, .automaton as symlink for compatibility
-    agent_home = os.path.expanduser(f"~/agents/{agent_id}")
-    anima_dir = os.path.join(agent_home, ".anima")
-    automaton_link = os.path.join(agent_home, ".automaton")
-    os.makedirs(anima_dir, exist_ok=True)
-    if not os.path.exists(automaton_link):
-        os.symlink(".anima", automaton_link)
-    automaton_dir = anima_dir  # Use .anima as the actual data directory
-
-    # Per-agent Telegram creds — REQUIRED for new agents (no global fallback)
+    # Telegram creds required for each agent
     tg_token = req.telegram_bot_token.strip() if req.telegram_bot_token else ""
     tg_chat = req.telegram_chat_id.strip() if req.telegram_chat_id else ""
     if not tg_token or not tg_chat:
         raise HTTPException(400, "Telegram Bot Token and Chat ID are required. Each agent must have its own Telegram bot for reporting.")
 
-    # Build full genesis prompt with all config injected
+    # Build genesis prompt with config injected
     full_prompt = req.genesis_prompt
     full_prompt = full_prompt.replace("{{AGENT_NAME}}", req.name)
     full_prompt = full_prompt.replace("{{AGENT_ID}}", agent_id)
@@ -202,26 +203,20 @@ async def create_agent(req: CreateAgentRequest):
     full_prompt = full_prompt.replace("{{TELEGRAM_CHAT_ID}}", tg_chat)
     full_prompt = full_prompt.replace("{{CREATOR_WALLET}}", req.creator_sol_wallet or "")
     full_prompt = full_prompt.replace("{{CREATOR_ETH_ADDRESS}}", req.creator_eth_wallet or "")
-    # Dashboard webhook URL — the agent sends logs here directly
-    dashboard_url = os.environ.get("DASHBOARD_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
-    full_prompt = full_prompt.replace("{{DASHBOARD_URL}}", dashboard_url)
+    full_prompt = full_prompt.replace("{{DASHBOARD_URL}}", os.environ.get("REACT_APP_BACKEND_URL", ""))
 
-    # Conditionally strip Conway-specific tools section if agent doesn't want Conway
+    # Conditionally strip Conway-specific tools section
     if not req.include_conway:
         import re
-        # Remove the COMPLETE TOOLS REFERENCE section (Conway-specific tools)
         full_prompt = re.sub(
             r'═+\nCOMPLETE TOOLS REFERENCE.*?═+\nANTI-STUCK',
             '═' * 78 + '\nANTI-STUCK',
-            full_prompt,
-            flags=re.DOTALL,
+            full_prompt, flags=re.DOTALL,
         )
-        # Remove the DEPLOYING REAL SERVICES section (relies on Conway sandboxes)
         full_prompt = re.sub(
             r'═+\nDEPLOYING REAL SERVICES.*?═+\nREVENUE',
             '═' * 78 + '\nREVENUE',
-            full_prompt,
-            flags=re.DOTALL,
+            full_prompt, flags=re.DOTALL,
         )
 
     sep = "=" * 75
@@ -238,7 +233,6 @@ async def create_agent(req: CreateAgentRequest):
         for i, goal in enumerate(req.goals, 1):
             full_prompt += f"{i}. {goal}\n"
 
-    # Inject priority skills — these are skills the agent should discover and install FIRST
     if req.selected_skills:
         full_prompt += f"\n\n{sep}\nPRIORITY SKILLS — INSTALL THESE FIRST\n{sep}\n\n"
         full_prompt += "Your creator has selected the following skills as your TOP PRIORITY.\n"
@@ -248,28 +242,12 @@ async def create_agent(req: CreateAgentRequest):
         full_prompt += "\nexec: clawhub search \"[skill-name]\"\nexec: clawhub install [skill-name]\n"
         full_prompt += "\nAfter installing these, explore ClawHub for additional skills relevant to your goals.\n"
 
-    # Write genesis prompt — this is the ONLY instruction the agent needs.
-    # The agent is fully autonomous and will install its own tools, skills, and environment.
-    with open(os.path.join(automaton_dir, "genesis-prompt.md"), "w") as f:
-        f.write(full_prompt)
-
-    # Write auto-config.json for non-interactive engine setup
+    # PLATFORM: Store everything in MongoDB — no host filesystem access
     welcome = req.welcome_message or f"You are {req.name}. Execute immediately."
-    creator_addr = req.creator_eth_wallet or "0x0000000000000000000000000000000000000000"
-    with open(os.path.join(automaton_dir, "auto-config.json"), "w") as f:
-        json.dump({
-            "name": req.name,
-            "genesisPrompt": full_prompt,
-            "creatorMessage": welcome,
-            "creatorAddress": creator_addr,
-        }, f)
-
-    # Agent will be provisioned via the sandbox stepper — no host bootstrap needed.
     agent_doc = {
         "agent_id": agent_id,
         "name": req.name,
-        "agent_home": agent_home,
-        "data_dir": anima_dir,
+        "genesis_prompt": full_prompt,
         "welcome_message": welcome,
         "goals": req.goals,
         "selected_skills": req.selected_skills,
@@ -286,49 +264,34 @@ async def create_agent(req: CreateAgentRequest):
     }
     await col.insert_one(agent_doc)
     del agent_doc["_id"]
-    # Don't expose token in response
-    safe_doc = {k: v for k, v in agent_doc.items() if k != "telegram_bot_token"}
+    safe_doc = {k: v for k, v in agent_doc.items() if k not in ("telegram_bot_token", "genesis_prompt")}
     return {"success": True, "agent": safe_doc}
 
 
 @router.post("/agents/{agent_id}/select")
 async def select_agent(agent_id: str):
-    """Switch the dashboard to view a different agent's data.
-    Also switches the active Conway API key to that agent's key."""
+    """Switch the active agent context. Reads Conway API key from MongoDB."""
     col = get_db()["agents"]
 
-    # Write active agent ID
-    with open("/tmp/anima_active_agent_id", "w") as f:
-        f.write(agent_id)
-
-    if agent_id == "anima-fund":
-        # Load the default agent's key
-        home = os.path.expanduser("~")
-        prov_path = os.path.join(home, ".anima", "provisioning-status.json")
-    else:
+    if agent_id != "anima-fund":
         agent = await col.find_one({"agent_id": agent_id}, {"_id": 0})
         if not agent:
             raise HTTPException(404, f"Agent '{agent_id}' not found")
-        home = os.path.expanduser("~")
-        prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
 
-    # Switch Conway API key to the selected agent's key
-    try:
-        if os.path.exists(prov_path):
-            with open(prov_path) as f:
-                prov = json.load(f)
-                agent_key = prov.get("conway_api_key", "")
-                if agent_key:
-                    os.environ["CONWAY_API_KEY"] = agent_key
-    except Exception:
-        pass
+    # PLATFORM: Set active agent in memory
+    set_active_agent_id(agent_id)
+
+    # Load this agent's Conway API key from MongoDB into runtime env
+    key = await get_conway_api_key(agent_id)
+    if key:
+        os.environ["CONWAY_API_KEY"] = key
 
     return {"success": True, "active_agent": agent_id}
 
 
 @router.delete("/agents/{agent_id}")
 async def delete_agent(agent_id: str):
-    """Delete a non-default agent."""
+    """Delete a non-default agent from MongoDB."""
     if agent_id == "anima-fund":
         raise HTTPException(400, "Cannot delete the default agent")
     col = get_db()["agents"]
@@ -340,14 +303,6 @@ async def delete_agent(agent_id: str):
     if result.deleted_count == 0:
         raise HTTPException(500, "Failed to delete agent")
 
-    # Clean up provisioning status
-    home = os.path.expanduser("~")
-    prov_path = os.path.join(home, "agents", agent_id, ".anima", "provisioning-status.json")
-    try:
-        os.remove(prov_path)
-    except FileNotFoundError:
-        pass
-
     return {"success": True, "deleted": agent_id}
 
 
@@ -358,7 +313,7 @@ class UpdateTelegramRequest(BaseModel):
 
 @router.put("/agents/{agent_id}/telegram")
 async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
-    """Update (or add) Telegram bot config for an existing agent. Verifies the bot token first."""
+    """Update Telegram bot config for an agent. Verifies the bot token first."""
     col = get_db()["agents"]
     agent = await col.find_one({"agent_id": agent_id})
     if not agent:
@@ -369,7 +324,6 @@ async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
     if not token or not chat_id:
         raise HTTPException(400, "Both telegram_bot_token and telegram_chat_id are required")
 
-    # Verify the bot token is valid
     import aiohttp
     try:
         async with aiohttp.ClientSession() as session:
@@ -381,7 +335,6 @@ async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
     except aiohttp.ClientError as e:
         raise HTTPException(500, f"Could not verify Telegram bot: {str(e)}")
 
-    # Update the agent's Telegram config
     await col.update_one(
         {"agent_id": agent_id},
         {"$set": {
@@ -391,24 +344,6 @@ async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
         }},
     )
 
-    # Also update the genesis-prompt.md in the agent's directory
-    agent_home = os.path.expanduser(agent.get("agent_home", f"~/agents/{agent_id}"))
-    # Check both .anima and .automaton paths for compatibility
-    for subdir in [".anima", ".automaton"]:
-        genesis_path = os.path.join(agent_home, subdir, "genesis-prompt.md")
-        if os.path.exists(genesis_path):
-            try:
-                with open(genesis_path, "r") as f:
-                    content = f.read()
-                # Replace any existing token/chat placeholders
-                import re
-                content = re.sub(r'bot\d+:[A-Za-z0-9_-]+', f'bot{token}', content, count=1)
-                with open(genesis_path, "w") as f:
-                    f.write(content)
-            except Exception:
-                pass  # Non-critical — the DB is the source of truth
-            break  # Only update the first found path
-
     return {
         "success": True,
         "agent_id": agent_id,
@@ -417,14 +352,13 @@ async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
     }
 
 
-
 @router.post("/agents/{agent_id}/start")
 async def start_agent_engine(agent_id: str):
-    """DISABLED — engines run inside the sandbox, not on the host.
+    """DISABLED — engines run inside Conway VMs, not on the host.
     Use the provisioning stepper to deploy the agent."""
     return {
         "success": False,
-        "error": "Direct engine start is disabled. Engines run inside Conway Cloud sandboxes. Use the provisioning stepper (Create Sandbox → ... → Create Anima) to deploy the agent.",
+        "error": "Direct engine start is disabled. Engines run inside Conway Cloud sandboxes. Use the provisioning stepper to deploy the agent.",
     }
 
 
@@ -434,15 +368,9 @@ async def push_constitution_to_all():
     constitution_src = os.path.join(AUTOMATON_DIR, "constitution.md")
     if not os.path.exists(constitution_src):
         raise HTTPException(404, "Source constitution.md not found")
-
     with open(constitution_src, "r") as f:
         content = f.read()
-
-    return {
-        "success": True,
-        "message": "Constitution ready. Use 'deploy-agent' provisioning step to push to sandbox.",
-        "size": len(content),
-    }
+    return {"success": True, "message": "Constitution ready. Use 'deploy-agent' to push to sandbox.", "size": len(content)}
 
 
 @router.post("/agents/push-genesis")
@@ -451,12 +379,6 @@ async def push_genesis_to_all():
     genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
     if not os.path.exists(genesis_src):
         raise HTTPException(404, "Source genesis-prompt.md not found")
-
     with open(genesis_src, "r") as f:
         content = f.read()
-
-    return {
-        "success": True,
-        "message": "Genesis prompt ready. Use 'deploy-agent' provisioning step to push to sandbox.",
-        "size": len(content),
-    }
+    return {"success": True, "message": "Genesis prompt ready. Use 'deploy-agent' to push to sandbox.", "size": len(content)}

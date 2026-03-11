@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/openclaw", tags=["openclaw"])
 
 
 def _get_conway_api_key() -> str:
-    """Conway API key — only from environment, never from host filesystem."""
+    """Conway API key — from runtime env (set by agent_state on agent switch)."""
     return os.environ.get("CONWAY_API_KEY", "")
 
 
