@@ -5,6 +5,7 @@ __pycache__/
 
 # Frontend
 frontend/node_modules/
+frontend/build/
 
 # Automaton engine — node_modules NOT needed at runtime (bundle.mjs is self-contained)
 automaton/node_modules/
@@ -24,27 +25,3 @@ automaton/dist/**/
 
 # Logs
 *.log
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
