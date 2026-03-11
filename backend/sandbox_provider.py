@@ -143,7 +143,7 @@ async def fly_create_sandbox(specs: dict, agent_id: str = None) -> dict:
 
 async def fly_exec(machine_id: str, command: str, timeout: int = 120, agent_id: str = None) -> dict:
     """Execute a command inside a Fly Machine via native /exec endpoint.
-    Auto-starts the Machine if it's stopped."""
+    Auto-starts the Machine if it's stopped. Returns clear error if machine is gone."""
     fly = await get_fly_config(agent_id)
     if not fly["token"] or not machine_id:
         return {"stdout": "", "stderr": "No Fly token or machine ID", "exit_code": -1}
@@ -152,17 +152,28 @@ async def fly_exec(machine_id: str, command: str, timeout: int = 120, agent_id: 
     app = fly["app_name"]
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout + 30)) as session:
-        # Ensure Machine is running
+        # Check machine exists and ensure it's running
         try:
             async with session.get(f"{FLY_API}/v1/apps/{app}/machines/{machine_id}", headers=headers) as resp:
+                if resp.status == 404:
+                    return {"stdout": "", "stderr": "Machine not found — sandbox was deleted. Click 'Reset' then 'Create Sandbox' again.", "exit_code": -1}
                 if resp.status == 200:
                     mdata = await resp.json()
-                    if mdata.get("state") != "started":
+                    state = mdata.get("state", "")
+                    if state == "destroyed":
+                        return {"stdout": "", "stderr": "Machine was destroyed. Click 'Reset' then 'Create Sandbox' again.", "exit_code": -1}
+                    if state != "started":
+                        logger.info(f"Machine {machine_id} is '{state}', starting...")
                         await session.post(f"{FLY_API}/v1/apps/{app}/machines/{machine_id}/start", headers=headers)
-                        await session.get(f"{FLY_API}/v1/apps/{app}/machines/{machine_id}/wait?state=started&timeout=30", headers=headers)
-        except Exception:
-            pass
+                        try:
+                            async with session.get(f"{FLY_API}/v1/apps/{app}/machines/{machine_id}/wait?state=started&timeout=30", headers=headers) as wr:
+                                await wr.read()
+                        except Exception:
+                            pass
+        except aiohttp.ClientError as e:
+            return {"stdout": "", "stderr": f"Cannot reach Fly API: {e}", "exit_code": -1}
 
+        # Execute the command
         try:
             async with session.post(
                 f"{FLY_API}/v1/apps/{app}/machines/{machine_id}/exec",
@@ -177,7 +188,7 @@ async def fly_exec(machine_id: str, command: str, timeout: int = 120, agent_id: 
                         "exit_code": data.get("exit_code", data.get("exitCode", -1)),
                     }
                 body = await resp.text()
-                return {"stdout": "", "stderr": f"HTTP {resp.status}: {body[:200]}", "exit_code": -1}
+                return {"stdout": "", "stderr": f"Exec failed (HTTP {resp.status}): {body[:200]}", "exit_code": -1}
         except Exception as e:
             return {"stdout": "", "stderr": str(e), "exit_code": -1}
 
