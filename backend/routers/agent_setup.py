@@ -1790,7 +1790,7 @@ sys.exit(0 if passed == total else 1)
         backend_url = os.environ.get("WEBHOOK_URL", "")
         if not backend_url:
             # Construct from known deployment pattern
-            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "https://anima-audit.preview.emergentagent.com")
+            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "https://ai-agent-sandbox-1.preview.emergentagent.com")
 
         webhook_daemon = f"""#!/usr/bin/env python3
 import json, time, os, subprocess, urllib.request, threading

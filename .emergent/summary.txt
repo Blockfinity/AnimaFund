@@ -4,78 +4,79 @@ The user wants to build a fully autonomous AI-to-AI Venture Capital (VC) fund pl
 **PRODUCT REQUIREMENTS:**
 -   **Core Functionality:** A multi-agent platform to create, monitor, and manage independent AI agents from a single dashboard. Each agent has its own VM, wallet, and skills.
 -   **Agent Autonomy & Lifecycle:**
-    1.  The agent must be created and operate *exclusively within* a sandboxed VM.
-    2.  The agent's operations are governed by a strict, mechanically-enforced 4-phase prompt:
-        -   **Phase 0 (Tooling & Testing):** Verify all core tools are functional.
-        -   **Phase 1 (Capital Acquisition):** Make **,000 within the first few hours**. The agent can do absolutely anything it wants to make money, but cannot build products/services.
-        -   **Phase 2 (Capital Growth):** Grow capital to **0,000**. Service-based strategies (APIs, bounties) are unlocked.
-        -   **Phase 3 (Business Incubation & Fund):** After reaching 0k, the agent can begin building its product, start the Anima Fund, and use tools like **Boardy.ai**.
+    1.  The agent must be created and operate *exclusively within* a sandboxed VM with no access to the host.
+    2.  The agent's operations are governed by a strict, mechanically-enforced 4-phase prompt, starting with capital acquisition.
 -   **Real-time Dashboard:** A dashboard to monitor all agents, with real-time logs and terminal/browser views for each Anima VM.
 -   **User Control:** The user provisions the agent's tools and seed funding but does not control the agent's actions once it goes autonomous.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application features a sophisticated real-time data pipeline to power the agent monitoring dashboard. The architecture was significantly refactored based on user feedback to ensure data is sourced efficiently and displayed in near real-time.
+The application consists of a dashboard for managing existing agents and a standalone Genesis screen for provisioning new ones. The architecture has been significantly refactored to be per-agent, meaning each agent has its own Conway API key stored in its MongoDB record, ensuring data isolation for all API calls and monitoring.
 
-The current architecture is a hybrid model:
-1.  **Event-Driven Updates:** A  runs inside the agent's sandbox, monitoring agent activity (phase, decisions, revenue) and pushing updates instantly to a backend webhook.
-2.  **Unified Polling:** A single background task on the backend () fetches all external data—specifically the agent's on-chain wallet balance (via Base RPC) and Conway API credits—in parallel every ~15 seconds using .
+The provisioning flow is a multi-step wizard on the Genesis screen where a user can:
+1.  Connect their Conway account by providing an API key.
+2.  Select from a list of VM tiers.
+3.  Execute a 6-step process to create a sandbox VM and deploy the agent into it.
 
-All data is consolidated in a server-side cache and pushed to the frontend via a single Server-Sent Events (SSE) stream, which acts as the single source of truth for the UI. Redundant polling from individual frontend components (like ) has been removed to centralize data flow through the SSE React Context.
+The UI supports navigating between the dashboard and genesis screen, creating new agents via a modal, and selecting which agent to manage or provision. The agent deployment process now includes a Phase 0 self-test where the agent verifies its own tools (browser, OpenClaw, etc.) upon startup.
 
 **Last working item**:
--   **Last item agent was working:** The user requested a full audit of all 13 frontend screens to ensure they all adhere to best practices for data fetching, eliminating any remaining redundancies and ensuring the entire UI relies on the central SSE stream where appropriate. The agent had just begun this audit by listing all the page files in .
--   **Status:** IN PROGRESS
--   **Agent Testing Done:** N (The audit itself is not a feature to be tested, but its findings will require implementation and testing).
--   **Which testing method agent to use?** both. After the audit is complete and the identified issues are fixed, a comprehensive E2E test using the testing agent is required to verify the architectural integrity and prevent regressions.
+-   **Last item agent was working:** The agent was debugging a critical blocker where the user reported that adding credits to their Conway account and changing the API key in the UI was not working, preventing them from creating a sandbox VM. The agent determined the root cause was poor UX and lack of feedback; the system was using the correct key, but that key had a /bin/bash balance on Conway's side.
+-   **Status:** USER VERIFICATION PENDING
+-   **Agent Testing Done:** N (Agent performed manual checks but did not run the testing agent on the latest UI fixes for this specific issue).
+-   **Which testing method agent to use?** Frontend testing agent to verify the UI for editing the API key and refreshing the balance. The user must perform the final test with their real, funded API key.
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1 (P0): Complete the full audit of all 13 frontend screens and refactor data flows for consistency and efficiency.**
+-   **Issue 1 (P0): User is blocked from provisioning a VM.** The user reported that the app does not reflect their updated credit balance or a newly entered API key, resulting in a not enough credits error when trying to create a sandbox.
 
 **Issues Detail:**
--   **Issue 1: Complete the full audit of all 13 frontend screens and refactor data flows for consistency and efficiency.**
-    -   **Attempted fixes:** This task was just started. The agent has listed the files to be audited. No fixes have been attempted yet.
+-   **Issue 1: User is blocked from provisioning a VM.**
+    -   **Attempted fixes:** The agent implemented several UI/UX improvements on the Genesis screen to address this:
+        1.  Made the API key display clickable, allowing the user to edit and submit a new key.
+        2.  Added a Refresh button to the Conway Account panel to manually trigger a credit balance update.
+        3.  Added a Cancel button for when the user is editing the key.
+        4.  Improved the error toast message to be more descriptive when sandbox creation fails due to insufficient credits.
     -   **Next debug checklist:**
-        1.  Read the contents of every file in .
-        2.  Map out every data fetching mechanism (, ,  with API calls).
-        3.  Identify any components that are not using the central  for data that is available in the SSE stream.
-        4.  Identify any redundant API calls (e.g., multiple components fetching the same data).
-        5.  Propose a consolidated refactoring plan to the user.
-        6.  Implement the refactoring to make the SSE stream the single source of truth for all applicable real-time data.
-    -   **Why fix this issue and what will be achieved with the fix?** To satisfy the user's requirement for a robust, efficient, and maintainable frontend architecture (best practice). This will eliminate redundant network requests, improve performance, and ensure data consistency across the entire application.
-    -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** Y (The underlying problem of inefficient data fetching has been addressed in stages, but this audit is meant to solve it comprehensively).
-    -   **Should Test frontend/backend/both after fix?** both
+        1.  Guide the user to re-enter their new, funded API key using the now-editable field.
+        2.  Instruct the user to click the new Refresh button and confirm the balance updates correctly.
+        3.  Confirm that the user can now successfully run the Create Sandbox step without errors.
+    -   **Why fix this issue and what will be achieved with the fix?** This is the highest priority blocker. The entire platform is unusable until the user can successfully connect their funded Conway account and create a VM.
+    -   **Status:** USER VERIFICATION PENDING
+    -   **Is recurring issue?** Y (The connection to the external Conway service has been a recurring point of refinement).
+    -   **Should Test frontend/backend/both after fix?** Frontend.
     -   **Blocked on other issue:** None.
 
 **In progress Task List**:
--   **Task 1: Full audit of frontend data flows.**
-    -   **Where to resume:** The agent has a list of all files in . The next step is to start reading these files to analyze their data fetching patterns.
-    -   **What will be achieved with this?** A complete understanding of the app's data flow, leading to a final refactor that aligns the entire frontend with the single source of truth architecture dictated by the SSE stream.
-    -   **Status:** IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on something:** None.
+-   None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
+    -   (P0) **Fix Security Breach**: Refactor the backend to eliminate all host filesystem and environment variable access during agent provisioning. All agent configuration should be read from MongoDB and passed into the sandbox dynamically.
     -   (P1) Implement Real Smart Contracts.
+    -   (P1) Allow an agent to purchase and manage multiple VMs for additional resources.
 -   **Future Tasks:**
     -   Integrate Android Device Control.
     -   Migrate to a self-hosted agent engine.
 
 **Completed work in this session**
--   **Multi-Source Data Pipeline Refactor:**
-    -   **Backend:** Consolidated three separate polling loops into a single, efficient background task in  that fetches on-chain wallet balance and Conway credits in parallel.
-    -   **Frontend:** Removed a redundant polling  from , ensuring it now gets credit updates from the central SSE stream. Updated  to correctly display the multi-source data (Wallet, Credits, Phase, etc.) from the SSE stream.
--   **Initial Real-Time Pipeline Verification:**
-    -   Successfully tested the webhook-to-SSE instant push mechanism, confirming latency of <2 seconds.
-    -   Found and fixed bugs in  related to a broken LIVE indicator and a missing  import.
-    -   Ran the  which passed 100% on both backend and frontend for the initial fixes.
+-   **Full Frontend Audit:** Audited all frontend pages and refactored three to use the central SSE stream for data, improving efficiency.
+-   **Deployment Readiness:** Replaced hardcoded URLs with environment variables, making the application deployment-ready.
+-   **Per-Agent Architecture:** Overhauled the backend to handle Conway API keys on a per-agent basis, ensuring data isolation. This was a major architectural change.
+-   **Provisioning Flow Overhaul:** Redesigned the UX for creating agents, adding a VM tier selector and creating a persistent, wizard-like flow that connects agent creation to VM provisioning.
+-   **Agent Self-Test (Phase 0):** Modified the agent deployment script to make the agent test all its tools upon startup.
+-   **UX Fixes for API Key/Credits:** Implemented an editable API key field and a manual Refresh button to address the user's primary blocker.
 
 **Earlier issues found/mentioned but not fixed**
--   None.
+-   **Issue 1: Critical Security Breach in Provisioning Flow.**
+    -   **Debug checklist:**
+        1.  Refactor  () to stop writing files like  to the host filesystem. It should only create a record in MongoDB.
+        2.  Refactor the  step () to stop reading secrets (, , etc.) from the host's environment.
+        3.  All agent configuration must be fetched from the agent's MongoDB document at runtime and passed into the sandbox dynamically.
+    -   **Why to solve this issue and what will be achieved with this?** To fix a major security vulnerability and enforce the core product requirement that agents are fully sandboxed with zero knowledge of the host environment.
+    -   **Should Test frontend/backend/both after fix?** Backend.
+    -   **Is recurring issue?** N.
 
 **Known issue recurrence from previous fork**
 -   None.
@@ -84,9 +85,9 @@ All data is consolidated in a server-side cache and pushed to the frontend via a
 
 
 **Key Technical Concepts**
--   **Hybrid Real-time Architecture:** Combines event-driven webhook pushes (for instant sandbox updates) with a unified background poller (for external data like on-chain balances and API credits).
--   **Unified Background Poller:** A single  task uses  to fetch multiple external data sources in parallel, minimizing overhead and consolidating cache updates.
--   **Frontend Single Source of Truth:** A central SSE stream and React Context () provide all real-time data to the UI, aiming to eliminate redundant, component-level API calls.
+-   **Per-Agent Scoping:** The core architectural principle where all operations (API calls, data polling) are dynamically scoped to the currently selected agent using the API key stored in its unique MongoDB record.
+-   **Wizard-based Onboarding:** The user flow for creating a new agent is now a cohesive wizard that starts with the Create Agent modal and transitions to the Genesis screen for VM provisioning.
+-   **Agent Self-Verification (Phase 0):** Upon deployment, every agent runs a self-test script to verify its tools are installed and accessible before beginning its main tasks.
 
 **key DB schema**
 -   **agents**: 
@@ -95,45 +96,45 @@ All data is consolidated in a server-side cache and pushed to the frontend via a
 -   None.
 
 **All files of reference**
--   : The new unified background poller for external data.
--   : The SSE endpoint that serves the consolidated data.
--   : The main server file that initializes the poller.
--   : The React context that distributes SSE data.
--   : The entire directory is under audit to enforce the new data flow architecture.
--   : Was refactored to remove redundant polling.
--   : Was refactored to display multi-source data.
+-   : The central component managing UI views, state, and the agent creation/provisioning flow.
+-   : Handles agent selection and creation. **Contains security flaw.**
+-   : Contains the agent deployment logic. **Contains security flaw.**
+-   : Manages per-agent Conway API key and status checks.
+-   : The background task that polls for agent data using the correct per-agent key.
+-   : The main server file, which includes the startup hook to restore keys from the database.
 
 **Areas that need refactoring**:
-The user has mandated a full audit of all 13 frontend pages to identify and eliminate any remaining inefficient or redundant data-fetching logic. Components should rely on the  for real-time data instead of making their own API calls.
+-   **Security Hole in  and **: The backend currently reads from the host's environment variables and writes files to the host's filesystem during agent creation and deployment. This is a critical security vulnerability that breaks the sandboxing principle and must be fixed.
 
 **key api endpoints**
--   : The primary SSE endpoint, acting as the single source of truth for real-time frontend data (wallet balance, credits, agent phase, etc.).
--   Other endpoints like  and  are being phased out for UI display in favor of the SSE stream.
+-   : Sets the Conway API key for the currently active agent.
+-   : Gets the credit balance and status for the active agent's key.
+-   : Switches the active agent context for all subsequent backend operations.
+-   : Deploys the agent into its sandbox. **Needs to be refactored to remove host access.**
 
 **Critical Info for New Agent**
--   **Your immediate task is to execute the full audit requested by the user.** You must analyze every page component in  to map out its data dependencies.
--   **The user is technically proficient and expects high-quality, efficient code.** They corrected a previous inefficient implementation (multiple pollers) and are now demanding a comprehensive cleanup. Do not propose simple or naive solutions.
--   **The core architectural principle is: The SSE stream is the single source of truth for real-time data.** Any component displaying data that is present in the SSE stream should consume it from the , not by making its own independent API calls.
--   **Be careful with .** The user explicitly instructed not to change it because it was working. When you audit it, document its independent data fetching but do not change it without proposing the change to the user first and explaining why it's necessary for architectural consistency.
+-   **Your immediate task is to resolve the user's blocker.** You must guide the user to test the new UI for changing their API key and refreshing their credit balance. The platform is unusable until this is solved.
+-   **Your second task is a high-priority security refactor.** Once the user is unblocked, you must address the critical security flaw where the backend accesses the host environment and filesystem during agent provisioning. All agent-specific data must be sourced from the agent's MongoDB record and passed into the sandbox dynamically.
+-   The architecture is now **per-agent**. Do not implement any global configurations. Ensure all new features respect the principle of data isolation between agents.
 
 **documents and test reports created in this job**
 -   
 -   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Questions where test data on the dashboard is coming from.
-2.  **User:** Again questions different test data from the testing agent.
-3.  **User:** Asks the critical question: are you tracking those balances directly from the wallets.
-4.  **User:** Instructs the agent not to use a one size fits all approach and to use the best data source for each data point.
-5.  **User:** Corrects the agent's inefficient first attempt at a multi-source pipeline, stating you cant make a call... for every single data point.
-6.  **User:** Pushes the agent to think critically: dont just agree use best practice.
-7.  **User:** Stops the agent from refactoring a working component: Agent mind wallet balances work already, are you going to break it to fix something else?
-8.  **User:** Expands the scope of the task: is this the best practice we have 13 screens all with different data points and pipelines, ensure they all work.
-9.  **User:** Confirms the new, expanded task with one command: full audit.
-10. **Agent:** Acknowledges and begins the audit by listing the relevant files. No pending user messages.
+1.  **User:** Asks for a VM tier selector and for the UI to only show affordable options.
+2.  **User:** Asks if the platform creates the VM or if they have to do it on Conway's site.
+3.  **User:** Clarifies that an API key is necessary, correcting the agent's momentary confusion.
+4.  **User:** Redesigns the Genesis screen UI to be simpler, focusing on just the API key input.
+5.  **User:** Rejects the agent's UI change that embedded the Genesis screen in the dashboard, asking for it to remain standalone.
+6.  **User:** Provides a detailed 6-point plan for the desired UX, including an editable API key, nav buttons, and better agent selection.
+7.  **User:** Questions the agent's explanation of wallet creation timing, showing deep engagement with the technical details.
+8.  **User:** Identifies and calls out the critical security breach of the agent accessing the host filesystem.
+9.  **User:** Asks the agent to consolidate the provisioning steps based on official Conway documentation.
+10. **User (LATEST/PENDING):** I added credits and the balance is not updating, i also changed the api key and is not really connected, i clicked to run sandbox and it says not enough credits
 
 **Project Health Check:**
--   **Broken:** The frontend data-fetching architecture is inconsistent. While some parts have been refactored, others still contain redundant API calls. This is not a crash-level bug but an architectural flaw the current audit is meant to fix.
+-   **Broken:** The primary user flow of provisioning an agent is blocked due to an issue with recognizing a funded Conway API key.
 -   **Mocked:** None.
 
 **3rd Party Integrations**
@@ -143,13 +144,13 @@ The user has mandated a full audit of all 13 frontend pages to identify and elim
 -   Telegram Bot API
 
 **Testing status**
--   **Testing agent used after significant changes:** YES (for the initial webhook fixes).
+-   **Testing agent used after significant changes:** YES, but not on the most recent UI fixes for the key/credit issue.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None.
--   **Known regressions:** None, but the latest major refactor (unified poller) has not been regression tested by the testing agent.
+-   **Known regressions:** None.
 
 **Credentials to test flow:**
--   The  in  has 0 credits, which is expected for testing the credit funding flow.
+-   The user must provide a valid and funded Conway API key. The key currently stored in the system () is known to have a /bin/bash balance.
 
 **What agent forgot to execute**
--   The agent did not forget a task but implemented a sub-optimal solution (multiple polling loops) which the user identified and corrected. The current audit task is a direct result of this, to ensure the entire application adheres to the corrected, more efficient architecture.</analysis>
+-   The agent identified a critical security vulnerability (host access during provisioning) but did not fix it, prioritizing other UX tasks first. This remains the most important piece of technical debt.</analysis>
