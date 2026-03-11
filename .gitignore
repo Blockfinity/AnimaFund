@@ -25,7 +25,3 @@ automaton/dist/**/
 
 # Logs
 *.log
--e 
-# Environment files
-*.env
-*.env.*
