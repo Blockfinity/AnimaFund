@@ -9,26 +9,32 @@ Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform called "Ani
 - **Data Pipeline:** Hybrid (webhook instant push + unified background poller)
 - **SSE:** Single EventSource via React Context (`SSEProvider`) — single source of truth
 - **Key Storage:** Conway API key stored PER-AGENT (provisioning-status.json + MongoDB agent doc)
+- **Security:** Agent has ZERO access to host. All operations inside sandbox only.
 
 ## Navigation Flow
-- **Genesis screen** — standalone provisioning screen, always accessible
-  - Agent selector bar (all agents + "Create" button)
+- **Genesis screen** — standalone provisioning screen
+  - Agent selector bar (all created agents + "Create" button)
   - Conway Account (API key input, editable on click)
   - VM tier selector (5 Conway tiers)
   - 6-step provisioning stepper
-  - After step 6 → wallet/funding screen
   - "Go to Dashboard" button
 - **Dashboard** — full agent monitoring/management
   - Header: Genesis pill + Wallet pill + LIVE indicator + Agent dropdown
-  - Sidebar: 13 pages (Anima VM, Agent Mind, Fund HQ, etc.)
-- **Create Agent modal** — collects name/prompt/goals/skills → "Genesis" button → redirects to genesis for provisioning
+  - Sidebar: 13 pages
+- **Create Agent modal** — collects config → "Genesis" button → redirects to genesis for provisioning
 
-## Per-Agent Data Isolation
-Each agent has its own:
-- `provisioning-status.json` with `conway_api_key` field
-- MongoDB document with `conway_api_key` field
-- Sandbox/VM on Conway Cloud (1 agent per VM)
-- When switching agents: poller, SSE, and all Conway API calls scope to that agent
+## Phase 0: Tool Verification
+After all tools are installed (step 6), the agent runs `phase0-verify.py` which USES each tool:
+1. Conway Terminal — checks binary + version
+2. Wallet — verifies address + API key from ~/.conway/config.json
+3. OpenClaw — verifies binary + MCP config
+4. Claude Code — verifies binary + MCP registration
+5. File I/O — write + read + delete test
+6. Network — outbound HTTPS to api.conway.tech
+7. Credits API — checks balance using wallet API key
+8. Skills — verifies skills directory has files
+
+Results stored in phase-state.json. Phase 0 only completes when ALL tools pass.
 
 ## Conway VM Tiers
 | Tier | vCPU | RAM | Disk | Price |
@@ -42,22 +48,23 @@ Each agent has its own:
 ## What's Been Implemented
 - [x] Full SSE data pipeline (webhook + poller → SSE → React Context)
 - [x] Complete frontend audit — all 14 pages use consistent SSE-driven data fetching
-- [x] Per-agent Conway API key storage (provisioning-status.json + MongoDB)
+- [x] Per-agent Conway API key storage
 - [x] Conway API key input with validation and edit-on-click
 - [x] VM tier selector (5 Conway tiers)
 - [x] Server startup auto-restore keys from MongoDB
-- [x] Agent switching loads correct key and scopes data
 - [x] Genesis ↔ Dashboard navigation (pills in header + buttons)
-- [x] Genesis agent list with selectable buttons + "Create" button
-- [x] Create Agent modal → "Genesis" button → redirects to genesis for provisioning
-- [x] Credit purchase audit trail (MongoDB)
-- [x] Deployment readiness (env var fallbacks)
+- [x] Genesis agent list with Create button
+- [x] Create Agent modal → "Genesis" → provisioning
+- [x] Phase 0 tool verification script (uses each tool, not just API calls)
+- [x] /api/provision/verify-tools endpoint for on-demand verification
+- [x] Deployment readiness confirmed by deployment agent
 
 ## P1: Upcoming
+- Wire step 6 to read agent config from MongoDB (not host env vars)
+- Restructure provisioning steps to match Conway's actual flow
 - Implement Real Smart Contracts
-- Create Agent flow: after step 6 auto-redirect to wallet screen
 
 ## P2: Future/Backlog
-- Multiple VMs per agent (agent can spin up additional VMs)
+- Multiple VMs per agent
 - Android device control integration
 - Self-hosted agent engine migration
