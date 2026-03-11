@@ -109,6 +109,12 @@ function AppInner() {
   const [settingKey, setSettingKey] = useState(false);
   const [editingKey, setEditingKey] = useState(false);
 
+  // Fly.io key state
+  const [flyKeyInput, setFlyKeyInput] = useState('');
+  const [flyKeyStatus, setFlyKeyStatus] = useState(null);
+  const [settingFlyKey, setSettingFlyKey] = useState(false);
+  const [editingFlyKey, setEditingFlyKey] = useState(false);
+
   // Check if Conway API key is already configured
   const checkKeyStatus = useCallback(async () => {
     try {
@@ -159,6 +165,37 @@ function AppInner() {
       }
     } catch { /* ignore */ }
   }, []);
+
+  // Fly.io key management
+  const checkFlyKeyStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/provision/provider-key-status?provider=fly`);
+      if (res.ok) setFlyKeyStatus(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { if (selectedProvider === 'fly') checkFlyKeyStatus(); }, [selectedProvider, checkFlyKeyStatus]);
+
+  const submitFlyKey = async () => {
+    if (!flyKeyInput.trim()) return;
+    setSettingFlyKey(true);
+    try {
+      const res = await fetch(`${API}/api/provision/set-provider-key`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'fly', api_key: flyKeyInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        setFlyKeyInput('');
+        setEditingFlyKey(false);
+        await checkFlyKeyStatus();
+      } else {
+        toast.error(data.error || 'Failed to set Fly.io token');
+      }
+    } catch (e) { toast.error(e.message); }
+    setSettingFlyKey(false);
+  };
 
   // Fetch credit balance on mount
   useEffect(() => {
@@ -298,13 +335,14 @@ function AppInner() {
 
   const canRunStep = (step) => {
     if (step.id === 'sandbox') {
-      // Conway needs API key, Fly.io is always ready
-      return selectedProvider === 'fly' || (keyStatus?.configured && keyStatus?.valid) || hasSandbox;
+      if (selectedProvider === 'fly') return flyKeyStatus?.configured || false;
+      return (keyStatus?.configured && keyStatus?.valid) || hasSandbox;
     }
     return hasSandbox;
   };
 
-  const hasConnectedKey = keyStatus?.configured && keyStatus?.valid;
+  const hasConnectedKey = (selectedProvider === 'conway' && keyStatus?.configured && keyStatus?.valid)
+    || (selectedProvider === 'fly' && flyKeyStatus?.configured);
 
   const allProvDone = PROVISION_STEPS.every(s => isStepDone(s.id));
   const completedCount = PROVISION_STEPS.filter(s => isStepDone(s.id)).length;
@@ -599,8 +637,68 @@ function AppInner() {
           </div>
           )}
 
+          {/* ═══════ FLY.IO ACCOUNT (only when Fly provider selected) ═══════ */}
+          {selectedProvider === 'fly' && !hasSandbox && (
+          <div data-testid="fly-key-panel" style={{ background: '#18181b', border: `1px solid ${flyKeyStatus?.configured ? '#166534' : '#27272a'}`, borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <KeyRound style={{ width: '14px', height: '14px', color: flyKeyStatus?.configured ? '#34D399' : '#a1a1aa' }} />
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Fly.io Account</span>
+              </div>
+              {flyKeyStatus?.configured && (
+                <span style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: '#71717a' }}>
+                  {flyKeyStatus.app_name || ''} &middot; {flyKeyStatus.key_prefix || ''}
+                </span>
+              )}
+            </div>
+            {flyKeyStatus?.configured && !editingFlyKey ? (
+              <div style={{ padding: '8px 14px', background: '#052e16', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div onClick={() => setEditingFlyKey(true)} style={{ cursor: 'pointer', flex: 1 }}>
+                  <span style={{ fontSize: '11px', color: '#34D399' }}>Connected</span>
+                  <span style={{ fontSize: '9px', color: '#166534', marginLeft: '8px' }}>click to change</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', color: '#a1a1aa', lineHeight: 1.6, marginBottom: '10px' }}>
+                  Enter your Fly.io API token to provision machines.
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input data-testid="fly-key-input" type="password" value={flyKeyInput}
+                    onChange={e => setFlyKeyInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && submitFlyKey()}
+                    placeholder="FlyV1 fm2_..."
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #27272a', background: '#09090b', color: '#fff', fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', outline: 'none' }}
+                  />
+                  <button data-testid="save-fly-key-btn" onClick={submitFlyKey}
+                    disabled={!flyKeyInput.trim() || settingFlyKey}
+                    style={{ padding: '8px 16px', borderRadius: '6px', border: 'none',
+                      background: !flyKeyInput.trim() || settingFlyKey ? '#27272a' : '#fff',
+                      color: !flyKeyInput.trim() || settingFlyKey ? '#52525b' : '#09090b',
+                      fontSize: '11px', fontWeight: 800, cursor: !flyKeyInput.trim() || settingFlyKey ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {settingFlyKey ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Connecting...</> : 'Connect'}
+                  </button>
+                  {editingFlyKey && (
+                    <button onClick={() => { setEditingFlyKey(false); setFlyKeyInput(''); }}
+                      style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #27272a', background: 'transparent', color: '#71717a', fontSize: '11px', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                  <a href="https://fly.io/dashboard" target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: '10px', color: '#71717a', textDecoration: 'none' }}>
+                    Get a token at <span style={{ color: '#5B9CFF', textDecoration: 'underline' }}>fly.io/dashboard</span> <ExternalLink style={{ width: '9px', height: '9px', display: 'inline', verticalAlign: 'middle' }} />
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+          )}
+
           {/* ═══════ VM TIER SELECTOR ═══════ */}
-          {(hasConnectedKey || selectedProvider === 'fly') && !hasSandbox && (
+          {hasConnectedKey && !hasSandbox && (
             <div data-testid="vm-tier-selector" style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #27272a' }}>
                 <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>Select VM</span>
@@ -695,7 +793,7 @@ function AppInner() {
                     {/* Run button */}
                     <button
                       data-testid={`run-${step.id}`}
-                      onClick={() => runStep(step)}
+                      onClick={() => runStep(step, true)}
                       disabled={!enabled || isActive || (runningStep && runningStep !== step.id)}
                       style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '6px', border: 'none', fontSize: '10px', fontWeight: 800, cursor: (!enabled || isActive || (runningStep && runningStep !== step.id)) ? 'not-allowed' : 'pointer', flexShrink: 0,
                         background: (!enabled || (runningStep && runningStep !== step.id)) ? '#27272a' : isActive ? '#27272a' : done ? '#27272a' : '#fff',

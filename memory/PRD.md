@@ -4,48 +4,43 @@
 Build a fully autonomous AI-to-AI Venture Capital (VC) fund platform called "Anima Fund". A multi-agent platform to create, monitor, and manage multiple independent AI agents from a single UI. Each agent operates in its own sandboxed VM/container on the live internet.
 
 ## Architecture: Platform vs Agents
-- **PLATFORM** = React frontend + FastAPI backend + MongoDB. Standard web app deployed normally.
-- **AGENTS** = Autonomous AIs built on Automaton. Each runs inside its own remote sandbox (Conway VM or Fly.io container).
-- The platform CREATES and MONITORS agents but does NOT run agent logic itself.
+- **PLATFORM** = React frontend + FastAPI backend + MongoDB. Standard web app.
+- **AGENTS** = Autonomous AIs. Each runs inside its own remote sandbox (Conway VM or Fly.io container).
 
 ## BYOI: Bring Your Own Infrastructure
-The platform supports multiple sandbox providers through a pluggable provider layer:
+Pluggable provider layer — each provider has its own API key panel:
 - **Conway Cloud** — Full VMs with wallet, x402 payments, domains
-- **Fly.io** — Fast containers on global edge network (tested & working)
-- Provider is selected per-agent on the Genesis screen
+- **Fly.io** — Fast containers on global edge (uses native /exec API, node:22 image)
+- Provider + key selected per-agent on Genesis screen
 - All provisioning steps work identically regardless of provider
 
-## Two Prompts
-1. **AI VC Fund Prompt** — Pre-loaded for default "anima-fund" founder agent. Just provision & deploy.
-2. **Genesis Prompt** — Template for creating additional agents (GPs, analysts, etc.)
-
-## Core Architecture
-- **Backend:** FastAPI + MongoDB (single source of truth)
-- **State Management:** `agent_state.py` centralizes all MongoDB state access
-- **Sandbox Provider:** `sandbox_provider.py` — unified interface for Conway/Fly.io
-- **Data Pipeline:** Hybrid (webhook + background poller → SSE → React)
+## Provisioning Flow
+- Auto-cascade: clicking Run on any step cascades through ALL remaining steps
+- Real-time output: each step shows timestamped logs as it runs
+- "Run All" button starts from first incomplete step and cascades
 
 ## What's Been Implemented
-- [x] Full SSE data pipeline
-- [x] Per-agent Conway API key storage in MongoDB
-- [x] Platform-Agent separation (MongoDB only, no host filesystem state)
+- [x] Platform-Agent separation (MongoDB only, no host filesystem)
 - [x] Pluggable sandbox provider (Conway + Fly.io)
-- [x] Fly.io integration — Machine creation, exec API, file writes (tested end-to-end)
-- [x] Provider selector on Genesis screen
-- [x] Conway Account panel conditional on provider selection
-- [x] VM tier selector works for both providers
-- [x] Deployment readiness (trimmed requirements.txt, safety timeouts)
-- [x] 42/42 E2E tests passed (pre-Fly integration)
+- [x] Fly.io: native /exec API, node:22 image, auto-start stopped machines
+- [x] Per-provider API key management (Conway key panel + Fly.io token panel)
+- [x] Editable keys — click to change either provider's key
+- [x] Auto-cascade provisioning steps
+- [x] Real-time step output with timestamps
+- [x] "Run All" button
+- [x] Full E2E verified: Create Sandbox → Install Terminal → all passing on Fly.io
+- [x] Deployment ready (lean requirements, .env tracked, safety timeouts)
 
 ## P0: Test
-- Run full provisioning flow via Fly.io (all 6 steps)
-- Verify agent starts and operates inside Fly Machine
+- Full 6-step provisioning via Fly.io in production
+- Verify agent starts inside Fly Machine
 
 ## P1: Upcoming
+- Agent infra-awareness (reimburse creator for non-Conway providers)
 - Real smart contracts
 - Multiple VMs per agent
-- Additional providers (E2B, DigitalOcean, etc.)
 
 ## P2: Future/Backlog
+- Additional providers (E2B, DigitalOcean, Hetzner)
 - Android device control
 - Self-hosted agent engine

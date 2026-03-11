@@ -132,7 +132,75 @@ async def get_provision_status():
 
 
 # ═══════════════════════════════════════════════════════════
-# 1. SANDBOX (Conway Cloud)
+# 1. SANDBOX PROVIDER KEY MANAGEMENT
+# ═══════════════════════════════════════════════════════════
+
+class SetProviderKeyReq(BaseModel):
+    provider: str  # "conway" or "fly"
+    api_key: str
+
+
+@router.post("/set-provider-key")
+async def set_provider_key(req: SetProviderKeyReq):
+    """Save an infrastructure provider API key for the active agent."""
+    key = req.api_key.strip()
+    if not key:
+        return {"success": False, "error": "API key is required"}
+
+    if req.provider == "fly":
+        if not key.startswith("FlyV1"):
+            return {"success": False, "error": "Invalid Fly.io token format. Tokens start with 'FlyV1'"}
+        # Validate by listing apps
+        import aiohttp
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            try:
+                async with session.get(
+                    "https://api.machines.dev/v1/apps?org_slug=personal",
+                    headers={"Authorization": f"Bearer {key}"},
+                ) as resp:
+                    if resp.status != 200:
+                        return {"success": False, "error": f"Invalid Fly.io token (HTTP {resp.status})"}
+                    data = await resp.json()
+                    apps = data.get("apps", [])
+            except Exception as e:
+                return {"success": False, "error": f"Cannot reach Fly.io API: {e}"}
+
+        # Persist to agent provisioning + env
+        status = await _load_prov_status()
+        status["fly_token"] = key
+        if apps:
+            status["fly_app_name"] = apps[0].get("name", "animafund")
+        os.environ["FLY_API_TOKEN"] = key
+        await _save_prov_status(status)
+        app_name = status.get("fly_app_name", apps[0]["name"] if apps else "?")
+        return {"success": True, "message": f"Fly.io token saved. App: {app_name}", "app_name": app_name, "key_prefix": key[:20] + "..."}
+
+    elif req.provider == "conway":
+        # Delegate to existing Conway key endpoint
+        from routers.credits import set_conway_api_key_endpoint, SetKeyRequest
+        return await set_conway_api_key_endpoint(SetKeyRequest(api_key=key))
+
+    return {"success": False, "error": f"Unknown provider: {req.provider}"}
+
+
+@router.get("/provider-key-status")
+async def provider_key_status(provider: str = "conway"):
+    """Check if a provider's API key is configured."""
+    if provider == "fly":
+        status = await _load_prov_status()
+        fly_token = status.get("fly_token") or os.environ.get("FLY_API_TOKEN", "")
+        if not fly_token:
+            return {"configured": False, "provider": "fly"}
+        fly_app = status.get("fly_app_name") or os.environ.get("FLY_APP_NAME", "")
+        return {"configured": True, "provider": "fly", "app_name": fly_app, "key_prefix": fly_token[:20] + "..."}
+    elif provider == "conway":
+        from routers.credits import conway_key_status
+        return await conway_key_status()
+    return {"configured": False, "provider": provider}
+
+
+# ═══════════════════════════════════════════════════════════
+# 2. SANDBOX (Conway Cloud / Fly.io)
 # ═══════════════════════════════════════════════════════════
 
 class CreateSandboxReq(BaseModel):
