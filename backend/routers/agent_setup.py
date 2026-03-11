@@ -318,72 +318,89 @@ async def reset_sandbox():
 
 @router.post("/install-terminal")
 async def install_terminal():
-    """Install Conway Terminal using the official one-line setup.
-    This auto-creates the agent's wallet, provisions API key, and configures MCPs."""
+    """Install Conway Terminal: system tools + Node.js + conway-terminal npm package.
+    All commands run inside the sandbox VM/container. Split into small steps to avoid timeouts."""
     status = await _load_prov_status()
-    sandbox_id = status["sandbox"].get("id")
+    sandbox_id = status.get("sandbox", {}).get("id")
     if not sandbox_id:
         return {"success": False, "error": "No sandbox yet. Create one first."}
 
     outputs = []
 
-    # 1. System tools if not done
-    if "system" not in status["tools"]:
-        r = await _sandbox_exec(sandbox_id, "apt-get update -qq && apt-get install -y -qq curl git wget build-essential jq python3 2>&1 | tail -5")
-        outputs.append(f"[system tools] exit={r['exit_code']}")
-        if r["exit_code"] == 0:
-            status["tools"]["system"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+    # Step 1: apt-get update
+    r = await _sandbox_exec(sandbox_id, "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq 2>&1 | tail -5", timeout=60)
+    outputs.append(f"[apt-update] exit={r['exit_code']}")
+    if r['exit_code'] != 0:
+        outputs.append(f"[stderr] {r.get('stderr','')[:200]}")
+        return {"success": False, "error": f"apt-get update failed", "output": "\n".join(outputs)}
 
-    # 2. Node.js
-    r = await _sandbox_exec(sandbox_id, "command -v node || (curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs) 2>&1 | tail -5")
-    outputs.append(f"[node] exit={r['exit_code']}")
+    # Step 2: Install system tools
+    r = await _sandbox_exec(sandbox_id, "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -qq curl git wget jq ca-certificates gnupg 2>&1 | tail -5", timeout=90)
+    outputs.append(f"[system-tools] exit={r['exit_code']}\n{r['stdout']}")
+    if r['exit_code'] != 0:
+        return {"success": False, "error": "System tools install failed", "output": "\n".join(outputs)}
+    status["tools"]["system"] = {"installed": True, "timestamp": datetime.now(timezone.utc).isoformat()}
 
-    # 3. Conway Terminal via official one-line setup
-    # This: installs conway-terminal, creates wallet, provisions API key, configures MCPs
+    # Step 3: Install Node.js
+    r = await _sandbox_exec(sandbox_id, (
+        "if command -v node > /dev/null 2>&1; then echo \"node already: $(node --version)\"; "
+        "else curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>&1 | tail -3 && "
+        "apt-get install -y -qq nodejs 2>&1 | tail -3; fi && "
+        "echo \"node=$(node --version) npm=$(npm --version)\""
+    ), timeout=120)
+    outputs.append(f"[node] exit={r['exit_code']}\n{r['stdout']}")
+    if r['exit_code'] != 0:
+        return {"success": False, "error": "Node.js install failed", "output": "\n".join(outputs)}
+
+    # Step 4: Conway Terminal (optional — may not exist as npm package)
     api_key = await _get_conway_api_key_async()
+    conway_installed = False
     if api_key:
-        # Use existing API key
-        r = await _sandbox_exec(sandbox_id, f"npm install -g conway-terminal 2>&1 | tail -5 && mkdir -p ~/.conway && echo '{{\"apiKey\":\"{api_key}\"}}' > ~/.conway/config.json && conway-terminal --version")
+        r = await _sandbox_exec(sandbox_id, (
+            f"npm install -g conway-terminal 2>&1 | tail -5 && "
+            f"mkdir -p ~/.conway && echo '{{\"apiKey\":\"{api_key}\"}}' > ~/.conway/config.json && "
+            f"conway-terminal --version 2>&1"
+        ), timeout=90)
+        outputs.append(f"[conway-terminal] exit={r['exit_code']}\n{r['stdout']}")
+        conway_installed = r['exit_code'] == 0
     else:
-        # Use the one-line setup script which auto-bootstraps everything
-        r = await _sandbox_exec(sandbox_id, "curl -fsSL https://conway.tech/terminal.sh | sh 2>&1 | tail -15")
-    outputs.append(f"[conway-terminal] exit={r['exit_code']}\n{r['stdout']}")
+        r = await _sandbox_exec(sandbox_id, "curl -fsSL https://conway.tech/terminal.sh | sh 2>&1 | tail -15", timeout=90)
+        outputs.append(f"[conway-terminal] exit={r['exit_code']}\n{r['stdout']}")
+        conway_installed = r['exit_code'] == 0
 
-    # 4. Read the agent's wallet AND API key from inside the sandbox
-    r_wallet = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null || echo '{}'")
+    # Step 5: Read wallet + key from sandbox
     wallet_address = ""
-    sandbox_api_key = ""
-    try:
-        config_data = json.loads(r_wallet["stdout"])
-        wallet_address = config_data.get("walletAddress", "")
-        sandbox_api_key = config_data.get("apiKey", "")
-    except Exception:
-        pass
+    if conway_installed:
+        r_wallet = await _sandbox_exec(sandbox_id, "cat ~/.conway/config.json 2>/dev/null || echo '{}'")
+        try:
+            config_data = json.loads(r_wallet["stdout"])
+            wallet_address = config_data.get("walletAddress", "")
+            sandbox_api_key = config_data.get("apiKey", "")
+            if sandbox_api_key and sandbox_api_key != api_key:
+                await _persist_conway_key(sandbox_api_key)
+                outputs.append("[key-sync] Conway API key synced")
+        except Exception:
+            pass
 
-    # 5. Persist the API key from the sandbox back to the platform
-    # This closes the loop: sandbox creates key → platform auto-discovers it
-    if sandbox_api_key and sandbox_api_key != api_key:
-        await _persist_conway_key(sandbox_api_key)
-        outputs.append("[key-sync] Conway API key auto-synced from sandbox to platform")
+    # Mark as done
+    provider = status.get("provider", "conway")
+    status["tools"]["conway-terminal"] = {
+        "installed": conway_installed,
+        "system_ready": True,
+        "node_installed": True,
+        "wallet_address": wallet_address,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if wallet_address:
+        status["wallet_address"] = wallet_address
+    await _save_prov_status(status)
 
-    # 5. Verify
-    r_ver = await _sandbox_exec(sandbox_id, "conway-terminal --version 2>&1")
-    outputs.append(f"[verify] {r_ver['stdout']}")
-
-    if r_ver["exit_code"] == 0:
-        status["tools"]["conway-terminal"] = {
-            "installed": True,
-            "wallet_address": wallet_address,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        if wallet_address:
-            status["wallet_address"] = wallet_address
-        await _save_prov_status(status)
-        wallet_msg = f" Wallet: {wallet_address}" if wallet_address else ""
-        await _add_nudge(f"Conway Terminal installed in your sandbox.{wallet_msg} You now have ALL Conway MCP tools: sandboxes, compute, domains, payments (x402/USDC), PTY sessions, and self-modification. Your wallet was auto-created — check ~/.conway/config.json.")
-        return {"success": True, "wallet_address": wallet_address, "api_key_synced": bool(sandbox_api_key and sandbox_api_key != api_key), "output": "\n".join(outputs)}
+    if conway_installed:
+        outputs.append(f"[done] Conway Terminal installed. Wallet: {wallet_address or 'none'}")
     else:
-        return {"success": False, "error": "Install failed", "output": "\n".join(outputs)}
+        outputs.append("[done] System tools + Node.js ready. Conway Terminal not available (optional for non-Conway providers).")
+
+    return {"success": True, "wallet_address": wallet_address, "output": "\n".join(outputs)}
 
 
 @router.post("/sync-key")
