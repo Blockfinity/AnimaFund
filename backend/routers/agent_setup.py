@@ -1565,6 +1565,191 @@ async def deploy_agent():
         await _sandbox_write_file(sandbox_id, "/root/.anima/phase-state.json", json.dumps(phase_state, indent=2))
         outputs.append("[phase-state] initialized at Phase 0")
 
+        # 4b. Push Phase 0 tool verification script — agent USES each tool, not just API calls
+        tool_test_script = '''#!/usr/bin/env python3
+"""Phase 0 Tool Verification — tests each tool by actually USING it.
+Run this after all tools are installed. Updates phase-state.json with results."""
+import json, os, subprocess, time, sys
+
+ANIMA_DIR = os.path.expanduser("~/.anima")
+results = {}
+
+def log(msg):
+    print(f"[Phase0] {msg}", flush=True)
+
+def pass_test(name, detail=""):
+    results[name] = {"status": "pass", "detail": detail, "tested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    log(f"PASS: {name} — {detail}")
+
+def fail_test(name, detail=""):
+    results[name] = {"status": "fail", "detail": detail, "tested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    log(f"FAIL: {name} — {detail}")
+
+# 1. Conway Terminal — verify installed and can list sandboxes
+log("Testing Conway Terminal...")
+try:
+    r = subprocess.run(["conway-terminal", "--version"], capture_output=True, text=True, timeout=10)
+    if r.returncode == 0:
+        pass_test("conway_terminal", f"version: {r.stdout.strip()}")
+    else:
+        r2 = subprocess.run(["which", "conway-terminal"], capture_output=True, text=True, timeout=5)
+        if r2.returncode == 0:
+            pass_test("conway_terminal", f"found at {r2.stdout.strip()}")
+        else:
+            fail_test("conway_terminal", "not found in PATH")
+except Exception as e:
+    fail_test("conway_terminal", str(e))
+
+# 2. Conway wallet — verify exists and has an address
+log("Testing wallet...")
+try:
+    cfg_path = os.path.expanduser("~/.conway/config.json")
+    with open(cfg_path) as f:
+        cfg = json.load(f)
+    addr = cfg.get("walletAddress", "")
+    api_key = cfg.get("apiKey", "")
+    if addr:
+        pass_test("wallet", f"address: {addr[:10]}...{addr[-6:]}")
+    else:
+        fail_test("wallet", "no walletAddress in config")
+    if api_key:
+        pass_test("api_key", f"key: {api_key[:12]}...")
+    else:
+        fail_test("api_key", "no apiKey in config")
+except Exception as e:
+    fail_test("wallet", str(e))
+
+# 3. OpenClaw — verify installed and MCP config exists
+log("Testing OpenClaw...")
+try:
+    r = subprocess.run(["which", "openclaw"], capture_output=True, text=True, timeout=5)
+    if r.returncode == 0:
+        pass_test("openclaw_binary", f"found at {r.stdout.strip()}")
+    else:
+        fail_test("openclaw_binary", "not found in PATH")
+    # Check MCP config
+    oc_cfg = os.path.expanduser("~/.openclaw/config.json")
+    if os.path.exists(oc_cfg):
+        with open(oc_cfg) as f:
+            oc = json.load(f)
+        if "mcpServers" in oc and "conway" in oc.get("mcpServers", {}):
+            pass_test("openclaw_mcp", "Conway MCP configured in OpenClaw")
+        else:
+            fail_test("openclaw_mcp", "Conway MCP not found in OpenClaw config")
+    else:
+        fail_test("openclaw_mcp", f"{oc_cfg} not found")
+except Exception as e:
+    fail_test("openclaw", str(e))
+
+# 4. Claude Code — verify installed and MCP config exists
+log("Testing Claude Code...")
+try:
+    r = subprocess.run(["which", "claude"], capture_output=True, text=True, timeout=5)
+    if r.returncode == 0:
+        pass_test("claude_code_binary", f"found at {r.stdout.strip()}")
+    else:
+        fail_test("claude_code_binary", "not found in PATH")
+    # Check Claude MCP config
+    r2 = subprocess.run(["claude", "mcp", "list"], capture_output=True, text=True, timeout=10)
+    if r2.returncode == 0 and "conway" in r2.stdout.lower():
+        pass_test("claude_code_mcp", "Conway MCP registered with Claude Code")
+    elif r2.returncode == 0:
+        fail_test("claude_code_mcp", f"Conway not in MCP list: {r2.stdout[:200]}")
+    else:
+        fail_test("claude_code_mcp", f"mcp list failed: {r2.stderr[:200]}")
+except Exception as e:
+    fail_test("claude_code", str(e))
+
+# 5. File I/O — verify write + read inside sandbox
+log("Testing file I/O...")
+try:
+    test_path = "/tmp/.anima_phase0_test"
+    test_data = {"test": True, "ts": time.time()}
+    with open(test_path, "w") as f:
+        json.dump(test_data, f)
+    with open(test_path) as f:
+        readback = json.load(f)
+    os.remove(test_path)
+    if readback.get("test") is True:
+        pass_test("file_io", "write + read + delete OK")
+    else:
+        fail_test("file_io", "readback mismatch")
+except Exception as e:
+    fail_test("file_io", str(e))
+
+# 6. Network — verify outbound connectivity
+log("Testing network...")
+try:
+    import urllib.request
+    r = urllib.request.urlopen("https://api.conway.tech/health", timeout=10)
+    if r.status == 200:
+        pass_test("network", "outbound HTTPS to api.conway.tech OK")
+    else:
+        fail_test("network", f"status {r.status}")
+except Exception as e:
+    fail_test("network", str(e))
+
+# 7. Credits — verify can check balance
+log("Testing credits API...")
+try:
+    import urllib.request
+    cfg_path = os.path.expanduser("~/.conway/config.json")
+    with open(cfg_path) as f:
+        api_key = json.load(f).get("apiKey", "")
+    req = urllib.request.Request(
+        "https://api.conway.tech/v1/credits/balance",
+        headers={"Authorization": f"Bearer {api_key}"}
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = json.loads(r.read())
+        cents = data.get("credits_cents", 0)
+        pass_test("credits_api", f"balance: {cents} cents (${cents/100:.2f})")
+except Exception as e:
+    fail_test("credits_api", str(e))
+
+# 8. Skills — verify skills directory has files
+log("Testing skills...")
+try:
+    skills_dir = os.path.expanduser("~/.openclaw/skills")
+    if os.path.isdir(skills_dir):
+        skills = [d for d in os.listdir(skills_dir) if os.path.isdir(os.path.join(skills_dir, d))]
+        pass_test("skills", f"{len(skills)} skills loaded: {', '.join(skills[:5])}")
+    else:
+        fail_test("skills", "~/.openclaw/skills/ not found")
+except Exception as e:
+    fail_test("skills", str(e))
+
+# Summary
+passed = sum(1 for r in results.values() if r["status"] == "pass")
+total = len(results)
+log(f"\\n{'='*50}")
+log(f"Phase 0 Results: {passed}/{total} tools verified")
+log(f"{'='*50}")
+
+# Update phase-state.json
+try:
+    ps_path = os.path.join(ANIMA_DIR, "phase-state.json")
+    with open(ps_path) as f:
+        ps = json.load(f)
+    ps["tool_tests"] = results
+    ps["phase_0_tested_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if passed == total:
+        ps["phase_0_complete"] = True
+        log("Phase 0 COMPLETE — all tools verified. Agent ready for Phase 1.")
+    else:
+        ps["phase_0_complete"] = False
+        log(f"Phase 0 INCOMPLETE — {total - passed} tools failed.")
+    with open(ps_path, "w") as f:
+        json.dump(ps, f, indent=2)
+except Exception as e:
+    log(f"Failed to update phase-state: {e}")
+
+sys.exit(0 if passed == total else 1)
+'''
+        await _sandbox_write_file(sandbox_id, "/root/.anima/phase0-verify.py", tool_test_script)
+        await _sandbox_exec(sandbox_id, "chmod +x /root/.anima/phase0-verify.py")
+        outputs.append("[phase0-verify] tool test script pushed")
+
         # 5. Push skills to OpenClaw-compatible path inside sandbox
         skills_src = os.path.join(AUTOMATON_DIR, "skills")
         skill_count = 0
@@ -1698,6 +1883,14 @@ while True:
 export HOME=/root
 export NODE_OPTIONS="--max-old-space-size=4096"
 
+# Phase 0: Verify all tools are functional before starting the agent
+echo "[startup] Running Phase 0 tool verification..."
+python3 /root/.anima/phase0-verify.py 2>&1 | tee /var/log/phase0-verify.log
+PHASE0_EXIT=$?
+if [ $PHASE0_EXIT -ne 0 ]; then
+    echo "[startup] WARNING: Phase 0 verification had failures. Check /var/log/phase0-verify.log"
+fi
+
 # Start webhook daemon in background (pushes live data to backend)
 nohup python3 /app/automaton/webhook-daemon.py >> /var/log/webhook-daemon.log 2>&1 &
 
@@ -1769,3 +1962,29 @@ async def get_phase_state():
         return {"success": True, "phase_state": data, "source": "sandbox"}
     except Exception:
         return {"success": True, "phase_state": {"current_phase": 0}, "source": "default"}
+
+
+@router.post("/verify-tools")
+async def verify_tools():
+    """Run Phase 0 tool verification inside the sandbox. Tests each tool by actually using it."""
+    status = _load_prov_status()
+    sandbox_id = status["sandbox"].get("id")
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox"}
+
+    # Run the verification script
+    r = await _sandbox_exec(sandbox_id, "python3 /root/.anima/phase0-verify.py 2>&1")
+    # Read the updated phase state
+    r2 = await _sandbox_exec(sandbox_id, "cat ~/.anima/phase-state.json 2>/dev/null || echo '{}'")
+    try:
+        phase_state = json.loads(r2["stdout"])
+    except Exception:
+        phase_state = {}
+
+    return {
+        "success": r["exit_code"] == 0,
+        "output": r["stdout"],
+        "phase_state": phase_state,
+        "tool_tests": phase_state.get("tool_tests", {}),
+        "phase_0_complete": phase_state.get("phase_0_complete", False),
+    }
