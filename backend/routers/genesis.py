@@ -21,7 +21,12 @@ router = APIRouter(prefix="/api", tags=["genesis"])
 # ─── Helpers ────────────────────────────────────────────
 
 CONWAY_API = os.environ.get("CONWAY_API", "https://api.conway.tech")
-CONWAY_API_KEY = os.environ.get("CONWAY_API_KEY", "")
+
+
+def _get_conway_api_key() -> str:
+    """Get Conway API key at runtime (not stale module-level)."""
+    return os.environ.get("CONWAY_API_KEY", "")
+
 
 def _get_active_agent_id() -> str:
     try:
@@ -49,12 +54,13 @@ def _load_prov_status() -> dict:
 
 async def _conway_get(path: str) -> dict:
     """GET request to Conway API using the API key."""
-    if not CONWAY_API_KEY:
+    api_key = _get_conway_api_key()
+    if not api_key:
         return {"error": "No CONWAY_API_KEY configured"}
     url = f"{CONWAY_API}{path}"
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
         try:
-            async with session.get(url, headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}) as resp:
+            async with session.get(url, headers={"Authorization": f"Bearer {api_key}"}) as resp:
                 return await resp.json()
         except Exception as e:
             return {"error": str(e)}
@@ -62,13 +68,14 @@ async def _conway_get(path: str) -> dict:
 
 async def _sandbox_exec(sandbox_id: str, command: str, timeout: int = 30) -> dict:
     """Execute a command inside the sandbox."""
-    if not CONWAY_API_KEY:
+    api_key = _get_conway_api_key()
+    if not api_key:
         return {"stdout": "", "stderr": "No CONWAY_API_KEY", "exit_code": 1}
     url = f"{CONWAY_API}/v1/sandboxes/{sandbox_id}/exec"
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout + 5)) as session:
         try:
             async with session.post(url,
-                headers={"Authorization": f"Bearer {CONWAY_API_KEY}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={"command": command, "timeout": timeout}) as resp:
                 if resp.status in (200, 201):
                     return await resp.json()
@@ -252,7 +259,7 @@ async def reset_genesis_agent():
             await _conway_get(f"/v1/sandboxes/{sandbox_id}")  # verify it exists
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
                 async with session.delete(f"{CONWAY_API}/v1/sandboxes/{sandbox_id}",
-                    headers={"Authorization": f"Bearer {CONWAY_API_KEY}"}) as _:
+                    headers={"Authorization": f"Bearer {_get_conway_api_key()}"}) as _:
                     pass
         except Exception:
             pass

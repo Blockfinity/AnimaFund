@@ -58,8 +58,13 @@ Results stored in phase-state.json. Phase 0 only completes when ALL tools pass.
 - [x] Phase 0 tool verification script (uses each tool, not just API calls)
 - [x] /api/provision/verify-tools endpoint for on-demand verification
 - [x] Deployment readiness confirmed by deployment agent
+- [x] Deployment prep: removed hardcoded preview URL, fixed stale module-level API key in genesis.py
+
+## P0: Active Blockers
+- User verification pending: Conway API key edit + credit balance refresh UI
 
 ## P1: Upcoming
+- Security refactor: deploy-agent reads secrets from host env vars (lines 1537-1542, 1778-1783 of agent_setup.py) — must read from MongoDB agent doc instead
 - Wire step 6 to read agent config from MongoDB (not host env vars)
 - Restructure provisioning steps to match Conway's actual flow
 - Implement Real Smart Contracts
