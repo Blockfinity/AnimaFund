@@ -330,6 +330,10 @@ function AppInner() {
         const errMsg = data.error || 'Failed';
         if (errMsg.toLowerCase().includes('insufficient') || errMsg.toLowerCase().includes('credit')) {
           toast.error(`${step.label}: Not enough credits on Conway. Add credits at app.conway.tech, then click Refresh on the Conway Account panel.`);
+        } else if (errMsg.toLowerCase().includes('no healthy workers') || errMsg.toLowerCase().includes('bare')) {
+          toast.error(`Conway is at capacity — no VMs available right now. They're adding more servers. Try again in a few minutes.`, { duration: 10000 });
+          setStepOutputs(prev => ({ ...prev, [step.id]: `Conway Cloud capacity issue:\n${errMsg}\n\nThis is temporary — Conway is scaling up. Retry in a few minutes.` }));
+          setExpandedStep(step.id);
         } else {
           toast.error(`${step.label}: ${errMsg}`);
         }
