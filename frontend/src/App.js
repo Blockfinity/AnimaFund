@@ -304,8 +304,11 @@ function AppInner() {
 
       const currentView = viewRef.current;
       if (currentView === 'loading') {
-        if (data.config_exists || data.wallet_address || data.engine_live) {
-          setView('dashboard');
+        if (data.engine_live || data.engine_running) {
+          setView('engine');
+          setEngineStarted(true);
+        } else if (data.config_exists || data.wallet_address) {
+          setView('engine');
           setEngineStarted(true);
         } else {
           setView('genesis');
@@ -438,12 +441,12 @@ function AppInner() {
     setRunningStep(null);
   };
 
-  // After all provisioning done, auto-transition to dashboard
+  // After all provisioning done, auto-transition to engine/wallet screen
   useEffect(() => {
-    if (allProvDone && view === 'genesis' && engineStarted) {
-      // Don't auto-transition — let user click "Open Dashboard"
+    if (allProvDone && view === 'genesis') {
+      setView('engine');
     }
-  }, [allProvDone, view, engineStarted]);
+  }, [allProvDone, view]);
 
   const fundName = identity?.name || genesisState?.fund_name || null;
   const selectedAgentName = (agentList || []).find(a => a.agent_id === selectedAgent)?.name || fundName || 'ANIMA FUND';
@@ -833,22 +836,53 @@ function AppInner() {
             </div>
           )}
 
-          {/* ═══════ WALLET / QR CODE ═══════ */}
-          {walletAddr && (
-            <div data-testid="wallet-panel" style={{ background: '#0a1a0a', border: '1px solid #166534', borderRadius: '8px', padding: '20px', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isLive ? '#34D399' : (isRunning || dbExists || allProvDone) ? '#FFB347' : '#71717a', boxShadow: isLive ? '0 0 8px #34D399' : 'none' }} />
-                <span style={{ fontSize: '13px', fontWeight: 800, color: isLive ? '#34D399' : (isRunning || dbExists || allProvDone) ? '#FFB347' : '#71717a' }}>
-                  {isLive ? 'Agent Running' :
-                   allProvDone ? 'Agent Deployed — Fund Wallet to Operate' :
-                   isRunning && isSleeping ? 'Agent Sleeping — Send USDC to wake' :
-                   isRunning && isCritical ? 'Agent Active — Credits Low' :
-                   isRunning ? 'Engine Running' :
-                   'Wallet Created — Continue Provisioning'}
-                </span>
-              </div>
+        </div>
+        {showCreateModal && <CreateAgentModal onClose={() => setShowCreateModal(false)} onCreated={handleAgentCreated} />}
+      </div>
+    );
+  }
 
-              {/* QR Code */}
+  // ═══════════════════════════════════════════
+  // ENGINE / WALLET SCREEN — agent booting, fund wallet
+  // ═══════════════════════════════════════════
+  if (view === 'engine') {
+    return (
+      <div style={{ minHeight: '100vh', background: '#09090b', fontFamily: 'Manrope, sans-serif' }}>
+        <Toaster position="top-right" richColors />
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 20px 0' }}>
+          <button onClick={() => setView('genesis')}
+            style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: 'transparent', color: '#a1a1aa', border: '1px solid #27272a' }}>
+            Back to Provisioning
+          </button>
+          <button data-testid="engine-to-dashboard-btn" onClick={() => { setCurrentPage('mind'); setView('dashboard'); }}
+            style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: 'transparent', color: '#a1a1aa', border: '1px solid #27272a' }}>
+            Go to Dashboard
+          </button>
+        </div>
+
+        <div style={{ maxWidth: '580px', margin: '0 auto', padding: '20px 20px 40px' }}>
+          {/* Logo */}
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#18181b', border: '2px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              <Zap style={{ width: '24px', height: '24px', color: '#fff' }} />
+            </div>
+            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#fff', margin: '0 0 4px' }}>{selectedAgentName}</h1>
+            <p style={{ fontSize: '12px', color: '#71717a', margin: 0 }}>
+              {isLive ? 'Agent Running' : isRunning ? 'Engine Booting...' : allProvDone ? 'Deployed — Awaiting Funding' : 'Provisioning Complete'}
+            </p>
+          </div>
+
+          {/* Wallet + QR */}
+          <div data-testid="engine-wallet-panel" style={{ background: '#0a1a0a', border: '1px solid #166534', borderRadius: '8px', padding: '20px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isLive ? '#34D399' : '#FFB347', boxShadow: isLive ? '0 0 8px #34D399' : 'none' }} />
+              <span style={{ fontSize: '13px', fontWeight: 800, color: isLive ? '#34D399' : '#FFB347' }}>
+                {isLive ? `Agent Running (${genesisState?.turn_count || 0} turns)` : isRunning ? 'Engine Running — Fund Wallet' : 'Agent Deployed — Fund Wallet to Operate'}
+              </span>
+            </div>
+
+            {/* QR Code */}
+            {(qrCode || walletAddr) && (
               <div style={{ textAlign: 'center', marginBottom: '14px' }}>
                 <img
                   src={qrCode || `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(walletAddr)}&bgcolor=0a1a0a&color=34D399`}
@@ -858,30 +892,35 @@ function AppInner() {
                 />
                 <div style={{ fontSize: '9px', color: '#71717a', marginTop: '4px' }}>Scan to send USDC on Base</div>
               </div>
+            )}
 
-              {/* Wallet address */}
+            {/* Wallet address */}
+            {walletAddr ? (
               <div style={{ marginBottom: '12px' }}>
                 <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '3px' }}>AGENT WALLET</div>
                 <div data-testid="wallet-address" style={{ background: '#18181b', borderRadius: '6px', padding: '10px', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: '#fff', wordBreak: 'break-all', border: '1px solid #27272a', cursor: 'pointer' }}
                   onClick={() => { navigator.clipboard.writeText(walletAddr); toast.success('Copied'); }}>
                   {walletAddr}
+                  <span style={{ fontSize: '8px', color: '#52525b', display: 'block', marginTop: '2px' }}>Click to copy</span>
                 </div>
               </div>
-
-              {/* Status */}
-              <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8 }}>
-                <div>Engine: <span style={{ color: isLive ? '#34D399' : (isRunning || dbExists) ? '#FFB347' : '#71717a' }}>{isLive ? `LIVE (${genesisState?.turn_count || 0} turns)` : isRunning ? 'Running' : allProvDone ? 'Deployed in Sandbox' : dbExists ? 'Configured' : 'Pending'}</span></div>
-                {genesisState?.engine_state && <div>State: {genesisState.engine_state}</div>}
+            ) : (
+              <div style={{ padding: '12px', background: '#18181b', borderRadius: '6px', border: '1px solid #27272a', marginBottom: '12px' }}>
+                <div style={{ fontSize: '11px', color: '#FFB347' }}>Wallet will appear when the agent creates it during boot</div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Engine Console */}
-          {(isRunning || engineStarted || allProvDone) && (
-            <div style={{ marginBottom: '12px' }}>
-              <EngineConsole isRunning={isRunning || engineStarted} />
+            {/* Engine status */}
+            <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8 }}>
+              <div>Engine: <span style={{ color: isLive ? '#34D399' : (isRunning || dbExists) ? '#FFB347' : '#71717a' }}>{isLive ? 'LIVE' : isRunning ? 'Running' : allProvDone ? 'Deployed' : 'Pending'}</span></div>
+              {genesisState?.engine_state && <div>State: {genesisState.engine_state}</div>}
             </div>
-          )}
+          </div>
+
+          {/* Engine Console — live agent logs */}
+          <div style={{ marginBottom: '12px' }}>
+            <EngineConsole isRunning={true} />
+          </div>
 
           {/* Creator wallets */}
           {genesisState?.creator_wallet && (
@@ -892,13 +931,12 @@ function AppInner() {
             </div>
           )}
 
-          {/* Open Dashboard button */}
-          <button data-testid="go-to-dashboard-btn" onClick={() => { setCurrentPage('mind'); setView('dashboard'); }}
+          {/* Open Dashboard */}
+          <button data-testid="engine-to-dashboard-btn-bottom" onClick={() => { setCurrentPage('mind'); setView('dashboard'); }}
             style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer', marginBottom: '8px' }}>
             Open Dashboard
           </button>
         </div>
-        {showCreateModal && <CreateAgentModal onClose={() => setShowCreateModal(false)} onCreated={handleAgentCreated} />}
       </div>
     );
   }
@@ -930,7 +968,7 @@ function AppInner() {
       <Toaster position="top-right" richColors />
       <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} fundName={fundName} />
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-200 ${sidebarOpen ? 'ml-60' : 'ml-16'}`}>
-        <Header overview={engineState} currentPage={currentPage} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} agentList={agentList} selectedAgent={selectedAgent} onSelectAgent={handleSelectAgent} onCreateAgent={() => setShowCreateModal(true)} onGoGenesis={() => setView('genesis')} onGoWallet={() => setCurrentPage('wallet')} />
+        <Header overview={engineState} currentPage={currentPage} onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} agentList={agentList} selectedAgent={selectedAgent} onSelectAgent={handleSelectAgent} onCreateAgent={() => setShowCreateModal(true)} onGoGenesis={() => setView('genesis')} onGoWallet={() => setView('engine')} />
         <main className="flex-1 overflow-y-auto p-6">{renderPage()}</main>
       </div>
       {showCreateModal && <CreateAgentModal onClose={() => setShowCreateModal(false)} onCreated={handleAgentCreated} />}

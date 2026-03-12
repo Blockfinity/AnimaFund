@@ -199,18 +199,12 @@ async def _unified_refresh_loop():
 # SANDBOX POLL — fallback when webhooks are stale
 # ═══════════════════════════════════════════════════════════
 
-async def _sandbox_exec(sandbox_id, command):
-    api_key = await get_conway_api_key()
-    if not api_key:
-        return ""
+async def _sandbox_exec_poll(sandbox_id, command):
+    """Execute a command in the sandbox using the correct provider."""
+    from sandbox_provider import sandbox_exec
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
-            async with s.post(f"{CONWAY_API}/v1/sandboxes/{sandbox_id}/exec",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"command": command}) as r:
-                if r.status == 200:
-                    return (await r.json()).get("stdout", "")
-        return ""
+        result = await sandbox_exec(sandbox_id, command, timeout=15)
+        return result.get("stdout", "")
     except Exception:
         return ""
 
@@ -234,7 +228,7 @@ async def _sandbox_poll_loop():
                 except Exception:
                     pass
 
-            raw = await _sandbox_exec(sandbox_id, (
+            raw = await _sandbox_exec_poll(sandbox_id, (
                 "echo '===ECONOMICS===' && cat ~/.anima/economics.json 2>/dev/null || echo 'null' && "
                 "echo '===REVENUE===' && cat ~/.anima/revenue-log.json 2>/dev/null || echo '[]' && "
                 "echo '===DECISIONS===' && cat ~/.anima/decisions-log.json 2>/dev/null || echo '[]' && "
