@@ -156,12 +156,15 @@ async def fly_exec(machine_id: str, command: str, timeout: int = 120, agent_id: 
         try:
             async with session.get(f"{FLY_API}/v1/apps/{app}/machines/{machine_id}", headers=headers) as resp:
                 if resp.status == 404:
-                    return {"stdout": "", "stderr": "Machine not found — sandbox was deleted. Click 'Reset' then 'Create Sandbox' again.", "exit_code": -1}
+                    # Machine gone — auto-reset provisioning so UI reflects reality
+                    await save_provisioning({"sandbox": {"status": "none", "id": None}, "tools": {}, "ports": [], "domains": [], "compute_verified": False, "skills_loaded": False, "nudges": [], "wallet_address": "", "last_updated": None}, agent_id)
+                    return {"stdout": "", "stderr": "Machine not found — provisioning has been reset. Click 'Create Sandbox' to start fresh.", "exit_code": -1}
                 if resp.status == 200:
                     mdata = await resp.json()
                     state = mdata.get("state", "")
                     if state == "destroyed":
-                        return {"stdout": "", "stderr": "Machine was destroyed. Click 'Reset' then 'Create Sandbox' again.", "exit_code": -1}
+                        await save_provisioning({"sandbox": {"status": "none", "id": None}, "tools": {}, "ports": [], "domains": [], "compute_verified": False, "skills_loaded": False, "nudges": [], "wallet_address": "", "last_updated": None}, agent_id)
+                        return {"stdout": "", "stderr": "Machine was destroyed — provisioning has been reset. Click 'Create Sandbox' to start fresh.", "exit_code": -1}
                     if state != "started":
                         logger.info(f"Machine {machine_id} is '{state}', starting...")
                         await session.post(f"{FLY_API}/v1/apps/{app}/machines/{machine_id}/start", headers=headers)

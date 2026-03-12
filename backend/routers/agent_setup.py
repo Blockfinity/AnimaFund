@@ -116,14 +116,44 @@ async def get_provision_status():
     except Exception:
         pass
 
+    # Verify sandbox is actually alive (not stale from a destroyed machine)
+    sandbox_alive = True
+    provider = status.get("provider", "conway")
+    sandbox_id = status.get("sandbox", {}).get("id")
+    if sandbox_id and status.get("sandbox", {}).get("status") == "active" and provider == "fly":
+        try:
+            from sandbox_provider import get_fly_config
+            fly = await get_fly_config()
+            if fly["token"]:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                    async with session.get(
+                        f"https://api.machines.dev/v1/apps/{fly['app_name']}/machines/{sandbox_id}",
+                        headers={"Authorization": f"Bearer {fly['token']}"},
+                    ) as resp:
+                        if resp.status == 404:
+                            sandbox_alive = False
+                        elif resp.status == 200:
+                            mdata = await resp.json()
+                            if mdata.get("state") in ("destroyed", "replacing"):
+                                sandbox_alive = False
+        except Exception:
+            pass
+
+        if not sandbox_alive:
+            # Auto-reset stale provisioning
+            from agent_state import default_provisioning
+            status = default_provisioning()
+            await _save_prov_status(status)
+
     return {
         "agent_id": get_active_agent_id(),
-        "sandbox": status["sandbox"],
-        "tools": status["tools"],
+        "provider": provider if sandbox_alive else None,
+        "sandbox": status["sandbox"] if sandbox_alive else {"status": "none", "id": None},
+        "tools": status["tools"] if sandbox_alive else {},
         "ports": status.get("ports", []),
         "domains": status.get("domains", []),
         "compute_verified": status.get("compute_verified", False),
-        "skills_loaded": status["skills_loaded"],
+        "skills_loaded": status["skills_loaded"] if sandbox_alive else False,
         "nudges": status["nudges"],
         "credits_cents": credits_cents,
         "wallet_address": status.get("wallet_address", ""),
@@ -217,9 +247,38 @@ async def create_sandbox_endpoint(req: CreateSandboxReq = CreateSandboxReq()):
     """Create a sandbox VM/container. Supports Conway Cloud and Fly.io providers."""
     status = await _load_prov_status()
 
-    # Already have an active sandbox
+    # If we think we have an active sandbox, verify it's actually alive
     if status.get("sandbox", {}).get("status") == "active" and status.get("sandbox", {}).get("id"):
-        return {"success": True, "sandbox_id": status["sandbox"]["id"], "message": "Sandbox already exists", "reused": True}
+        sandbox_id = status["sandbox"]["id"]
+        provider = status.get("provider", "conway")
+
+        if provider == "fly":
+            # Check if Fly machine still exists
+            from sandbox_provider import get_fly_config
+            fly = await get_fly_config()
+            if fly["token"]:
+                try:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                        async with session.get(
+                            f"https://api.machines.dev/v1/apps/{fly['app_name']}/machines/{sandbox_id}",
+                            headers={"Authorization": f"Bearer {fly['token']}"},
+                        ) as resp:
+                            if resp.status == 200:
+                                mdata = await resp.json()
+                                if mdata.get("state") not in ("destroyed", "replacing"):
+                                    return {"success": True, "sandbox_id": sandbox_id, "message": "Sandbox already exists", "reused": True}
+                            # Machine is gone — auto-reset
+                except Exception:
+                    pass
+                # Machine dead/gone — clear stale status
+                from agent_state import default_provisioning
+                status = default_provisioning()
+                await _save_prov_status(status)
+            else:
+                return {"success": True, "sandbox_id": sandbox_id, "message": "Sandbox already exists", "reused": True}
+        else:
+            # Conway — trust the status (Conway sandboxes persist)
+            return {"success": True, "sandbox_id": sandbox_id, "message": "Sandbox already exists", "reused": True}
 
     provider = req.provider
 
