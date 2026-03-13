@@ -103,18 +103,6 @@ function AppInner() {
 
   useEffect(() => { fetchProvStatus(); }, [fetchProvStatus]);
 
-  // Auto-health-check on load if sandbox exists (detects where provisioning left off)
-  const healthCheckDone = useRef(false);
-  useEffect(() => {
-    if (provStatus?.sandbox?.status === 'active' && provStatus?.sandbox?.id && !healthCheckDone.current) {
-      healthCheckDone.current = true;
-      fetch(`${API}/api/provision/health-check`, { method: 'POST' })
-        .then(r => r.json())
-        .then(() => fetchProvStatus())
-        .catch(() => {});
-    }
-  }, [provStatus?.sandbox?.status, provStatus?.sandbox?.id, fetchProvStatus]);
-
   // Conway API key input state
   const [conwayKeyInput, setConwayKeyInput] = useState('');
   const [keyStatus, setKeyStatus] = useState(null);
@@ -440,7 +428,7 @@ function AppInner() {
     }
   };
 
-  // Health check: silently probe sandbox to detect what's installed, update progress bar
+  // Health check: user presses this to probe sandbox and update progress bar
   const [healthChecking, setHealthChecking] = useState(false);
   const runHealthCheck = async () => {
     setHealthChecking(true);
@@ -449,8 +437,17 @@ function AppInner() {
       const data = await res.json();
       if (data.success) {
         await fetchProvStatus();
+        if (data.next_step) {
+          toast.success(`Detected state — next: ${data.next_step}. Press Continue to resume.`);
+        } else if (data.engine_running) {
+          toast.success('All tools installed. Engine running.');
+        } else {
+          toast.success('All tools installed. Engine not running — press Continue.');
+        }
+      } else {
+        toast.error(data.error || 'Health check failed');
       }
-    } catch { /* silent */ }
+    } catch (e) { toast.error(e.message); }
     setHealthChecking(false);
   };
 
@@ -777,10 +774,16 @@ function AppInner() {
                 <div style={{ height: '100%', background: allProvDone ? '#34D399' : '#fff', borderRadius: '2px', transition: 'width 0.5s', width: `${(completedCount / PROVISION_STEPS.length) * 100}%` }} />
               </div>
               {!allProvDone && !runningStep && hasSandbox && (hasConnectedKey || selectedProvider === 'fly') && (
-                <button data-testid="run-all-steps" onClick={async () => { await runHealthCheck(); await runAllSteps(); }}
-                  style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#34D399', color: '#09090b', fontSize: '10px', fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Rocket style={{ width: '10px', height: '10px' }} /> {completedCount > 0 ? 'Continue' : 'Run All'}
-                </button>
+                <>
+                  <button data-testid="health-check-btn" onClick={runHealthCheck} disabled={healthChecking}
+                    style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #27272a', background: 'transparent', color: '#a1a1aa', fontSize: '10px', fontWeight: 700, cursor: healthChecking ? 'not-allowed' : 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {healthChecking ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /></> : <><Shield style={{ width: '10px', height: '10px' }} /></>}
+                  </button>
+                  <button data-testid="run-all-steps" onClick={runAllSteps}
+                    style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#34D399', color: '#09090b', fontSize: '10px', fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Rocket style={{ width: '10px', height: '10px' }} /> Continue
+                  </button>
+                </>
               )}
               {!allProvDone && !runningStep && !hasSandbox && (hasConnectedKey || selectedProvider === 'fly') && (
                 <button data-testid="run-all-steps" onClick={runAllSteps}
