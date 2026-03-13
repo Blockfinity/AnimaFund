@@ -161,6 +161,119 @@ async def get_provision_status():
     }
 
 
+@router.post("/health-check")
+async def health_check_sandbox():
+    """Probe the sandbox to detect what's actually installed. Updates provisioning status.
+    Call this to detect where provisioning left off after a machine restart."""
+    status = await _load_prov_status()
+    sandbox_id = status.get("sandbox", {}).get("id")
+    if not sandbox_id or status.get("sandbox", {}).get("status") != "active":
+        return {"success": False, "error": "No active sandbox", "tools": {}}
+
+    outputs = []
+
+    # Probe everything in one exec call
+    r = await _sandbox_exec(sandbox_id, (
+        "echo PROBE_START && "
+        "echo NODE=$(command -v node && node --version || echo MISSING) && "
+        "echo NPM=$(command -v npm && npm --version || echo MISSING) && "
+        "echo CURL=$(command -v curl || echo MISSING) && "
+        "echo GIT=$(command -v git || echo MISSING) && "
+        "echo CONWAY=$(command -v conway-terminal && conway-terminal --version 2>/dev/null || echo MISSING) && "
+        "echo OPENCLAW=$(command -v openclaw || echo MISSING) && "
+        "echo CLAUDE=$(command -v claude && claude --version 2>/dev/null || echo MISSING) && "
+        "echo SKILLS=$(ls ~/.openclaw/skills/ 2>/dev/null | wc -l) && "
+        "echo BUNDLE=$(test -f /app/automaton/dist/bundle.mjs && echo YES || echo MISSING) && "
+        "echo GENESIS=$(test -f ~/.anima/genesis-prompt.md && echo YES || echo MISSING) && "
+        "echo ENGINE=$(pgrep -f 'bundle.mjs.*--run' > /dev/null 2>&1 && echo RUNNING || echo STOPPED) && "
+        "echo WALLET=$(cat ~/.conway/config.json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin).get(\"walletAddress\",\"\"))' 2>/dev/null || echo '') && "
+        "echo PROBE_END"
+    ), timeout=15)
+
+    if r["exit_code"] != 0 or "PROBE_START" not in r.get("stdout", ""):
+        outputs.append(f"[probe] failed: {r.get('stderr','')[:200]}")
+        return {"success": False, "error": "Probe failed — machine may not be running", "output": "\n".join(outputs)}
+
+    # Parse probe results
+    probes = {}
+    for line in r["stdout"].split("\n"):
+        if "=" in line:
+            key, val = line.split("=", 1)
+            probes[key.strip()] = val.strip()
+
+    outputs.append(f"[probe] {json.dumps(probes, indent=2)}")
+
+    # Update provisioning status based on actual state
+    has_node = "MISSING" not in probes.get("NODE", "MISSING")
+    has_curl = "MISSING" not in probes.get("CURL", "MISSING")
+    has_conway = "MISSING" not in probes.get("CONWAY", "MISSING")
+    has_openclaw = "MISSING" not in probes.get("OPENCLAW", "MISSING")
+    has_claude = "MISSING" not in probes.get("CLAUDE", "MISSING")
+    skill_count = int(probes.get("SKILLS", "0")) if probes.get("SKILLS", "0").isdigit() else 0
+    has_bundle = probes.get("BUNDLE") == "YES"
+    has_genesis = probes.get("GENESIS") == "YES"
+    engine_running = probes.get("ENGINE") == "RUNNING"
+    wallet = probes.get("WALLET", "")
+
+    ts = datetime.now(timezone.utc).isoformat()
+    if has_node and has_curl:
+        status["tools"]["system"] = {"installed": True, "timestamp": ts}
+    else:
+        status["tools"].pop("system", None)
+    status["tools"]["conway-terminal"] = {"installed": has_conway, "system_ready": has_node, "node_installed": has_node, "wallet_address": wallet, "timestamp": ts}
+    if has_openclaw:
+        status["tools"]["openclaw"] = {"installed": True, "timestamp": ts}
+    else:
+        status["tools"].pop("openclaw", None)
+    if has_claude:
+        status["tools"]["claude-code"] = {"installed": True, "timestamp": ts}
+    else:
+        status["tools"].pop("claude-code", None)
+    if skill_count > 0:
+        status["skills_loaded"] = True
+        status["tools"]["skills"] = {"installed": True, "count": skill_count, "timestamp": ts}
+    else:
+        status["skills_loaded"] = False
+        status["tools"].pop("skills", None)
+    if has_bundle and has_genesis:
+        status["tools"]["engine"] = {"deployed": True, "running": engine_running, "timestamp": ts}
+    else:
+        status["tools"].pop("engine", None)
+    if wallet:
+        status["wallet_address"] = wallet
+
+    await _save_prov_status(status)
+
+    # Determine next step
+    next_step = None
+    if not has_node or not has_curl:
+        next_step = "terminal"
+    elif not has_conway and not has_openclaw:
+        next_step = "terminal"
+    elif not has_openclaw:
+        next_step = "openclaw"
+    elif not has_claude:
+        next_step = "claudecode"
+    elif skill_count == 0:
+        next_step = "skills"
+    elif not has_bundle:
+        next_step = "deploy"
+    elif not engine_running:
+        next_step = "deploy"
+
+    return {
+        "success": True,
+        "probes": probes,
+        "engine_running": engine_running,
+        "next_step": next_step,
+        "tools_detected": {k: v.get("installed", v.get("deployed", False)) for k, v in status.get("tools", {}).items()},
+        "skills_loaded": status.get("skills_loaded", False),
+        "wallet_address": wallet,
+        "output": "\n".join(outputs),
+    }
+
+
+
 # ═══════════════════════════════════════════════════════════
 # 1. SANDBOX PROVIDER KEY MANAGEMENT
 # ═══════════════════════════════════════════════════════════

@@ -103,6 +103,18 @@ function AppInner() {
 
   useEffect(() => { fetchProvStatus(); }, [fetchProvStatus]);
 
+  // Auto-health-check on load if sandbox exists (detects where provisioning left off)
+  const healthCheckDone = useRef(false);
+  useEffect(() => {
+    if (provStatus?.sandbox?.status === 'active' && provStatus?.sandbox?.id && !healthCheckDone.current) {
+      healthCheckDone.current = true;
+      fetch(`${API}/api/provision/health-check`, { method: 'POST' })
+        .then(r => r.json())
+        .then(() => fetchProvStatus())
+        .catch(() => {});
+    }
+  }, [provStatus?.sandbox?.status, provStatus?.sandbox?.id, fetchProvStatus]);
+
   // Conway API key input state
   const [conwayKeyInput, setConwayKeyInput] = useState('');
   const [keyStatus, setKeyStatus] = useState(null);
@@ -420,12 +432,26 @@ function AppInner() {
     }
   };
 
-  // Start full provisioning cascade from step 1
+  // Start full provisioning cascade from first incomplete step
   const runAllSteps = async () => {
     const firstIncomplete = PROVISION_STEPS.find(s => !isStepDone(s.id));
     if (firstIncomplete) {
       await runStep(firstIncomplete, true);
     }
+  };
+
+  // Health check: silently probe sandbox to detect what's installed, update progress bar
+  const [healthChecking, setHealthChecking] = useState(false);
+  const runHealthCheck = async () => {
+    setHealthChecking(true);
+    try {
+      const res = await fetch(`${API}/api/provision/health-check`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        await fetchProvStatus();
+      }
+    } catch { /* silent */ }
+    setHealthChecking(false);
   };
 
   const resetAgent = async () => {
@@ -750,7 +776,13 @@ function AppInner() {
               <div style={{ flex: 1, height: '4px', background: '#27272a', borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{ height: '100%', background: allProvDone ? '#34D399' : '#fff', borderRadius: '2px', transition: 'width 0.5s', width: `${(completedCount / PROVISION_STEPS.length) * 100}%` }} />
               </div>
-              {!allProvDone && !runningStep && (hasConnectedKey || selectedProvider === 'fly') && (
+              {!allProvDone && !runningStep && hasSandbox && (hasConnectedKey || selectedProvider === 'fly') && (
+                <button data-testid="run-all-steps" onClick={async () => { await runHealthCheck(); await runAllSteps(); }}
+                  style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#34D399', color: '#09090b', fontSize: '10px', fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Rocket style={{ width: '10px', height: '10px' }} /> {completedCount > 0 ? 'Continue' : 'Run All'}
+                </button>
+              )}
+              {!allProvDone && !runningStep && !hasSandbox && (hasConnectedKey || selectedProvider === 'fly') && (
                 <button data-testid="run-all-steps" onClick={runAllSteps}
                   style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#34D399', color: '#09090b', fontSize: '10px', fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Rocket style={{ width: '10px', height: '10px' }} /> Run All
