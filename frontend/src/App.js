@@ -820,18 +820,38 @@ function AppInner() {
             })}
           </div>
 
-          {/* ═══════ RESET AGENT (reuse sandbox, preserve credits) ═══════ */}
+          {/* ═══════ RESET / DELETE SANDBOX ═══════ */}
           {hasSandbox && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-              <button data-testid="reset-agent-btn" onClick={resetAgent} disabled={runningStep === 'reset'}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px' }}>
+              <button data-testid="reset-agent-btn" onClick={resetAgent} disabled={!!runningStep}
                 style={{
                   padding: '6px 14px', borderRadius: '6px', border: '1px solid #27272a',
                   background: 'transparent', color: '#71717a', fontSize: '10px', fontWeight: 700,
-                  cursor: runningStep === 'reset' ? 'not-allowed' : 'pointer',
+                  cursor: runningStep ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', gap: '6px',
                 }}>
-                {runningStep === 'reset' ? <><Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} /> Resetting...</> :
-                 <><RotateCcw style={{ width: '10px', height: '10px' }} /> Reset Agent (keep sandbox, save credits)</>}
+                <RotateCcw style={{ width: '10px', height: '10px' }} /> Reset Agent
+              </button>
+              <button data-testid="delete-sandbox-btn"
+                onClick={async () => {
+                  if (!window.confirm('Delete this sandbox machine entirely? This cannot be undone.')) return;
+                  setRunningStep('delete');
+                  try {
+                    const res = await fetch(`${API}/api/provision/delete-sandbox`, { method: 'POST' });
+                    const data = await res.json();
+                    if (data.success) { toast.success(data.message); setStepOutputs({}); await fetchProvStatus(); }
+                    else toast.error(data.error || 'Delete failed');
+                  } catch (e) { toast.error(e.message); }
+                  setRunningStep(null);
+                }}
+                disabled={!!runningStep}
+                style={{
+                  padding: '6px 14px', borderRadius: '6px', border: '1px solid #7f1d1d',
+                  background: 'transparent', color: '#f87171', fontSize: '10px', fontWeight: 700,
+                  cursor: runningStep ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}>
+                Delete Machine
               </button>
             </div>
           )}

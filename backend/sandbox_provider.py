@@ -101,7 +101,51 @@ async def fly_create_sandbox(specs: dict, agent_id: str = None) -> dict:
                     if resp.status in (200, 201):
                         volume_id = (await resp.json()).get("id")
 
-            # 2. Create Machine
+            # 2. Check for existing machines — reuse if found
+            async with session.get(f"{FLY_API}/v1/apps/{app_name}/machines", headers=headers) as resp:
+                existing_machines = await resp.json() if resp.status == 200 else []
+
+            if existing_machines:
+                # Reuse the first machine
+                existing = existing_machines[0]
+                machine_id = existing["id"]
+                state = existing.get("state", "")
+
+                # Start it if stopped
+                if state != "started":
+                    await session.post(f"{FLY_API}/v1/apps/{app_name}/machines/{machine_id}/start", headers=headers)
+                    try:
+                        async with session.get(f"{FLY_API}/v1/apps/{app_name}/machines/{machine_id}/wait?state=started&timeout=30", headers=headers) as wr:
+                            await wr.read()
+                    except Exception:
+                        pass
+
+                # Set up symlinks if volume is attached
+                mounts = existing.get("config", {}).get("mounts", [])
+                if mounts:
+                    setup_cmd = (
+                        "mkdir -p /data/anima /data/automaton/dist /data/openclaw /data/conway /data/logs && "
+                        "test -L /root/.anima || (rm -rf /root/.anima && ln -sfn /data/anima /root/.anima) && "
+                        "test -L /app/automaton || (rm -rf /app/automaton && ln -sfn /data/automaton /app/automaton) && "
+                        "test -L /root/.openclaw || (rm -rf /root/.openclaw && ln -sfn /data/openclaw /root/.openclaw) && "
+                        "test -L /root/.conway || (rm -rf /root/.conway && ln -sfn /data/conway /root/.conway) && "
+                        "touch /data/logs/automaton.out.log /data/logs/automaton.err.log && "
+                        "ln -sfn /data/logs/automaton.out.log /var/log/automaton.out.log 2>/dev/null; "
+                        "ln -sfn /data/logs/automaton.err.log /var/log/automaton.err.log 2>/dev/null; "
+                        "echo READY"
+                    )
+                    async with session.post(f"{FLY_API}/v1/apps/{app_name}/machines/{machine_id}/exec",
+                        headers=headers, json={"command": ["bash", "-c", setup_cmd], "timeout": 15}) as er:
+                        pass
+
+                return {
+                    "id": machine_id, "sandbox_id": machine_id, "provider": "fly",
+                    "fly_app_name": app_name, "volume_id": mounts[0]["volume"] if mounts else "",
+                    "region": existing.get("region", fly_region), "state": "started",
+                    "reused": True,
+                }
+
+            # 3. No existing machine — create new one
             machine_config = {
                 "name": f"anima-{get_active_agent_id()}",
                 "region": fly_region,

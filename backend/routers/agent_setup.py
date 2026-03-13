@@ -293,18 +293,23 @@ async def create_sandbox_endpoint(req: CreateSandboxReq = CreateSandboxReq()):
             return {"success": False, "error": result["error"], "raw": result.get("raw")}
 
         sandbox_id = result.get("id", result.get("sandbox_id", ""))
+        reused = result.get("reused", False)
         status["sandbox"] = {
             "status": "active", "id": sandbox_id,
             "region": result.get("region", req.region),
             "vcpu": req.vcpu, "memory_mb": req.memory_mb, "disk_gb": req.disk_gb,
         }
         status["provider"] = "fly"
-        status["fly_exec_url"] = result.get("exec_url", "")
-        status["fly_exec_token"] = result.get("exec_token", "")
         status["fly_app_name"] = result.get("fly_app_name", "")
+        if result.get("volume_id"):
+            status["fly_volume_id"] = result["volume_id"]
+        # Preserve existing tools state if reusing a machine
+        if not reused:
+            status.setdefault("tools", {})
         await _save_prov_status(status)
-        await _add_nudge(f"Fly.io Machine provisioned (ID: {sandbox_id}). You have your own isolated container.")
-        return {"success": True, "sandbox_id": sandbox_id, "sandbox": result, "provider": "fly", "reused": False}
+        msg = f"Reusing existing Fly.io Machine (ID: {sandbox_id})" if reused else f"Fly.io Machine provisioned (ID: {sandbox_id})"
+        await _add_nudge(msg)
+        return {"success": True, "sandbox_id": sandbox_id, "sandbox": result, "provider": "fly", "reused": reused}
 
     else:
         # ─── CONWAY PROVIDER (default) ───
@@ -383,13 +388,39 @@ async def list_sandboxes():
 
 @router.post("/delete-sandbox")
 async def delete_sandbox():
-    """Conway sandboxes are prepaid and non-refundable. Deletion is disabled.
-    Use /reset-sandbox instead to wipe agent data and re-provision on the same sandbox."""
-    return {
-        "success": False,
-        "error": "Sandbox deletion is disabled — Conway sandboxes are prepaid and non-refundable. Use 'Reset Agent' to wipe and re-provision on the same sandbox without losing credits.",
-        "use_instead": "/api/provision/reset-sandbox",
-    }
+    """Delete the sandbox machine entirely. Works for Fly.io machines.
+    Conway sandboxes are prepaid — use reset-sandbox instead."""
+    status = await _load_prov_status()
+    sandbox_id = status.get("sandbox", {}).get("id")
+    provider = status.get("provider", "conway")
+
+    if not sandbox_id:
+        return {"success": False, "error": "No sandbox to delete"}
+
+    if provider == "fly":
+        from sandbox_provider import get_fly_config
+        fly = await get_fly_config()
+        if fly["token"]:
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                    headers = {"Authorization": f"Bearer {fly['token']}"}
+                    await session.post(f"https://api.machines.dev/v1/apps/{fly['app_name']}/machines/{sandbox_id}/stop", headers=headers)
+                    import asyncio
+                    await asyncio.sleep(2)
+                    async with session.delete(f"https://api.machines.dev/v1/apps/{fly['app_name']}/machines/{sandbox_id}?force=true", headers=headers) as resp:
+                        pass
+            except Exception:
+                pass
+
+        from agent_state import default_provisioning
+        await _save_prov_status(default_provisioning())
+        return {"success": True, "message": f"Fly.io machine {sandbox_id} deleted. Provisioning reset."}
+    else:
+        return {
+            "success": False,
+            "error": "Conway sandboxes are prepaid. Use 'Reset Agent' to wipe data and re-provision.",
+            "use_instead": "/api/provision/reset-sandbox",
+        }
 
 
 @router.post("/reset-sandbox")
