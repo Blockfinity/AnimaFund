@@ -282,29 +282,34 @@ async def fly_exec(machine_id: str, command: str, timeout: int = 120, agent_id: 
 
 
 async def fly_write_file(machine_id: str, file_path: str, content: str, agent_id: str = None) -> dict:
-    """Write a file inside a Fly Machine via exec."""
+    """Write a file inside a Fly Machine via exec. Handles large files via chunked base64."""
     encoded = base64.b64encode(content.encode()).decode()
-    # Split large files into chunks to avoid exec command line limits
-    if len(encoded) > 100000:
-        # Write in chunks via python
-        result = await fly_exec(machine_id,
-            f"python3 -c \"import base64,os; os.makedirs(os.path.dirname('{file_path}') or '.', exist_ok=True); open('{file_path}','wb').write(base64.b64decode(open('/tmp/_chunk','r').read()))\"",
-            timeout=30, agent_id=agent_id)
-        # First write the base64 to a temp file in chunks
-        chunk_size = 50000
-        for i in range(0, len(encoded), chunk_size):
-            chunk = encoded[i:i+chunk_size]
+
+    if len(encoded) > 60000:
+        # Large file: write base64 in chunks to temp file, then decode
+        chunk_size = 40000
+        chunks = [encoded[i:i+chunk_size] for i in range(0, len(encoded), chunk_size)]
+
+        # Clear temp file
+        await fly_exec(machine_id, f"mkdir -p $(dirname '{file_path}') && rm -f /tmp/_b64chunk", timeout=10, agent_id=agent_id)
+
+        # Write chunks
+        for i, chunk in enumerate(chunks):
             op = ">" if i == 0 else ">>"
-            await fly_exec(machine_id, f"echo -n '{chunk}' {op} /tmp/_chunk", timeout=10, agent_id=agent_id)
+            r = await fly_exec(machine_id, f"printf '%s' '{chunk}' {op} /tmp/_b64chunk", timeout=15, agent_id=agent_id)
+            if r.get("exit_code") != 0:
+                return {"error": f"Chunk {i}/{len(chunks)} write failed: {r.get('stderr','')[:100]}"}
+
+        # Decode and write to final path
         result = await fly_exec(machine_id,
-            f"python3 -c \"import base64,os; os.makedirs(os.path.dirname('{file_path}') or '.', exist_ok=True); open('{file_path}','wb').write(base64.b64decode(open('/tmp/_chunk','r').read())); print('OK')\"",
+            f"base64 -d /tmp/_b64chunk > '{file_path}' && rm -f /tmp/_b64chunk && wc -c < '{file_path}'",
             timeout=30, agent_id=agent_id)
         if result.get("exit_code") == 0:
-            return {"ok": True}
-        return {"error": result.get("stderr", "write failed")}
+            return {"ok": True, "size": result.get("stdout", "").strip()}
+        return {"error": result.get("stderr", "decode failed")}
     else:
         result = await fly_exec(machine_id,
-            f"mkdir -p $(dirname '{file_path}') && echo '{encoded}' | base64 -d > '{file_path}'",
+            f"mkdir -p $(dirname '{file_path}') && printf '%s' '{encoded}' | base64 -d > '{file_path}'",
             timeout=30, agent_id=agent_id)
         if result.get("exit_code") == 0:
             return {"ok": True}

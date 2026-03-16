@@ -588,11 +588,29 @@ async def reset_sandbox():
 # ═══════════════════════════════════════════════════════════
 
 async def _ensure_system_ready(sandbox_id: str) -> tuple:
-    """Verify system tools + Node.js are available. Installs if missing.
+    """Verify system tools + Node.js are available. Restores volume symlinks if needed.
     Returns (success: bool, log_lines: list)."""
     logs = []
 
-    # Check if node exists (node:22 image has it, but check anyway)
+    # Restore volume symlinks if they're missing (Fly rootfs resets on restart)
+    r = await _sandbox_exec(sandbox_id, (
+        "if [ -d /data ] && [ ! -L /root/.anima ]; then "
+        "  mkdir -p /data/anima /data/automaton/dist /data/openclaw /data/conway /data/logs && "
+        "  rm -rf /root/.anima /app/automaton /root/.openclaw /root/.conway && "
+        "  ln -sfn /data/anima /root/.anima && "
+        "  ln -sfn /data/automaton /app/automaton && "
+        "  ln -sfn /data/openclaw /root/.openclaw && "
+        "  ln -sfn /data/conway /root/.conway && "
+        "  touch /data/logs/automaton.out.log /data/logs/automaton.err.log && "
+        "  ln -sfn /data/logs/automaton.out.log /var/log/automaton.out.log 2>/dev/null; "
+        "  ln -sfn /data/logs/automaton.err.log /var/log/automaton.err.log 2>/dev/null; "
+        "  echo SYMLINKS_RESTORED; "
+        "else echo SYMLINKS_OK; fi"
+    ), timeout=10)
+    if "RESTORED" in r.get("stdout", ""):
+        logs.append("[prereq] volume symlinks restored")
+
+    # Check if node exists
     r = await _sandbox_exec(sandbox_id, "command -v node && command -v npm && command -v curl && command -v git && echo ALL_OK || echo MISSING", timeout=10)
     if "ALL_OK" in r.get("stdout", ""):
         logs.append("[prereq] system tools + node already available")
@@ -1786,7 +1804,43 @@ async def deploy_agent():
             await _sandbox_write_file(sandbox_id, "/root/.anima/constitution.md", content)
             outputs.append("[constitution] pushed")
 
-        # 4. Initialize phase-state.json at Phase 0
+        # 4. Write anima.json — the engine's main config file (required for --run)
+        api_key = await _get_conway_api_key_async()
+        anima_config = {
+            "name": agent_config.get("name", "Anima Fund"),
+            "genesisPrompt": genesis_content[:500] + "..." if len(genesis_content) > 500 else genesis_content,
+            "creatorAddress": agent_config.get("creator_eth_wallet", "0x0000000000000000000000000000000000000000"),
+            "registeredWithConway": bool(api_key),
+            "sandboxId": sandbox_id,
+            "conwayApiUrl": "https://api.conway.tech",
+            "conwayApiKey": api_key or "",
+            "inferenceModel": "gpt-5.2",
+            "maxTokensPerTurn": 4096,
+            "heartbeatConfigPath": "~/.anima/heartbeat.yml",
+            "dbPath": "~/.anima/state.db",
+            "logLevel": "info",
+            "walletAddress": "",
+            "version": "0.2.1",
+            "skillsDir": "~/.anima/skills",
+            "maxChildren": 3,
+            "maxTurnsPerCycle": 25,
+            "treasuryPolicy": {
+                "maxSingleTransferCents": 5000,
+                "maxHourlyTransferCents": 10000,
+                "maxDailyTransferCents": 25000,
+                "minimumReserveCents": 1000,
+                "maxX402PaymentCents": 100,
+                "x402AllowedDomains": ["conway.tech"],
+                "transferCooldownMs": 0,
+                "maxTransfersPerTurn": 2,
+                "maxInferenceDailyCents": 50000,
+                "requireConfirmationAboveCents": 1000,
+            },
+        }
+        await _sandbox_write_file(sandbox_id, "/root/.anima/anima.json", json.dumps(anima_config, indent=2))
+        outputs.append("[anima.json] engine config written")
+
+        # 5. Initialize phase-state.json at Phase 0
         phase_state = {
             "current_phase": 0,
             "phase_0_complete": False,
@@ -1996,15 +2050,36 @@ sys.exit(0 if passed == total else 1)
                     skill_count += 1
         outputs.append(f"[skills] {skill_count} skills pushed to ~/.openclaw/skills/")
 
-        # 6. Push the engine bundle
+        # 6. Push the engine bundle (compressed to speed up transfer)
         bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
         if os.path.exists(bundle_path):
-            with open(bundle_path, "r") as f:
-                bundle_content = f.read()
-            await _sandbox_write_file(sandbox_id, "/app/automaton/dist/bundle.mjs", bundle_content)
-            outputs.append(f"[engine] bundle pushed ({len(bundle_content)} chars)")
+            import gzip, base64 as b64
+            with open(bundle_path, "rb") as f:
+                raw = f.read()
+            compressed = gzip.compress(raw, compresslevel=9)
+            encoded = b64.b64encode(compressed).decode()
+            outputs.append(f"[engine] pushing bundle ({len(raw)} bytes, compressed to {len(compressed)})")
+
+            # Write compressed base64 in chunks
+            chunk_size = 80000
+            chunks = [encoded[i:i+chunk_size] for i in range(0, len(encoded), chunk_size)]
+            await _sandbox_exec(sandbox_id, "rm -f /tmp/_bundle_gz", timeout=5)
+            for i, chunk in enumerate(chunks):
+                op = ">" if i == 0 else ">>"
+                r = await _sandbox_exec(sandbox_id, f"printf '%s' '{chunk}' {op} /tmp/_bundle_gz", timeout=15)
+                if r.get("exit_code") != 0:
+                    outputs.append(f"[engine] chunk {i}/{len(chunks)} failed")
+                    break
+            # Decode and decompress
+            r = await _sandbox_exec(sandbox_id,
+                "mkdir -p /app/automaton/dist && base64 -d /tmp/_bundle_gz | gunzip > /app/automaton/dist/bundle.mjs && rm -f /tmp/_bundle_gz && wc -c < /app/automaton/dist/bundle.mjs",
+                timeout=30)
+            if r.get("exit_code") == 0:
+                outputs.append(f"[engine] bundle written ({r['stdout'].strip()} bytes)")
+            else:
+                outputs.append(f"[engine] bundle decompress failed: {r.get('stderr','')[:100]}")
         else:
-            outputs.append("[engine] WARNING: dist/bundle.mjs not found — agent may need manual engine setup")
+            outputs.append("[engine] WARNING: dist/bundle.mjs not found")
 
         # 7. PLATFORM: Build env vars from MongoDB agent config (NOT host env)
         api_key = await _get_conway_api_key_async()
@@ -2170,6 +2245,17 @@ exec node dist/bundle.mjs --run >> /var/log/automaton.out.log 2>> /var/log/autom
 
 
 @router.get("/agent-logs")
+
+@router.get("/bundle")
+async def serve_bundle():
+    """Serve the engine bundle so sandbox machines can download it directly."""
+    bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
+    if not os.path.exists(bundle_path):
+        return {"error": "Bundle not found"}
+    from fastapi.responses import FileResponse
+    return FileResponse(bundle_path, media_type="application/javascript", filename="bundle.mjs")
+
+
 async def get_agent_logs(lines: int = 50):
     """Read the agent's stdout/stderr logs from inside the sandbox."""
     status = await _load_prov_status()
