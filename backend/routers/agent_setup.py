@@ -116,31 +116,46 @@ async def get_provision_status():
     except Exception:
         pass
 
-    # Verify sandbox is actually alive (not stale from a destroyed machine)
+    # Verify sandbox is actually alive (not stale)
     sandbox_alive = True
     provider = status.get("provider", "conway")
     sandbox_id = status.get("sandbox", {}).get("id")
-    if sandbox_id and status.get("sandbox", {}).get("status") == "active" and provider == "fly":
-        try:
-            from sandbox_provider import get_fly_config
-            fly = await get_fly_config()
-            if fly["token"]:
-                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                    async with session.get(
-                        f"https://api.machines.dev/v1/apps/{fly['app_name']}/machines/{sandbox_id}",
-                        headers={"Authorization": f"Bearer {fly['token']}"},
-                    ) as resp:
-                        if resp.status == 404:
-                            sandbox_alive = False
-                        elif resp.status == 200:
-                            mdata = await resp.json()
-                            if mdata.get("state") in ("destroyed", "replacing"):
+    if sandbox_id and status.get("sandbox", {}).get("status") == "active":
+        if provider == "fly":
+            try:
+                from sandbox_provider import get_fly_config
+                fly = await get_fly_config()
+                if fly["token"]:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                        async with session.get(
+                            f"https://api.machines.dev/v1/apps/{fly['app_name']}/machines/{sandbox_id}",
+                            headers={"Authorization": f"Bearer {fly['token']}"},
+                        ) as resp:
+                            if resp.status == 404:
                                 sandbox_alive = False
-        except Exception:
-            pass
+                            elif resp.status == 200:
+                                mdata = await resp.json()
+                                # Any error response or destroyed state means dead
+                                if mdata.get("error") or mdata.get("state") in ("destroyed", "replacing"):
+                                    sandbox_alive = False
+                                elif "state" not in mdata:
+                                    sandbox_alive = False
+                            else:
+                                sandbox_alive = False
+            except Exception:
+                sandbox_alive = False
+        elif provider == "conway":
+            # Verify Conway sandbox exists via API
+            try:
+                api_key = await _get_conway_api_key_async()
+                if api_key:
+                    result = await _conway_request("GET", f"/v1/sandboxes/{sandbox_id}")
+                    if "error" in result:
+                        sandbox_alive = False
+            except Exception:
+                pass
 
         if not sandbox_alive:
-            # Auto-reset stale provisioning
             from agent_state import default_provisioning
             status = default_provisioning()
             await _save_prov_status(status)
@@ -1608,18 +1623,25 @@ async def load_skills():
     clawhub_installed = []
     clawhub_failed = []
 
-    # 1. Push local skills from automaton/skills/ into sandbox at OpenClaw-compatible path
+    # 1. Push local skills — fault-tolerant: skip broken skills, continue with rest
+    skills_failed = []
     if os.path.isdir(skills_src):
         await _sandbox_exec(sandbox_id, "mkdir -p ~/.openclaw/skills")
         for skill_name in os.listdir(skills_src):
             skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
             if os.path.exists(skill_file):
-                with open(skill_file, "r") as f:
-                    content = f.read()
-                await _sandbox_exec(sandbox_id, f"mkdir -p ~/.openclaw/skills/{skill_name}")
-                await _sandbox_write_file(sandbox_id, f"/root/.openclaw/skills/{skill_name}/SKILL.md", content)
-                skill_count += 1
-                skill_names.append(skill_name)
+                try:
+                    with open(skill_file, "r") as f:
+                        content = f.read()
+                    await _sandbox_exec(sandbox_id, f"mkdir -p ~/.openclaw/skills/{skill_name}")
+                    result = await _sandbox_write_file(sandbox_id, f"/root/.openclaw/skills/{skill_name}/SKILL.md", content)
+                    if result.get("error"):
+                        skills_failed.append({"skill": skill_name, "error": result["error"][:100]})
+                    else:
+                        skill_count += 1
+                        skill_names.append(skill_name)
+                except Exception as e:
+                    skills_failed.append({"skill": skill_name, "error": str(e)[:100]})
 
     # 2. Install priority skills from ClawHub INSIDE the sandbox
     agent_id = get_active_agent_id()
@@ -1668,18 +1690,20 @@ async def load_skills():
     }
     await _save_prov_status(status)
 
-    msg = f"Skills loaded into your sandbox at ~/.openclaw/skills/: {skill_count} local skills."
+    msg = f"Skills loaded: {skill_count} local skills."
+    if skills_failed:
+        msg += f" {len(skills_failed)} skills had errors (skipped): {', '.join(f['skill'] for f in skills_failed[:5])}."
     if clawhub_installed:
         msg += f" Installed from ClawHub: {', '.join(clawhub_installed)}."
     if clawhub_failed:
-        msg += f" Failed to install: {', '.join(f['skill'] for f in clawhub_failed)} — install manually with: npx clawhub@latest install <skill>"
-    msg += " Run 'openclaw skills list' to see all loaded skills. Search more at: npx clawhub search \"<query>\""
+        msg += f" ClawHub failed: {', '.join(f['skill'] for f in clawhub_failed)}."
     await _add_nudge(msg)
 
     return {
         "success": True,
         "skill_count": skill_count,
         "local_skills": skill_names,
+        "skills_failed": skills_failed,
         "clawhub_installed": clawhub_installed,
         "clawhub_failed": clawhub_failed,
         "priority_skills": selected_skills,
@@ -2050,36 +2074,41 @@ sys.exit(0 if passed == total else 1)
                     skill_count += 1
         outputs.append(f"[skills] {skill_count} skills pushed to ~/.openclaw/skills/")
 
-        # 6. Push the engine bundle (compressed to speed up transfer)
+        # 6. Push the engine bundle
         bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
         if os.path.exists(bundle_path):
-            import gzip, base64 as b64
-            with open(bundle_path, "rb") as f:
-                raw = f.read()
-            compressed = gzip.compress(raw, compresslevel=9)
-            encoded = b64.b64encode(compressed).decode()
-            outputs.append(f"[engine] pushing bundle ({len(raw)} bytes, compressed to {len(compressed)})")
+            with open(bundle_path, "r") as f:
+                bundle_content = f.read()
+            outputs.append(f"[engine] pushing bundle ({len(bundle_content)} bytes)")
 
-            # Write compressed base64 in chunks
-            chunk_size = 80000
-            chunks = [encoded[i:i+chunk_size] for i in range(0, len(encoded), chunk_size)]
-            await _sandbox_exec(sandbox_id, "rm -f /tmp/_bundle_gz", timeout=5)
-            for i, chunk in enumerate(chunks):
-                op = ">" if i == 0 else ">>"
-                r = await _sandbox_exec(sandbox_id, f"printf '%s' '{chunk}' {op} /tmp/_bundle_gz", timeout=15)
-                if r.get("exit_code") != 0:
-                    outputs.append(f"[engine] chunk {i}/{len(chunks)} failed")
-                    break
-            # Decode and decompress
-            r = await _sandbox_exec(sandbox_id,
-                "mkdir -p /app/automaton/dist && base64 -d /tmp/_bundle_gz | gunzip > /app/automaton/dist/bundle.mjs && rm -f /tmp/_bundle_gz && wc -c < /app/automaton/dist/bundle.mjs",
-                timeout=30)
-            if r.get("exit_code") == 0:
-                outputs.append(f"[engine] bundle written ({r['stdout'].strip()} bytes)")
+            provider = status.get("provider", "conway")
+            if provider == "conway":
+                # Conway: use native file write API (handles large files)
+                result = await _sandbox_write_file(sandbox_id, "/app/automaton/dist/bundle.mjs", bundle_content)
+                if result.get("error"):
+                    # Fallback: make sandbox download from our platform
+                    backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+                    if backend_url:
+                        r = await _sandbox_exec(sandbox_id, f"mkdir -p /app/automaton/dist && curl -sS -o /app/automaton/dist/bundle.mjs {backend_url}/api/provision/bundle", timeout=60)
+                        outputs.append(f"[engine] downloaded via curl (exit={r.get('exit_code')})")
+                    else:
+                        outputs.append(f"[engine] write failed: {result['error'][:100]}")
+                else:
+                    outputs.append("[engine] bundle pushed via Conway file API")
             else:
-                outputs.append(f"[engine] bundle decompress failed: {r.get('stderr','')[:100]}")
+                # Fly.io: make sandbox download from our platform
+                backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+                if backend_url:
+                    r = await _sandbox_exec(sandbox_id, f"mkdir -p /app/automaton/dist && curl -sS -o /app/automaton/dist/bundle.mjs {backend_url}/api/provision/bundle", timeout=60)
+                    outputs.append(f"[engine] downloaded via curl (exit={r.get('exit_code')})")
+                else:
+                    outputs.append("[engine] no backend URL for download")
+
+            # Verify bundle size
+            r_check = await _sandbox_exec(sandbox_id, "wc -c /app/automaton/dist/bundle.mjs", timeout=5)
+            outputs.append(f"[engine] verified: {r_check.get('stdout','').strip()}")
         else:
-            outputs.append("[engine] WARNING: dist/bundle.mjs not found")
+            outputs.append("[engine] WARNING: dist/bundle.mjs not found on host")
 
         # 7. PLATFORM: Build env vars from MongoDB agent config (NOT host env)
         api_key = await _get_conway_api_key_async()

@@ -54,7 +54,9 @@ async def conway_write_file(sandbox_id: str, file_path: str, content: str) -> di
     api_key = await get_conway_api_key()
     if not api_key:
         return {"error": "No Conway API key"}
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+    # Longer timeout for large files (bundle.mjs is ~10MB)
+    timeout = max(60, len(content) // 100000 + 30)
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
         try:
             async with session.post(
                 f"{CONWAY_API}/v1/sandboxes/{sandbox_id}/files",
@@ -194,7 +196,7 @@ async def fly_create_sandbox(specs: dict, agent_id: str = None) -> dict:
                         f"{FLY_API}/v1/apps/{app_name}/machines/{machine_id}/exec",
                         headers=headers,
                         json={"command": ["bash", "-c", setup_cmd], "timeout": 15},
-                    ) as er:
+                    ) as _:
                         pass
 
                 return {

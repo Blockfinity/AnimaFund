@@ -13,11 +13,11 @@ import qrcode
 import aiohttp
 
 from config import AUTOMATON_DIR, CREATOR_WALLET, CREATOR_ETH_ADDRESS, USDC_CONTRACT, BASE_RPC, CONWAY_API
-from database import get_db
 from agent_state import (
     get_active_agent_id, load_provisioning, save_provisioning,
     get_conway_api_key, get_agent_config, add_nudge,
 )
+from database import get_db
 
 router = APIRouter(prefix="/api", tags=["genesis"])
 
@@ -36,20 +36,9 @@ async def _conway_get(path: str) -> dict:
 
 
 async def _sandbox_exec(sandbox_id: str, command: str, timeout: int = 30) -> dict:
-    api_key = await get_conway_api_key()
-    if not api_key:
-        return {"stdout": "", "stderr": "No CONWAY_API_KEY", "exit_code": 1}
-    url = f"{CONWAY_API}/v1/sandboxes/{sandbox_id}/exec"
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout + 5)) as session:
-        try:
-            async with session.post(url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"command": command, "timeout": timeout}) as resp:
-                if resp.status in (200, 201):
-                    return await resp.json()
-                return {"stdout": "", "stderr": f"HTTP {resp.status}", "exit_code": 1}
-        except Exception as e:
-            return {"stdout": "", "stderr": str(e), "exit_code": 1}
+    """Execute via the provider abstraction — works for both Conway and Fly."""
+    from sandbox_provider import sandbox_exec
+    return await sandbox_exec(sandbox_id, command, timeout)
 
 
 async def _check_onchain_balance(wallet_address: str) -> dict:
