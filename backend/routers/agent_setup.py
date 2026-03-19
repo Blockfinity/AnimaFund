@@ -1623,25 +1623,50 @@ async def load_skills():
     clawhub_installed = []
     clawhub_failed = []
 
-    # 1. Push local skills — fault-tolerant: skip broken skills, continue with rest
+    # 1. Push ALL local skills in ONE batch (tar+base64) — avoids 192 individual API calls
     skills_failed = []
     if os.path.isdir(skills_src):
-        await _sandbox_exec(sandbox_id, "mkdir -p ~/.openclaw/skills")
-        for skill_name in os.listdir(skills_src):
-            skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
-            if os.path.exists(skill_file):
-                try:
-                    with open(skill_file, "r") as f:
-                        content = f.read()
-                    await _sandbox_exec(sandbox_id, f"mkdir -p ~/.openclaw/skills/{skill_name}")
-                    result = await _sandbox_write_file(sandbox_id, f"/root/.openclaw/skills/{skill_name}/SKILL.md", content)
-                    if result.get("error"):
-                        skills_failed.append({"skill": skill_name, "error": result["error"][:100]})
-                    else:
+        import tarfile, io, base64 as b64mod
+
+        # Build tar archive of all valid skills
+        tar_buffer = io.BytesIO()
+        with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
+            for skill_name in sorted(os.listdir(skills_src)):
+                skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
+                if os.path.exists(skill_file):
+                    try:
+                        with open(skill_file, "r") as f:
+                            content = f.read()
+                        if not content.strip():
+                            skills_failed.append({"skill": skill_name, "error": "empty file"})
+                            continue
+                        data = content.encode('utf-8')
+                        info = tarfile.TarInfo(name=f"{skill_name}/SKILL.md")
+                        info.size = len(data)
+                        tar.addfile(info, io.BytesIO(data))
                         skill_count += 1
                         skill_names.append(skill_name)
-                except Exception as e:
-                    skills_failed.append({"skill": skill_name, "error": str(e)[:100]})
+                    except Exception as e:
+                        skills_failed.append({"skill": skill_name, "error": str(e)[:100]})
+
+        # Push tar to sandbox in chunks and extract in ONE exec call
+        tar_b64 = b64mod.b64encode(tar_buffer.getvalue()).decode()
+        chunk_size = 40000
+        chunks = [tar_b64[i:i+chunk_size] for i in range(0, len(tar_b64), chunk_size)]
+
+        await _sandbox_exec(sandbox_id, "rm -f /tmp/_skills.tar.gz", timeout=5)
+        for i, chunk in enumerate(chunks):
+            op = ">" if i == 0 else ">>"
+            await _sandbox_exec(sandbox_id, f"printf '%s' '{chunk}' {op} /tmp/_skills.tar.gz", timeout=10)
+
+        r = await _sandbox_exec(sandbox_id,
+            "mkdir -p ~/.openclaw/skills && "
+            "base64 -d /tmp/_skills.tar.gz | tar xzf - -C ~/.openclaw/skills/ && "
+            "rm -f /tmp/_skills.tar.gz && "
+            "ls ~/.openclaw/skills/ | wc -l",
+            timeout=30)
+        if r.get("exit_code") != 0:
+            skills_failed.append({"skill": "batch_extract", "error": r.get("stderr", "tar extract failed")[:200]})
 
     # 2. Install priority skills from ClawHub INSIDE the sandbox
     agent_id = get_active_agent_id()
@@ -2072,19 +2097,45 @@ sys.exit(0 if passed == total else 1)
         await _sandbox_exec(sandbox_id, "chmod +x /root/.anima/phase0-verify.py")
         outputs.append("[phase0-verify] tool test script pushed")
 
-        # 5. Push skills to OpenClaw-compatible path inside sandbox
+        # 5. Push skills to OpenClaw-compatible path inside sandbox (batched)
         skills_src = os.path.join(AUTOMATON_DIR, "skills")
         skill_count = 0
+        deploy_skills_failed = []
         if os.path.isdir(skills_src):
-            for skill_name in os.listdir(skills_src):
-                skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
-                if os.path.exists(skill_file):
-                    with open(skill_file, "r") as f:
-                        skill_content = f.read()
-                    await _sandbox_exec(sandbox_id, f"mkdir -p ~/.openclaw/skills/{skill_name}")
-                    await _sandbox_write_file(sandbox_id, f"/root/.openclaw/skills/{skill_name}/SKILL.md", skill_content)
-                    skill_count += 1
-        outputs.append(f"[skills] {skill_count} skills pushed to ~/.openclaw/skills/")
+            import tarfile, io, base64 as b64mod
+            tar_buffer = io.BytesIO()
+            with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
+                for skill_name in sorted(os.listdir(skills_src)):
+                    skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
+                    if os.path.exists(skill_file):
+                        try:
+                            with open(skill_file, "r") as f:
+                                skill_content = f.read()
+                            if not skill_content.strip():
+                                deploy_skills_failed.append(skill_name)
+                                continue
+                            data = skill_content.encode('utf-8')
+                            info = tarfile.TarInfo(name=f"{skill_name}/SKILL.md")
+                            info.size = len(data)
+                            tar.addfile(info, io.BytesIO(data))
+                            skill_count += 1
+                        except Exception:
+                            deploy_skills_failed.append(skill_name)
+
+            tar_b64 = b64mod.b64encode(tar_buffer.getvalue()).decode()
+            chunk_size = 40000
+            chunks = [tar_b64[i:i+chunk_size] for i in range(0, len(tar_b64), chunk_size)]
+            await _sandbox_exec(sandbox_id, "rm -f /tmp/_skills.tar.gz", timeout=5)
+            for i, chunk in enumerate(chunks):
+                op = ">" if i == 0 else ">>"
+                await _sandbox_exec(sandbox_id, f"printf '%s' '{chunk}' {op} /tmp/_skills.tar.gz", timeout=10)
+            await _sandbox_exec(sandbox_id,
+                "mkdir -p ~/.openclaw/skills && base64 -d /tmp/_skills.tar.gz | tar xzf - -C ~/.openclaw/skills/ && rm -f /tmp/_skills.tar.gz",
+                timeout=30)
+        msg = f"[skills] {skill_count} skills pushed"
+        if deploy_skills_failed:
+            msg += f" ({len(deploy_skills_failed)} skipped: {', '.join(deploy_skills_failed[:5])})"
+        outputs.append(msg)
 
         # 6. Push the engine bundle
         bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
