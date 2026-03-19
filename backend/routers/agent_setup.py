@@ -1623,29 +1623,45 @@ async def load_skills():
     clawhub_installed = []
     clawhub_failed = []
 
-    # 1. Push ALL local skills via download (sandbox curls the tar from our platform)
+    # 1. Push ALL local skills — build tar, push via exec base64 (no platform URL exposure)
     skills_failed = []
-    backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
-    if os.path.isdir(skills_src) and backend_url:
-        r = await _sandbox_exec(sandbox_id,
-            f"mkdir -p ~/.openclaw/skills && "
-            f"curl -sS -o /tmp/_skills.tar.gz {backend_url}/api/provision/skills-archive && "
-            f"tar xzf /tmp/_skills.tar.gz -C ~/.openclaw/skills/ && "
-            f"rm -f /tmp/_skills.tar.gz && "
-            f"ls ~/.openclaw/skills/ | wc -l",
-            timeout=30)
-        if r.get("exit_code") == 0:
-            try:
-                skill_count = int(r["stdout"].strip())
-                # List all skill names
-                r2 = await _sandbox_exec(sandbox_id, "ls ~/.openclaw/skills/", timeout=5)
-                skill_names = [s.strip() for s in r2.get("stdout", "").strip().split("\n") if s.strip()]
-            except Exception:
-                pass
+    if os.path.isdir(skills_src):
+        import tarfile, io, base64 as b64mod
+
+        tar_buffer = io.BytesIO()
+        with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
+            for skill_name in sorted(os.listdir(skills_src)):
+                skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
+                if os.path.exists(skill_file):
+                    try:
+                        data = open(skill_file, 'rb').read()
+                        if not data.strip():
+                            skills_failed.append({"skill": skill_name, "error": "empty file"})
+                            continue
+                        info = tarfile.TarInfo(name=f"{skill_name}/SKILL.md")
+                        info.size = len(data)
+                        tar.addfile(info, io.BytesIO(data))
+                        skill_count += 1
+                        skill_names.append(skill_name)
+                    except Exception as e:
+                        skills_failed.append({"skill": skill_name, "error": str(e)[:80]})
+
+        # Push tar via sandbox write file API (goes through Conway/Fly provider, NOT platform URL)
+        tar_bytes = tar_buffer.getvalue()
+        result = await _sandbox_write_file(sandbox_id, "/tmp/_skills.tar.gz", b64mod.b64encode(tar_bytes).decode())
+        if result.get("error"):
+            skills_failed.append({"skill": "tar_push", "error": result["error"][:100]})
         else:
-            skills_failed.append({"skill": "download", "error": r.get("stderr", "curl failed")[:200]})
-    elif os.path.isdir(skills_src):
-        skills_failed.append({"skill": "all", "error": "No REACT_APP_BACKEND_URL — cannot download skills archive"})
+            # The write_file wrote base64 — need to decode and extract
+            r = await _sandbox_exec(sandbox_id,
+                "mkdir -p ~/.openclaw/skills && "
+                "base64 -d /tmp/_skills.tar.gz > /tmp/_skills_decoded.tar.gz && "
+                "tar xzf /tmp/_skills_decoded.tar.gz -C ~/.openclaw/skills/ && "
+                "rm -f /tmp/_skills.tar.gz /tmp/_skills_decoded.tar.gz && "
+                "ls ~/.openclaw/skills/ | wc -l",
+                timeout=30)
+            if r.get("exit_code") != 0:
+                skills_failed.append({"skill": "tar_extract", "error": r.get("stderr", "extract failed")[:100]})
 
     # 2. Install priority skills from ClawHub INSIDE the sandbox
     agent_id = get_active_agent_id()
@@ -1829,7 +1845,7 @@ async def deploy_agent():
                 "{{CREATOR_ETH_ADDRESS}}": agent_config.get("creator_eth_wallet", ""),
                 "{{AGENT_NAME}}": agent_config.get("name", "Anima Fund"),
                 "{{AGENT_ID}}": agent_id,
-                "{{DASHBOARD_URL}}": os.environ.get("REACT_APP_BACKEND_URL", ""),
+                "{{DASHBOARD_URL}}": "",  # SECURITY: never expose platform URL to sandbox
             }
             for placeholder, value in secrets.items():
                 genesis_content = genesis_content.replace(placeholder, value)
@@ -2076,70 +2092,64 @@ sys.exit(0 if passed == total else 1)
         await _sandbox_exec(sandbox_id, "chmod +x /root/.anima/phase0-verify.py")
         outputs.append("[phase0-verify] tool test script pushed")
 
-        # 5. Push skills via download (sandbox curls tar from platform)
+        # 5. Push skills via tar through sandbox file API (no platform URL)
         skills_src = os.path.join(AUTOMATON_DIR, "skills")
         skill_count = 0
-        backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
-        if os.path.isdir(skills_src) and backend_url:
-            r = await _sandbox_exec(sandbox_id,
-                f"mkdir -p ~/.openclaw/skills && "
-                f"curl -sS -o /tmp/_skills.tar.gz {backend_url}/api/provision/skills-archive && "
-                f"tar xzf /tmp/_skills.tar.gz -C ~/.openclaw/skills/ && "
-                f"rm -f /tmp/_skills.tar.gz && "
-                f"ls ~/.openclaw/skills/ | wc -l",
+        if os.path.isdir(skills_src):
+            import tarfile, io, base64 as b64mod
+            tar_buffer = io.BytesIO()
+            with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
+                for skill_name in sorted(os.listdir(skills_src)):
+                    skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
+                    if os.path.exists(skill_file):
+                        try:
+                            data = open(skill_file, 'rb').read()
+                            if data.strip():
+                                info = tarfile.TarInfo(name=f"{skill_name}/SKILL.md")
+                                info.size = len(data)
+                                tar.addfile(info, io.BytesIO(data))
+                                skill_count += 1
+                        except Exception:
+                            pass
+            await _sandbox_write_file(sandbox_id, "/tmp/_skills.tar.gz", b64mod.b64encode(tar_buffer.getvalue()).decode())
+            await _sandbox_exec(sandbox_id,
+                "mkdir -p ~/.openclaw/skills && base64 -d /tmp/_skills.tar.gz > /tmp/_s.tar.gz && "
+                "tar xzf /tmp/_s.tar.gz -C ~/.openclaw/skills/ && rm -f /tmp/_skills.tar.gz /tmp/_s.tar.gz",
                 timeout=30)
-            if r.get("exit_code") == 0:
-                try:
-                    skill_count = int(r["stdout"].strip())
-                except Exception:
-                    pass
         outputs.append(f"[skills] {skill_count} skills pushed")
 
-        # 6. Push the engine bundle
+        # 6. Push the engine bundle via sandbox file API (NO platform URL exposure)
         bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
         if os.path.exists(bundle_path):
             with open(bundle_path, "r") as f:
                 bundle_content = f.read()
-            outputs.append(f"[engine] pushing bundle ({len(bundle_content)} bytes)")
+            outputs.append(f"[engine] pushing bundle ({len(bundle_content)} bytes) via sandbox file API")
 
-            provider = status.get("provider", "conway")
-            if provider == "conway":
-                # Conway: use native file write API (handles large files)
-                result = await _sandbox_write_file(sandbox_id, "/app/automaton/dist/bundle.mjs", bundle_content)
-                if result.get("error"):
-                    # Fallback: make sandbox download from our platform
-                    backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
-                    if backend_url:
-                        r = await _sandbox_exec(sandbox_id, f"mkdir -p /app/automaton/dist && curl -sS -o /app/automaton/dist/bundle.mjs {backend_url}/api/provision/bundle", timeout=60)
-                        outputs.append(f"[engine] downloaded via curl (exit={r.get('exit_code')})")
-                    else:
-                        outputs.append(f"[engine] write failed: {result['error'][:100]}")
-                else:
-                    outputs.append("[engine] bundle pushed via Conway file API")
+            result = await _sandbox_write_file(sandbox_id, "/app/automaton/dist/bundle.mjs", bundle_content)
+            if result.get("error"):
+                outputs.append(f"[engine] file API failed: {result['error'][:100]}. Bundle must be pushed manually.")
             else:
-                # Fly.io: make sandbox download from our platform
-                backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
-                if backend_url:
-                    r = await _sandbox_exec(sandbox_id, f"mkdir -p /app/automaton/dist && curl -sS -o /app/automaton/dist/bundle.mjs {backend_url}/api/provision/bundle", timeout=60)
-                    outputs.append(f"[engine] downloaded via curl (exit={r.get('exit_code')})")
-                else:
-                    outputs.append("[engine] no backend URL for download")
+                outputs.append("[engine] bundle pushed")
 
             # Verify bundle size
             r_check = await _sandbox_exec(sandbox_id, "wc -c /app/automaton/dist/bundle.mjs", timeout=5)
             outputs.append(f"[engine] verified: {r_check.get('stdout','').strip()}")
 
-            # 6b. Push native addon (better_sqlite3.node) — required for engine's SQLite
-            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
-            if backend_url:
+            # 6b. Push native addon via file API, then recompile if wrong Node version
+            native_path = os.path.join(AUTOMATON_DIR, "native", "linux-x64", "better_sqlite3.node")
+            if os.path.exists(native_path):
+                import base64 as b64mod
+                with open(native_path, "rb") as f:
+                    native_b64 = b64mod.b64encode(f.read()).decode()
+                await _sandbox_write_file(sandbox_id, "/tmp/_native.b64", native_b64)
                 r_native = await _sandbox_exec(sandbox_id,
-                    f"mkdir -p /app/automaton/native/linux-x64 && "
-                    f"curl -sS -o /app/automaton/native/linux-x64/better_sqlite3.node {backend_url}/api/provision/native/better_sqlite3.node && "
-                    f"cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node 2>/dev/null; "
-                    f"wc -c /app/automaton/native/linux-x64/better_sqlite3.node",
+                    "mkdir -p /app/automaton/native/linux-x64 && "
+                    "base64 -d /tmp/_native.b64 > /app/automaton/native/linux-x64/better_sqlite3.node && "
+                    "cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node && "
+                    "rm -f /tmp/_native.b64 && wc -c /app/automaton/native/linux-x64/better_sqlite3.node",
                     timeout=30)
                 outputs.append(f"[native] {r_native.get('stdout','').strip()}")
-                # If the addon is compiled for wrong Node version, recompile
+                # Recompile if wrong Node version
                 if r_native.get("exit_code") == 0:
                     r_compat = await _sandbox_exec(sandbox_id, "node -e \"require('/app/automaton/native/linux-x64/better_sqlite3.node')\" 2>&1 || echo NEEDS_RECOMPILE", timeout=10)
                     if "NEEDS_RECOMPILE" in r_compat.get("stdout", "") or "NODE_MODULE_VERSION" in r_compat.get("stdout", ""):
@@ -2168,14 +2178,21 @@ sys.exit(0 if passed == total else 1)
 
         env_exports = " && ".join(f"export {k}='{v}'" for k, v in env_vars.items()) if env_vars else "true"  # noqa: F841
 
-        # Create webhook daemon — watches agent files and pushes changes to backend
+        # Create webhook daemon — pushes agent data to platform
+        # SECURITY: The webhook URL + secret token are the ONLY platform info in the sandbox
         backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+        import secrets as _secrets
+        webhook_token = _secrets.token_hex(32)
+        # Store token in MongoDB so webhook endpoint can validate
+        status["webhook_token"] = webhook_token
+        await _save_prov_status(status)
 
         webhook_daemon = f"""#!/usr/bin/env python3
 import json, time, os, subprocess, urllib.request, threading
 CONWAY_API = "https://api.conway.tech"
 CONWAY_KEY = "{api_key}"
 WEBHOOK_URL = "{backend_url}/api/webhook/agent-update"
+WEBHOOK_TOKEN = "{webhook_token}"
 CREATOR_WALLET = "{env_vars.get('CREATOR_WALLET', '')}"
 ANIMA_DIR = os.path.expanduser("~/.anima")
 os.makedirs(ANIMA_DIR, exist_ok=True)
@@ -2205,7 +2222,7 @@ def check_engine():
 def send_webhook(payload):
     try:
         data = json.dumps(payload).encode()
-        req = urllib.request.Request(WEBHOOK_URL, data=data, headers={{"Content-Type":"application/json"}}, method="POST")
+        req = urllib.request.Request(WEBHOOK_URL, data=data, headers={{"Content-Type":"application/json","Authorization":"Bearer "+WEBHOOK_TOKEN}}, method="POST")
         urllib.request.urlopen(req, timeout=8)
     except: pass
 def fetch_conway(path):
