@@ -76,9 +76,20 @@ export default function EngineConsole({ isRunning }) {
   const fetchLogs = useCallback(async () => {
     if (!isRunning && logs.length === 0) return;
     try {
+      // Try engine/logs first (direct sandbox exec)
       const res = await fetch(`${API}/api/engine/logs?lines=100`);
       const data = await res.json();
-      const rawLines = (data.stdout || '').split('\n');
+      let rawLines = (data.stdout || '').split('\n');
+
+      // If sandbox exec returned empty (rate limited), fall back to webhook cache
+      if (rawLines.filter(l => l.trim()).length === 0) {
+        const cacheRes = await fetch(`${API}/api/webhook/status`);
+        const cache = await cacheRes.json();
+        if (cache.agent_stdout) {
+          rawLines = cache.agent_stdout.split('\n');
+        }
+      }
+
       const parsed = rawLines.map(parseLogLine).filter(Boolean);
       const errLines = (data.stderr || '').split('\n');
       const parsedErrors = errLines.map(l => {

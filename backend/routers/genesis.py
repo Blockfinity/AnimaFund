@@ -117,12 +117,12 @@ async def genesis_status():
             engine_running = "RUNNING" in r.get("stdout", "")
             if engine_running:
                 engine_live = True
-                r2 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db 'SELECT COUNT(*) FROM turns' 2>/dev/null || echo 0", timeout=10)
+                r2 = await _sandbox_exec(sandbox_id, "cd /tmp 2>/dev/null && node -e \"try{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');console.log(d.prepare('SELECT COUNT(*) as c FROM turns').get().c)}catch(e){console.log(0)}\" 2>/dev/null || echo 0", timeout=10)
                 try:
                     turn_count = int(r2.get("stdout", "0").strip())
                 except ValueError:
                     turn_count = 0
-                r3 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db \"SELECT value FROM kv WHERE key='agent_state' LIMIT 1\" 2>/dev/null || echo ''", timeout=10)
+                r3 = await _sandbox_exec(sandbox_id, "cd /tmp 2>/dev/null && node -e \"try{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare(\\\"SELECT value FROM kv WHERE key='agent_state' LIMIT 1\\\").get();console.log(r?r.value:'')}catch(e){console.log('')}\" 2>/dev/null || echo ''", timeout=10)
                 engine_state = r3.get("stdout", "").strip().strip('"') or None
         except Exception:
             pass

@@ -201,7 +201,7 @@ async def health_check_sandbox():
         "echo BUNDLE=$(test -f /app/automaton/dist/bundle.mjs && echo YES || echo MISSING) && "
         "echo GENESIS=$(test -f ~/.anima/genesis-prompt.md && echo YES || echo MISSING) && "
         "echo ENGINE=$(pgrep -f 'bundle.mjs.*--run' > /dev/null 2>&1 && echo RUNNING || echo STOPPED) && "
-        "echo WALLET=$(cat ~/.conway/config.json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin).get(\"walletAddress\",\"\"))' 2>/dev/null || echo '') && "
+        "echo WALLET=$(cd /tmp 2>/dev/null && node -e \"try{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare('SELECT value FROM identity WHERE key=\\\"address\\\"').get();console.log(r?r.value:'')}catch(e){console.log('')}\" 2>/dev/null || cat ~/.conway/config.json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin).get(\"walletAddress\",\"\"))' 2>/dev/null || echo '') && "
         "echo PROBE_END"
     ), timeout=15)
 
@@ -1690,23 +1690,35 @@ async def load_skills():
     }
     await _save_prov_status(status)
 
-    msg = f"Skills loaded: {skill_count} local skills."
+    total_attempted = skill_count + len(skills_failed)
+    msg = f"Skills provisioned: {skill_count}/{total_attempted}."
     if skills_failed:
-        msg += f" {len(skills_failed)} skills had errors (skipped): {', '.join(f['skill'] for f in skills_failed[:5])}."
+        msg += f"\nSkipped ({len(skills_failed)} errors): {', '.join(f['skill'] for f in skills_failed[:10])}."
     if clawhub_installed:
-        msg += f" Installed from ClawHub: {', '.join(clawhub_installed)}."
+        msg += f"\nClawHub installed: {', '.join(clawhub_installed)}."
     if clawhub_failed:
-        msg += f" ClawHub failed: {', '.join(f['skill'] for f in clawhub_failed)}."
+        msg += f"\nClawHub failed: {', '.join(f['skill'] for f in clawhub_failed)}."
     await _add_nudge(msg)
+
+    # Build output for the UI step log
+    output_lines = [f"Skills provisioned: {skill_count}/{total_attempted}"]
+    if skills_failed:
+        output_lines.append(f"\nFailed skills ({len(skills_failed)}):")
+        for sf in skills_failed[:20]:
+            output_lines.append(f"  - {sf['skill']}: {sf.get('error','unknown')[:80]}")
+    if clawhub_installed:
+        output_lines.append(f"\nClawHub: {', '.join(clawhub_installed)}")
 
     return {
         "success": True,
         "skill_count": skill_count,
+        "total_attempted": total_attempted,
         "local_skills": skill_names,
         "skills_failed": skills_failed,
         "clawhub_installed": clawhub_installed,
         "clawhub_failed": clawhub_failed,
         "priority_skills": selected_skills,
+        "output": "\n".join(output_lines),
     }
 
 
