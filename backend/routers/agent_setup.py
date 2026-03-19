@@ -1623,50 +1623,29 @@ async def load_skills():
     clawhub_installed = []
     clawhub_failed = []
 
-    # 1. Push ALL local skills in ONE batch (tar+base64) — avoids 192 individual API calls
+    # 1. Push ALL local skills via download (sandbox curls the tar from our platform)
     skills_failed = []
-    if os.path.isdir(skills_src):
-        import tarfile, io, base64 as b64mod
-
-        # Build tar archive of all valid skills
-        tar_buffer = io.BytesIO()
-        with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
-            for skill_name in sorted(os.listdir(skills_src)):
-                skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
-                if os.path.exists(skill_file):
-                    try:
-                        with open(skill_file, "r") as f:
-                            content = f.read()
-                        if not content.strip():
-                            skills_failed.append({"skill": skill_name, "error": "empty file"})
-                            continue
-                        data = content.encode('utf-8')
-                        info = tarfile.TarInfo(name=f"{skill_name}/SKILL.md")
-                        info.size = len(data)
-                        tar.addfile(info, io.BytesIO(data))
-                        skill_count += 1
-                        skill_names.append(skill_name)
-                    except Exception as e:
-                        skills_failed.append({"skill": skill_name, "error": str(e)[:100]})
-
-        # Push tar to sandbox in chunks and extract in ONE exec call
-        tar_b64 = b64mod.b64encode(tar_buffer.getvalue()).decode()
-        chunk_size = 40000
-        chunks = [tar_b64[i:i+chunk_size] for i in range(0, len(tar_b64), chunk_size)]
-
-        await _sandbox_exec(sandbox_id, "rm -f /tmp/_skills.tar.gz", timeout=5)
-        for i, chunk in enumerate(chunks):
-            op = ">" if i == 0 else ">>"
-            await _sandbox_exec(sandbox_id, f"printf '%s' '{chunk}' {op} /tmp/_skills.tar.gz", timeout=10)
-
+    backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+    if os.path.isdir(skills_src) and backend_url:
         r = await _sandbox_exec(sandbox_id,
-            "mkdir -p ~/.openclaw/skills && "
-            "base64 -d /tmp/_skills.tar.gz | tar xzf - -C ~/.openclaw/skills/ && "
-            "rm -f /tmp/_skills.tar.gz && "
-            "ls ~/.openclaw/skills/ | wc -l",
+            f"mkdir -p ~/.openclaw/skills && "
+            f"curl -sS -o /tmp/_skills.tar.gz {backend_url}/api/provision/skills-archive && "
+            f"tar xzf /tmp/_skills.tar.gz -C ~/.openclaw/skills/ && "
+            f"rm -f /tmp/_skills.tar.gz && "
+            f"ls ~/.openclaw/skills/ | wc -l",
             timeout=30)
-        if r.get("exit_code") != 0:
-            skills_failed.append({"skill": "batch_extract", "error": r.get("stderr", "tar extract failed")[:200]})
+        if r.get("exit_code") == 0:
+            try:
+                skill_count = int(r["stdout"].strip())
+                # List all skill names
+                r2 = await _sandbox_exec(sandbox_id, "ls ~/.openclaw/skills/", timeout=5)
+                skill_names = [s.strip() for s in r2.get("stdout", "").strip().split("\n") if s.strip()]
+            except Exception:
+                pass
+        else:
+            skills_failed.append({"skill": "download", "error": r.get("stderr", "curl failed")[:200]})
+    elif os.path.isdir(skills_src):
+        skills_failed.append({"skill": "all", "error": "No REACT_APP_BACKEND_URL — cannot download skills archive"})
 
     # 2. Install priority skills from ClawHub INSIDE the sandbox
     agent_id = get_active_agent_id()
@@ -2097,45 +2076,24 @@ sys.exit(0 if passed == total else 1)
         await _sandbox_exec(sandbox_id, "chmod +x /root/.anima/phase0-verify.py")
         outputs.append("[phase0-verify] tool test script pushed")
 
-        # 5. Push skills to OpenClaw-compatible path inside sandbox (batched)
+        # 5. Push skills via download (sandbox curls tar from platform)
         skills_src = os.path.join(AUTOMATON_DIR, "skills")
         skill_count = 0
-        deploy_skills_failed = []
-        if os.path.isdir(skills_src):
-            import tarfile, io, base64 as b64mod
-            tar_buffer = io.BytesIO()
-            with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
-                for skill_name in sorted(os.listdir(skills_src)):
-                    skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
-                    if os.path.exists(skill_file):
-                        try:
-                            with open(skill_file, "r") as f:
-                                skill_content = f.read()
-                            if not skill_content.strip():
-                                deploy_skills_failed.append(skill_name)
-                                continue
-                            data = skill_content.encode('utf-8')
-                            info = tarfile.TarInfo(name=f"{skill_name}/SKILL.md")
-                            info.size = len(data)
-                            tar.addfile(info, io.BytesIO(data))
-                            skill_count += 1
-                        except Exception:
-                            deploy_skills_failed.append(skill_name)
-
-            tar_b64 = b64mod.b64encode(tar_buffer.getvalue()).decode()
-            chunk_size = 40000
-            chunks = [tar_b64[i:i+chunk_size] for i in range(0, len(tar_b64), chunk_size)]
-            await _sandbox_exec(sandbox_id, "rm -f /tmp/_skills.tar.gz", timeout=5)
-            for i, chunk in enumerate(chunks):
-                op = ">" if i == 0 else ">>"
-                await _sandbox_exec(sandbox_id, f"printf '%s' '{chunk}' {op} /tmp/_skills.tar.gz", timeout=10)
-            await _sandbox_exec(sandbox_id,
-                "mkdir -p ~/.openclaw/skills && base64 -d /tmp/_skills.tar.gz | tar xzf - -C ~/.openclaw/skills/ && rm -f /tmp/_skills.tar.gz",
+        backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+        if os.path.isdir(skills_src) and backend_url:
+            r = await _sandbox_exec(sandbox_id,
+                f"mkdir -p ~/.openclaw/skills && "
+                f"curl -sS -o /tmp/_skills.tar.gz {backend_url}/api/provision/skills-archive && "
+                f"tar xzf /tmp/_skills.tar.gz -C ~/.openclaw/skills/ && "
+                f"rm -f /tmp/_skills.tar.gz && "
+                f"ls ~/.openclaw/skills/ | wc -l",
                 timeout=30)
-        msg = f"[skills] {skill_count} skills pushed"
-        if deploy_skills_failed:
-            msg += f" ({len(deploy_skills_failed)} skipped: {', '.join(deploy_skills_failed[:5])})"
-        outputs.append(msg)
+            if r.get("exit_code") == 0:
+                try:
+                    skill_count = int(r["stdout"].strip())
+                except Exception:
+                    pass
+        outputs.append(f"[skills] {skill_count} skills pushed")
 
         # 6. Push the engine bundle
         bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
@@ -2369,6 +2327,34 @@ exec node dist/bundle.mjs --run >> /var/log/automaton.out.log 2>> /var/log/autom
 @router.get("/agent-logs")
 
 @router.get("/bundle")
+
+@router.get("/skills-archive")
+async def serve_skills_archive():
+    """Serve all skills as a tar.gz archive so sandbox can download in one shot."""
+    import tarfile, io
+    skills_src = os.path.join(AUTOMATON_DIR, "skills")
+    if not os.path.isdir(skills_src):
+        return {"error": "No skills directory"}
+    tar_buffer = io.BytesIO()
+    count = 0
+    with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
+        for skill_name in sorted(os.listdir(skills_src)):
+            skill_file = os.path.join(skills_src, skill_name, "SKILL.md")
+            if os.path.exists(skill_file):
+                try:
+                    data = open(skill_file, 'rb').read()
+                    if data.strip():
+                        info = tarfile.TarInfo(name=f"{skill_name}/SKILL.md")
+                        info.size = len(data)
+                        tar.addfile(info, io.BytesIO(data))
+                        count += 1
+                except Exception:
+                    pass
+    from fastapi.responses import Response
+    return Response(content=tar_buffer.getvalue(), media_type="application/gzip",
+                    headers={"Content-Disposition": "attachment; filename=skills.tar.gz", "X-Skill-Count": str(count)})
+
+
 async def serve_bundle():
     """Serve the engine bundle so sandbox machines can download it directly."""
     bundle_path = os.path.join(AUTOMATON_DIR, "dist", "bundle.mjs")
