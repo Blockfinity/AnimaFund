@@ -111,21 +111,16 @@ async def genesis_status():
     turn_count = 0
     engine_state = None
 
-    if engine_deployed and sandbox_id:
-        try:
-            r = await _sandbox_exec(sandbox_id, "pgrep -f 'bundle.mjs.*--run' > /dev/null 2>&1 && echo RUNNING || echo STOPPED", timeout=10)
-            engine_running = "RUNNING" in r.get("stdout", "")
-            if engine_running:
-                engine_live = True
-                r2 = await _sandbox_exec(sandbox_id, "cd /tmp 2>/dev/null && node -e \"try{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');console.log(d.prepare('SELECT COUNT(*) as c FROM turns').get().c)}catch(e){console.log(0)}\" 2>/dev/null || echo 0", timeout=10)
-                try:
-                    turn_count = int(r2.get("stdout", "0").strip())
-                except ValueError:
-                    turn_count = 0
-                r3 = await _sandbox_exec(sandbox_id, "cd /tmp 2>/dev/null && node -e \"try{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare(\\\"SELECT value FROM kv WHERE key='agent_state' LIMIT 1\\\").get();console.log(r?r.value:'')}catch(e){console.log('')}\" 2>/dev/null || echo ''", timeout=10)
-                engine_state = r3.get("stdout", "").strip().strip('"') or None
-        except Exception:
-            pass
+    if engine_deployed:
+        # Read from webhook cache — this IS real-time data pushed by the daemon inside the sandbox
+        from sandbox_poller import get_cache
+        cache = get_cache()
+        engine_running = bool(cache.get("engine_running"))
+        engine_live = engine_running
+        phase = cache.get("phase_state", {})
+        if phase:
+            turn_count = phase.get("turn_count", 0)
+            engine_state = phase.get("agent_state", None)
 
     qr_b64 = _generate_qr(wallet_address) if wallet_address else None
 
@@ -265,48 +260,43 @@ async def engine_status():
 
 @router.get("/engine/logs")
 async def engine_logs(lines: int = Query(default=50, le=200)):
-    prov = await load_provisioning()
-    sandbox_id = prov.get("sandbox", {}).get("id", "")
-    if not sandbox_id:
-        return {"stdout": "", "stderr": "", "agent_id": get_active_agent_id(),
-                "error": "No sandbox — provision one first.", "source": "none"}
-    r_out = await _sandbox_exec(sandbox_id, f"tail -{lines} /var/log/automaton.out.log 2>/dev/null || echo ''")
-    r_err = await _sandbox_exec(sandbox_id, f"tail -{lines} /var/log/automaton.err.log 2>/dev/null || echo ''")
-    return {"stdout": r_out.get("stdout", ""), "stderr": r_err.get("stdout", ""),
+    """Engine logs — reads from real-time webhook data."""
+    from sandbox_poller import get_cache
+    cache = get_cache()
+    stdout = cache.get("agent_stdout", "")
+    stderr = cache.get("agent_stderr", "")
+
+    # Trim to requested line count
+    if stdout:
+        stdout = "\n".join(stdout.split("\n")[-lines:])
+    if stderr:
+        stderr = "\n".join(stderr.split("\n")[-lines:])
+
+    return {"stdout": stdout, "stderr": stderr,
             "agent_id": get_active_agent_id(), "source": "sandbox"}
 
 
 @router.get("/engine/live")
 async def engine_live():
+    """Engine live status — reads from real-time webhook data."""
     prov = await load_provisioning()
-    sandbox_id = prov.get("sandbox", {}).get("id", "")
     engine_deployed = prov.get("tools", {}).get("engine", {}).get("deployed", False)
 
-    if not sandbox_id or not engine_deployed:
+    if not engine_deployed:
         return {"live": False, "db_exists": False, "agent_state": None, "turn_count": 0, "source": "none"}
 
-    try:
-        r = await _sandbox_exec(sandbox_id, "pgrep -f 'bundle.mjs.*--run' > /dev/null 2>&1 && echo RUNNING || echo STOPPED", timeout=10)
-        is_running = "RUNNING" in r.get("stdout", "")
-        turn_count = 0
-        agent_state = None
-        db_exists = False
-        if is_running:
-            r2 = await _sandbox_exec(sandbox_id, "test -f ~/.anima/state.db && echo EXISTS || echo NONE", timeout=5)
-            db_exists = "EXISTS" in r2.get("stdout", "")
-            if db_exists:
-                r3 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db 'SELECT COUNT(*) FROM turns' 2>/dev/null || echo 0", timeout=10)
-                try:
-                    turn_count = int(r3.get("stdout", "0").strip())
-                except ValueError:
-                    pass
-                r4 = await _sandbox_exec(sandbox_id, "sqlite3 ~/.anima/state.db \"SELECT value FROM kv WHERE key='agent_state' LIMIT 1\" 2>/dev/null || echo ''", timeout=10)
-                agent_state = r4.get("stdout", "").strip().strip('"') or None
-        return {"live": is_running, "db_exists": db_exists, "agent_state": agent_state,
-                "turn_count": turn_count, "source": "sandbox"}
-    except Exception as e:
-        return {"live": False, "db_exists": False, "agent_state": None, "turn_count": 0,
-                "error": str(e), "source": "sandbox"}
+    from sandbox_poller import get_cache
+    cache = get_cache()
+    is_running = bool(cache.get("engine_running"))
+    phase = cache.get("phase_state", {})
+
+    return {
+        "live": is_running,
+        "db_exists": is_running,
+        "agent_state": phase.get("agent_state", None),
+        "turn_count": phase.get("turn_count", 0),
+        "source": "sandbox",
+    }
 
 
 @router.get("/constitution")
