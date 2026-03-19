@@ -72,6 +72,18 @@ def _notify():
 def update_from_webhook(data: dict):
     if data.get("economics") and isinstance(data["economics"], dict):
         _cache["economics"] = data["economics"]
+        # Extract wallet address from economics and save to provisioning
+        wallet = data["economics"].get("wallet_address", "")
+        if wallet and wallet.startswith("0x"):
+            _cache["wallet_address"] = wallet
+            # Persist to MongoDB provisioning (async — fire and forget)
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(_save_wallet_to_db(wallet))
+            except Exception:
+                pass
     if data.get("revenue_log") is not None:
         _cache["revenue_log"] = data["revenue_log"] if isinstance(data["revenue_log"], list) else []
     if data.get("decisions_log") is not None:
@@ -89,6 +101,18 @@ def update_from_webhook(data: dict):
     _cache["last_update"] = datetime.now(timezone.utc).isoformat()
     _cache["update_source"] = "webhook"
     _notify()
+
+
+async def _save_wallet_to_db(wallet: str):
+    """Persist wallet address from webhook data to MongoDB provisioning."""
+    try:
+        from agent_state import save_provisioning, load_provisioning
+        prov = await load_provisioning()
+        if prov.get("wallet_address") != wallet:
+            prov["wallet_address"] = wallet
+            await save_provisioning(prov)
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════

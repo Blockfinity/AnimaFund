@@ -2263,8 +2263,16 @@ def update_economics():
         try:
             with open(os.path.expanduser("~/.conway/config.json")) as f: wcfg = json.load(f)
         except: pass
+        # Get wallet from config OR from agent's state.db
+        wallet = wcfg.get("walletAddress","")
+        if not wallet:
+            try:
+                import subprocess
+                r = subprocess.run(["node","-e","try{{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare('SELECT value FROM identity WHERE key=\"address\"').get();console.log(r?r.value:'')}}catch(e){{console.log('')}}"], capture_output=True, text=True, timeout=5, cwd="/tmp")
+                wallet = r.stdout.strip()
+            except: pass
         econ = {{"credits_cents":bal.get("credits_cents",0),"credits_usd":bal.get("credits_cents",0)/100,
-                 "wallet_address":wcfg.get("walletAddress",""),"vm_pricing":pri.get("pricing",[]),
+                 "wallet_address":wallet,"vm_pricing":pri.get("pricing",[]),
                  "credit_tiers":pri.get("tiers",[]),"creator_wallet":CREATOR_WALLET,
                  "creator_split_pct":50,"updated_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())}}
         with open(ANIMA_DIR+"/economics.json","w") as f: json.dump(econ,f,indent=2)
