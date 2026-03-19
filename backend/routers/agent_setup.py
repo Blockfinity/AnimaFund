@@ -2107,6 +2107,28 @@ sys.exit(0 if passed == total else 1)
             # Verify bundle size
             r_check = await _sandbox_exec(sandbox_id, "wc -c /app/automaton/dist/bundle.mjs", timeout=5)
             outputs.append(f"[engine] verified: {r_check.get('stdout','').strip()}")
+
+            # 6b. Push native addon (better_sqlite3.node) — required for engine's SQLite
+            backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+            if backend_url:
+                r_native = await _sandbox_exec(sandbox_id,
+                    f"mkdir -p /app/automaton/native/linux-x64 && "
+                    f"curl -sS -o /app/automaton/native/linux-x64/better_sqlite3.node {backend_url}/api/provision/native/better_sqlite3.node && "
+                    f"cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node 2>/dev/null; "
+                    f"wc -c /app/automaton/native/linux-x64/better_sqlite3.node",
+                    timeout=30)
+                outputs.append(f"[native] {r_native.get('stdout','').strip()}")
+                # If the addon is compiled for wrong Node version, recompile
+                if r_native.get("exit_code") == 0:
+                    r_compat = await _sandbox_exec(sandbox_id, "node -e \"require('/app/automaton/native/linux-x64/better_sqlite3.node')\" 2>&1 || echo NEEDS_RECOMPILE", timeout=10)
+                    if "NEEDS_RECOMPILE" in r_compat.get("stdout", "") or "NODE_MODULE_VERSION" in r_compat.get("stdout", ""):
+                        outputs.append("[native] Recompiling for sandbox Node version...")
+                        r_recompile = await _sandbox_exec(sandbox_id,
+                            "cd /tmp && npm install better-sqlite3 2>&1 | tail -3 && "
+                            "cp /tmp/node_modules/better-sqlite3/build/Release/better_sqlite3.node /app/automaton/native/linux-x64/better_sqlite3.node && "
+                            "cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node && echo RECOMPILED",
+                            timeout=60)
+                        outputs.append(f"[native] {r_recompile.get('stdout','').strip()}")
         else:
             outputs.append("[engine] WARNING: dist/bundle.mjs not found on host")
 
@@ -2283,6 +2305,19 @@ async def serve_bundle():
         return {"error": "Bundle not found"}
     from fastapi.responses import FileResponse
     return FileResponse(bundle_path, media_type="application/javascript", filename="bundle.mjs")
+
+
+@router.get("/native/{filename}")
+async def serve_native(filename: str):
+    """Serve native addons so sandbox machines can download them."""
+    # Try platform-specific first, then generic
+    for subpath in [f"native/linux-x64/{filename}", f"native/{filename}"]:
+        filepath = os.path.join(AUTOMATON_DIR, subpath)
+        if os.path.exists(filepath):
+            from fastapi.responses import FileResponse
+            return FileResponse(filepath, media_type="application/octet-stream", filename=filename)
+    return {"error": f"Native addon {filename} not found"}
+
 
 
 async def get_agent_logs(lines: int = 50):
