@@ -84,3 +84,28 @@ async def get_activity_feed(limit: int = Query(default=100, le=500)):
 async def get_activity():
     """Alias for activity-feed."""
     return await get_activity_feed()
+
+
+@router.get("/infrastructure/overview")
+async def get_overview():
+    """Overview stats for Infrastructure page."""
+    prov = await load_provisioning()
+    cache = get_cache()
+    sandbox = prov.get("sandbox", {})
+    tools = prov.get("tools", {})
+    return {
+        "sandboxes": 1 if sandbox.get("id") else 0,
+        "domains": len(prov.get("domains", [])),
+        "installed_tools": len(tools),
+        "discovered_agents": len(cache.get("decisions_log", [])),
+        "messages": 0,
+        "public_urls": len(prov.get("ports", [])),
+        "engine_running": cache.get("engine_running", False),
+        "source": "provisioning",
+    }
+
+
+@router.get("/infrastructure/installed-tools")
+async def get_installed_tools_detail():
+    """Alias for /infrastructure/tools."""
+    return await get_installed_tools()
