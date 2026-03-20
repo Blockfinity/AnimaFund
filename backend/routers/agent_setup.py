@@ -201,7 +201,7 @@ async def health_check_sandbox():
         "echo BUNDLE=$(test -f /app/automaton/dist/bundle.mjs && echo YES || echo MISSING) && "
         "echo GENESIS=$(test -f ~/.anima/genesis-prompt.md && echo YES || echo MISSING) && "
         "echo ENGINE=$(pgrep -f 'bundle.mjs.*--run' > /dev/null 2>&1 && echo RUNNING || echo STOPPED) && "
-        "echo WALLET=$(cd /tmp 2>/dev/null && node -e \"try{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare('SELECT value FROM identity WHERE key=\\\"address\\\"').get();console.log(r?r.value:'')}catch(e){console.log('')}\" 2>/dev/null || cat ~/.conway/config.json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin).get(\"walletAddress\",\"\"))' 2>/dev/null || echo '') && "
+        "echo WALLET=$(cd /tmp 2>/dev/null && node -e \"try{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare('SELECT value FROM identity WHERE key=?').get('address');console.log(r?r.value:'')}catch(e){console.log('')}\" 2>/dev/null || echo '') && "
         "echo PROBE_END"
     ), timeout=15)
 
@@ -2245,7 +2245,7 @@ def update_economics():
         if not wallet:
             try:
                 import subprocess
-                r = subprocess.run(["node","-e","try{{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare('SELECT value FROM identity WHERE key=\"address\"').get();console.log(r?r.value:'')}}catch(e){{console.log('')}}"], capture_output=True, text=True, timeout=5, cwd="/tmp")
+                r = subprocess.run(["node","-e","try{{const D=require('better-sqlite3');const d=new D('/root/.anima/state.db');const r=d.prepare('SELECT value FROM identity WHERE key=?').get('address');console.log(r?r.value:'')}}catch(e){{console.log('')}}"], capture_output=True, text=True, timeout=5, cwd="/tmp")
                 wallet = r.stdout.strip()
             except: pass
         econ = {{"credits_cents":bal.get("credits_cents",0),"credits_usd":bal.get("credits_cents",0)/100,
