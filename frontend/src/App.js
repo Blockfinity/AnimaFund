@@ -921,80 +921,80 @@ function AppInner() {
           </button>
         </div>
 
-        <div style={{ maxWidth: '580px', margin: '0 auto', padding: '20px 20px 40px' }}>
+        <div style={{ maxWidth: '520px', margin: '0 auto', padding: '18px 18px 36px' }}>
           {/* Logo */}
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#18181b', border: '2px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-              <Zap style={{ width: '24px', height: '24px', color: '#fff' }} />
+          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+            <div style={{ width: '50px', height: '50px', borderRadius: '10px', background: '#18181b', border: '2px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+              <Zap style={{ width: '22px', height: '22px', color: '#fff' }} />
             </div>
-            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#fff', margin: '0 0 4px' }}>{selectedAgentName}</h1>
-            <p style={{ fontSize: '12px', color: '#71717a', margin: 0 }}>
+            <h1 style={{ fontSize: '22px', fontWeight: 900, color: '#fff', margin: '0 0 3px' }}>{selectedAgentName}</h1>
+            <p style={{ fontSize: '11px', color: '#71717a', margin: 0 }}>
               {isLive ? 'Agent Running' : isRunning ? 'Engine Booting...' : allProvDone ? 'Deployed — Awaiting Funding' : 'Provisioning Complete'}
             </p>
           </div>
 
           {/* Wallet + QR */}
-          <div data-testid="engine-wallet-panel" style={{ background: '#0a1a0a', border: '1px solid #166534', borderRadius: '8px', padding: '20px', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isLive ? '#34D399' : '#FFB347', boxShadow: isLive ? '0 0 8px #34D399' : 'none' }} />
-              <span style={{ fontSize: '13px', fontWeight: 800, color: isLive ? '#34D399' : '#FFB347' }}>
+          <div data-testid="engine-wallet-panel" style={{ background: '#0a1a0a', border: '1px solid #166534', borderRadius: '7px', padding: '18px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '12px' }}>
+              <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: isLive ? '#34D399' : '#FFB347', boxShadow: isLive ? '0 0 7px #34D399' : 'none' }} />
+              <span style={{ fontSize: '12px', fontWeight: 800, color: isLive ? '#34D399' : '#FFB347' }}>
                 {isLive ? `Agent Running (${genesisState?.turn_count || 0} turns)` : isRunning ? 'Engine Running — Fund Wallet' : 'Agent Deployed — Fund Wallet to Operate'}
               </span>
             </div>
 
             {/* QR Code */}
             {(qrCode || walletAddr) && (
-              <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '12px' }}>
                 <img
                   src={qrCode || `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(walletAddr)}&bgcolor=0a1a0a&color=34D399`}
                   alt="Wallet QR"
-                  style={{ width: '160px', height: '160px', borderRadius: '8px', border: '2px solid #27272a' }}
+                  style={{ width: '144px', height: '144px', borderRadius: '7px', border: '2px solid #27272a' }}
                   data-testid="wallet-qr"
                 />
-                <div style={{ fontSize: '9px', color: '#71717a', marginTop: '4px' }}>Scan to send USDC on Base</div>
+                <div style={{ fontSize: '8px', color: '#71717a', marginTop: '3px' }}>Scan to send USDC on Base</div>
               </div>
             )}
 
             {/* Wallet address */}
             {walletAddr ? (
-              <div style={{ marginBottom: '12px' }}>
-                <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '3px' }}>AGENT WALLET</div>
-                <div data-testid="wallet-address" style={{ background: '#18181b', borderRadius: '6px', padding: '10px', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: '#fff', wordBreak: 'break-all', border: '1px solid #27272a', cursor: 'pointer' }}
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ fontSize: '8px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '3px' }}>AGENT WALLET</div>
+                <div data-testid="wallet-address" style={{ background: '#18181b', borderRadius: '5px', padding: '9px', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: '#fff', wordBreak: 'break-all', border: '1px solid #27272a', cursor: 'pointer' }}
                   onClick={() => { navigator.clipboard.writeText(walletAddr); toast.success('Copied'); }}>
                   {walletAddr}
-                  <span style={{ fontSize: '8px', color: '#52525b', display: 'block', marginTop: '2px' }}>Click to copy</span>
+                  <span style={{ fontSize: '7px', color: '#52525b', display: 'block', marginTop: '2px' }}>Click to copy</span>
                 </div>
               </div>
             ) : (
-              <div style={{ padding: '12px', background: '#18181b', borderRadius: '6px', border: '1px solid #27272a', marginBottom: '12px' }}>
-                <div style={{ fontSize: '11px', color: '#FFB347' }}>Wallet will appear when the agent creates it during boot</div>
+              <div style={{ padding: '10px', background: '#18181b', borderRadius: '5px', border: '1px solid #27272a', marginBottom: '10px' }}>
+                <div style={{ fontSize: '10px', color: '#FFB347' }}>Wallet will appear when the agent creates it during boot</div>
               </div>
             )}
 
             {/* Engine status */}
-            <div style={{ fontSize: '10px', color: '#71717a', lineHeight: 1.8 }}>
+            <div style={{ fontSize: '9px', color: '#71717a', lineHeight: 1.8 }}>
               <div>Engine: <span style={{ color: isLive ? '#34D399' : (isRunning || dbExists) ? '#FFB347' : '#71717a' }}>{isLive ? 'LIVE' : isRunning ? 'Running' : allProvDone ? 'Deployed' : 'Pending'}</span></div>
               {genesisState?.engine_state && <div>State: {genesisState.engine_state}</div>}
             </div>
           </div>
 
           {/* Engine Console — live agent logs */}
-          <div style={{ marginBottom: '12px' }}>
+          <div style={{ marginBottom: '10px' }}>
             <EngineConsole isRunning={true} />
           </div>
 
           {/* Creator wallets */}
           {genesisState?.creator_wallet && (
-            <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
-              <div style={{ fontSize: '9px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>CREATOR WALLETS (50% net revenue)</div>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#FFB347', wordBreak: 'break-all', marginBottom: '4px' }}>SOL: {genesisState?.creator_wallet}</div>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: '#5B9CFF', wordBreak: 'break-all' }}>ETH: {genesisState?.creator_eth_address || 'Not configured'}</div>
+            <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '7px', padding: '10px', marginBottom: '10px' }}>
+              <div style={{ fontSize: '8px', color: '#71717a', fontWeight: 700, letterSpacing: '1px', marginBottom: '2px' }}>CREATOR WALLETS (50% net revenue)</div>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#FFB347', wordBreak: 'break-all', marginBottom: '3px' }}>SOL: {genesisState?.creator_wallet}</div>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#5B9CFF', wordBreak: 'break-all' }}>ETH: {genesisState?.creator_eth_address || 'Not configured'}</div>
             </div>
           )}
 
           {/* Open Dashboard */}
           <button data-testid="engine-to-dashboard-btn-bottom" onClick={() => { setCurrentPage('mind'); setView('dashboard'); }}
-            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer', marginBottom: '8px' }}>
+            style={{ width: '100%', padding: '10px', borderRadius: '7px', border: '1px solid #27272a', background: 'transparent', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', marginBottom: '7px' }}>
             Open Dashboard
           </button>
         </div>
