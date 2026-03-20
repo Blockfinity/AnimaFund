@@ -102,14 +102,31 @@ export default function EngineConsole({ isRunning }) {
     } catch { /* ignore fetch errors */ }
   }, [isRunning, logs.length]);
 
-  // SSE-triggered log fetching — replaces 2s polling
-  useSSETrigger(fetchLogs, { fallbackMs: 8000 });
+  // SSE-triggered log fetching
+  useSSETrigger(fetchLogs, { fallbackMs: 5000 });
 
+  // Auto-scroll: snap to bottom when new logs arrive
   useEffect(() => {
-    if (!userScrolledUp.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (autoScroll && scrollRef.current) {
+      requestAnimationFrame(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      });
     }
-  }, [logs]);
+  }, [logs, autoScroll]);
+
+  // Filter state
+  const [logFilter, setLogFilter] = useState('all');
+  const filterCategories = [
+    { id: 'all', label: 'ALL' },
+    { id: 'think', label: 'THINKING', match: /\[THINK\]|routing inference/i },
+    { id: 'tool', label: 'TOOLS', match: /\[TOOL\]/i },
+    { id: 'error', label: 'ERRORS', match: /\[ERROR\]|\[CRITICAL\]|\[FATAL\]/i },
+    { id: 'state', label: 'STATE', match: /\[STATE\]|\[LOOP\]|\[WAKE\]|\[SLEEP\]|\[HEARTBEAT\]|\[FINANCE\]/i },
+  ];
+  const filteredLogs = logFilter === 'all' ? logs : logs.filter(l => {
+    const cat = filterCategories.find(c => c.id === logFilter);
+    return cat?.match?.test(l.raw || l.message);
+  });
 
   // Derive setup progress from logs
   const wizardSteps = [
@@ -136,12 +153,17 @@ export default function EngineConsole({ isRunning }) {
           <span style={{ fontSize: '11px', fontWeight: 700, color: '#e4e4e7', letterSpacing: '0.5px' }}>ENGINE CONSOLE</span>
           {isRunning && <span style={{ fontSize: '9px', color: '#71717a', fontFamily: 'JetBrains Mono, monospace' }}>LIVE</span>}
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {animaFiles.length > 0 && (
-            <span style={{ fontSize: '9px', color: '#52525b', fontFamily: 'JetBrains Mono, monospace' }}>
-              {animaFiles.length} files in ~/.anima
-            </span>
-          )}
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          {filterCategories.map(cat => (
+            <button key={cat.id} data-testid={`log-filter-${cat.id}`}
+              onClick={() => setLogFilter(cat.id)}
+              style={{ fontSize: '8px', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer',
+                border: `1px solid ${logFilter === cat.id ? '#34D399' : '#27272a'}`,
+                background: logFilter === cat.id ? '#052e16' : '#18181b',
+                color: logFilter === cat.id ? '#34D399' : '#52525b' }}>
+              {cat.label}
+            </button>
+          ))}
           <button
             onClick={() => {
               const next = !autoScroll;
@@ -184,12 +206,12 @@ export default function EngineConsole({ isRunning }) {
           setAutoScroll(isAtBottom);
         }}
         style={{ maxHeight: '280px', overflowY: 'auto', overflowAnchor: 'none', padding: '6px 0', fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', lineHeight: '18px' }}>
-        {logs.length === 0 ? (
+        {filteredLogs.length === 0 ? (
           <div style={{ padding: '20px', textAlign: 'center', color: '#52525b', fontSize: '11px' }}>
-            {isRunning ? 'Waiting for engine output...' : 'Engine not started. Click "Create Genesis Agent" to begin.'}
+            {isRunning ? (logFilter !== 'all' ? `No ${logFilter} logs yet.` : 'Waiting for engine output...') : 'Engine not started.'}
           </div>
         ) : (
-          logs.map((entry, i) => (
+          filteredLogs.map((entry, i) => (
             <div key={i} style={{ padding: '1px 14px', display: 'flex', gap: '8px', color: getLogColor(entry) }}>
               <span style={{ color: '#3f3f46', minWidth: '52px', flexShrink: 0 }}>{formatTime(entry.timestamp)}</span>
               <span style={{ color: '#52525b', minWidth: '70px', flexShrink: 0 }}>{getLogIcon(entry)}</span>
