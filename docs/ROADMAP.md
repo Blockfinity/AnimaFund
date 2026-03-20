@@ -43,22 +43,23 @@
 | 3.11 | Full dashboard test | All pages | Every page shows real data | 3.3-3.10 |
 
 ## Phase 4: Ultimus (Core Product)
-**Goal:** Working prediction engine that generates genesis prompts from simulations.
+**Goal:** Working prediction engine that generates genesis prompts from simulations. Built from scratch on Anima Machina (CAMEL fork). NO MiroFish code, NO OASIS, NO AGPL.
 
 | # | Task | Input | Output | Dependencies |
 |---|---|---|---|---|
-| 4.1 | Clone MiroFish + OASIS source | GitHub repos | ultimus/ directory with source | None |
-| 4.2 | Full rebrand | MiroFish/OASIS naming | All references → Ultimus | 4.1 |
-| 4.3 | Remove external dependencies | External API calls | Self-contained, runs locally | 4.2 |
-| 4.4 | Build simulation API | OASIS engine | POST /ultimus/simulate → runs simulation | 4.3 |
-| 4.5 | Build GraphRAG integration | CAMEL-AI GraphRAG | Knowledge graph from user's domain data | 4.3 |
-| 4.6 | Build report generator | Simulation output | Structured strategy document | 4.4 |
-| 4.7 | Build bridge (genesis prompt generator) | Strategy document | N genesis prompts, one per Anima role | 4.6 |
-| 4.8 | Build cost calculator | Strategy + pricing data | Seed cost, break-even, projected value | 4.7 |
-| 4.9 | Build execute flow | User clicks Launch | Platform provisions Animas with generated prompts | 4.7, 2.3 |
-| 4.10 | Build feedback loop | Real execution results | Feed back into Ultimus for next simulation | 4.9 |
-| 4.11 | Build Ultimus UI | Ultimus API | New screen in platform: describe goal → simulate → review → execute | 4.4-4.10 |
-| 4.12 | Full Ultimus test | End-to-end | Simulate → review → execute → Animas deploy → results feed back | 4.11 |
+| 4.1 | Clone CAMEL into /app/anima-machina/ | github.com/camel-ai/camel | Anima Machina foundation (Apache-2.0) | None |
+| 4.2 | Rebrand CAMEL → Anima Machina | All "camel" references | All references → "anima_machina" | 4.1 |
+| 4.3 | Build simulation runner | Anima Machina multi-agent societies | POST /api/ultimus/simulate → runs simulation | 4.2 |
+| 4.4 | Build GraphRAG pipeline | Anima Machina built-in GraphRAG | Knowledge graph from user domain data | 4.2 |
+| 4.5 | Build persona generator | Knowledge graph + goal | Agent personas with strategies/risk profiles | 4.4 |
+| 4.6 | Build report generator | Simulation output | Structured strategy: roles, costs, confidence | 4.3 |
+| 4.7 | Build bridge (genesis prompt generator) | Strategy document | N genesis prompts, one per Anima role (YOUR IP) | 4.6 |
+| 4.8 | Build cost calculator | Strategy + pricing data | Seed cost, break-even, projected value (YOUR IP) | 4.7 |
+| 4.9 | Build execute flow | User clicks Launch | Platform provisions Animas with generated prompts (YOUR IP) | 4.7, 2.3 |
+| 4.10 | Build feedback loop | Real execution results | Feed back into Ultimus for next simulation (YOUR IP) | 4.9 |
+| 4.11 | Build 4 seed data modes | Goal input | Quick/Deep/Expert/Iterative predict modes | 4.3 |
+| 4.12 | Build Ultimus UI | Ultimus API | New screen in frontend: describe goal → simulate → review → execute | 4.3-4.11 |
+| 4.13 | Full Ultimus test | End-to-end | Simulate → review → execute → Animas deploy → results feed back | 4.12 |
 
 ## Phase 5: Your Network
 **Goal:** Agents use your infrastructure and inference.
@@ -79,5 +80,5 @@ Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5
 - Phase 1: `frontend/` loads, `backend/` API responds, repo is clean, old bloat deleted
 - Phase 2: One Anima provisions in <60 seconds on any BYOI provider, wallet shows, Telegram reports
 - Phase 3: Every dashboard page shows real data from running Anima
-- Phase 4: User describes goal → Ultimus simulates → generates prompts → deploys Animas → results feed back
+- Phase 4: User describes goal → Ultimus (on Anima Machina) simulates → generates prompts → deploys Animas → results feed back
 - Phase 5: Animas deploy nodes on your network, use your inference

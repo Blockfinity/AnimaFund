@@ -6,15 +6,16 @@ A platform to launch, monitor, and manage fully autonomous AI agents (Animas)
 in sandboxed environments. Users define goals, the platform provisions
 infrastructure, and Animas operate autonomously to achieve those goals.
 
-Ultimus (prediction engine, forked from MiroFish/OASIS) generates goals and
+Ultimus (prediction engine, built from scratch on Anima Machina) generates goals and
 agent definitions from simulations. Users can also create Animas manually.
 
 ## NAMING
 
 - **Anima** — an autonomous agent running in its own VM
-- **Ultimus** — the prediction/simulation engine (MiroFish/OASIS fork, rebranded)
+- **Anima Machina** — the agent framework (forked from CAMEL, Apache-2.0, proprietary modifications)
+- **Ultimus** — the prediction/simulation engine (built from scratch on Anima Machina, proprietary)
 - **Platform** — the dashboard + API (monitoring, provisioning, agent registry)
-- **OpenClaw** — the capability layer installed in each Anima's VM (browser, shell, memory, skills, self-modification)
+- **OpenClaw** — the capability layer installed in each Anima's VM (installed as-is, not forked)
 
 ## THREE LAYERS
 
@@ -43,15 +44,17 @@ agent definitions from simulations. Users can also create Animas manually.
 ## ULTIMUS (Core Product — Not Future)
 
 Ultimus is the prediction/simulation engine. It is CORE to the product.
+Built from scratch on Anima Machina (CAMEL fork, Apache-2.0). NO MiroFish code, NO OASIS code, NO AGPL.
 
 Flow:
 1. User describes a goal ("expand to 3,000 nodes" / "generate $50K DeFi revenue")
-2. Ultimus runs simulation with thousands of agent personas
-3. Produces: strategy, roles, genesis prompts per role, cost model, confidence scores
-4. User reviews, adjusts constraints, clicks Execute
-5. Platform provisions Animas with generated genesis prompts
-6. Animas operate autonomously to execute the strategy
-7. Real results feed back into Ultimus for next iteration
+2. Selects predict mode (Quick/Deep/Expert/Iterative)
+3. Ultimus runs simulation with thousands of agent personas via Anima Machina societies
+4. Produces: strategy, roles, genesis prompts per role, cost model, confidence scores
+5. User reviews, adjusts constraints, clicks Execute
+6. Platform provisions Animas with generated genesis prompts
+7. Animas operate autonomously to execute the strategy
+8. Real results feed back into Ultimus for next iteration
 
 Users can ALSO skip Ultimus and create Animas manually with custom genesis prompts.
 
@@ -100,7 +103,8 @@ as part of the genesis prompt. The Anima uses this config flexibly.
 - Dashboard pages mostly empty (data pipeline broken)
 
 ### Not Yet Built:
-- Ultimus (MiroFish/OASIS fork — core product, must build)
+- Anima Machina (CAMEL fork — agent framework foundation)
+- Ultimus (built from scratch on Anima Machina — core product, must build)
 - Generic BYOI (currently hardcoded to Conway + Fly.io)
 - Multi-Anima tracking (parent-child relationships, all wallets)
 - Spawn API (Animas request child VMs through platform)
@@ -134,9 +138,11 @@ See **ROADMAP.md** for the authoritative task list and phase definitions.
 │   ├── skills/        ← 96 custom skills
 │   └── templates/     ← Genesis prompts, constitution
 │
-├── ultimus/            ← Prediction engine (MiroFish/OASIS fork)
+├── anima-machina/     ← Agent framework (CAMEL fork, Apache-2.0, rebranded)
+│
+├── ultimus/            ← Prediction engine (built on Anima Machina, proprietary)
 │   ├── simulation/    ← Simulation runner
-│   ├── bridge/        ← Simulation → genesis prompt converter
+│   ├── bridge/        ← Simulation → genesis prompt converter (YOUR IP)
 │   └── knowledge/     ← GraphRAG ontologies
 │
 ├── archive/            ← Reference from old codebase

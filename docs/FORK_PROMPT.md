@@ -8,9 +8,10 @@ A platform to launch, monitor, and manage fully autonomous AI agents (called Ani
 
 ## NAMING
 - **Anima** = an autonomous agent running in its own VM
-- **Ultimus** = the prediction/simulation engine (forked from MiroFish/OASIS, fully rebranded, no external dependencies)
+- **Anima Machina** = the agent framework (forked from CAMEL, Apache-2.0, proprietary modifications)
+- **Ultimus** = the prediction/simulation engine (built from scratch on Anima Machina, proprietary)
 - **Platform** = the React dashboard + FastAPI API (monitoring, provisioning, agent registry)
-- **OpenClaw** = capability layer installed in each Anima's VM (open source, browser/shell/memory/skills/self-modification)
+- **OpenClaw** = capability layer installed in each Anima's VM (open source, installed as-is, not forked)
 
 ## CRITICAL CONTEXT FROM PREVIOUS SESSIONS
 
@@ -101,10 +102,13 @@ Do NOT rename these directories — it will break the app immediately.**
 │       ├── agent-template.md     ← Template for user-created Animas
 │       └── constitution.md       ← Ethical framework
 │
-├── ultimus/               ← Prediction engine (MiroFish/OASIS fork, CORE)
-│   ├── simulation/       ← Simulation runner (forked from OASIS)
-│   ├── bridge/           ← Simulation output → genesis prompt converter
-│   ├── knowledge/        ← GraphRAG ontologies
+├── anima-machina/         ← Agent framework (cloned from CAMEL, Apache-2.0, rebranded)
+│   └── ...               ← All "camel" references → "anima_machina"
+│
+├── ultimus/               ← Prediction engine (built from scratch on Anima Machina, proprietary)
+│   ├── simulation/       ← Simulation runner (uses Anima Machina societies)
+│   ├── bridge/           ← Simulation output → genesis prompt converter (YOUR IP)
+│   ├── knowledge/        ← GraphRAG ontologies (uses Anima Machina GraphRAG)
 │   ├── api/              ← Ultimus REST API (called by frontend)
 │   └── README.md
 │
@@ -152,17 +156,22 @@ Do NOT rename these directories — it will break the app immediately.**
 - Delete sandbox_poller.py (replace with on-demand reads)
 - Test: dashboard shows real data from running Anima
 
-### Step 4: Ultimus (Core)
-- Clone MiroFish (https://github.com/mirofish-dev/mirofish) into ultimus/
-- Clone OASIS components needed (CAMEL-AI framework)
-- Full rebrand: remove all MiroFish naming, replace with Ultimus
-- Remove any external API dependencies — Ultimus runs locally
-- Build simulation runner: user describes goal → Ultimus simulates
-- Build bridge: simulation output → genesis prompt definitions
-- Build cost calculator: seed cost, break-even, projected value
-- Build execute flow: user clicks Launch → platform provisions Animas
-- Build feedback loop: real results → back into Ultimus
-- Integrate into platform UI (new Ultimus page/screen)
+### Step 4: Ultimus (Core) — Built from Scratch on Anima Machina
+- DO NOT CLONE MIROFISH. DO NOT USE OASIS CODE. NO AGPL ANYWHERE.
+- Clone CAMEL (Apache-2.0): git clone https://github.com/camel-ai/camel /app/anima-machina/
+- Rebrand all "camel" references → "anima_machina"
+- Build Ultimus from scratch using Anima Machina as foundation:
+  - Simulation runner (uses Anima Machina multi-agent societies)
+  - GraphRAG pipeline (uses Anima Machina built-in GraphRAG)
+  - Persona generator (creates agent personas from knowledge graph)
+  - Report generator (structured strategy with roles, costs, confidence)
+  - Bridge: simulation output → genesis prompt definitions (YOUR IP)
+  - Cost calculator: seed cost, break-even, projected value (YOUR IP)
+  - Execute flow: user clicks Launch → platform provisions Animas (YOUR IP)
+  - Feedback loop: real results → back into Ultimus (YOUR IP)
+  - 4 seed data modes: Quick/Deep/Expert/Iterative Predict
+- Integrate into frontend UI (new Ultimus screen)
+- MiroFish reference: study https://github.com/666ghj/MiroFish/blob/main/README-EN.md for workflow ideas ONLY
 - Test: simulate "deploy 100 agents" → review strategy → execute → Animas deploy
 
 ### Step 5: Multi-Anima + Spawn API
@@ -180,45 +189,68 @@ Do NOT rename these directories — it will break the app immediately.**
 - Animas deploy nodes on your network (directed by genesis prompt)
 - Test: Anima deploys node on your network, monitors it
 
-## ULTIMUS DETAILED SPEC
+## ULTIMUS (Prediction Engine — Built from Scratch on Anima Machina)
 
-### What It Is
-Ultimus is a prediction/simulation engine forked from MiroFish (which uses OASIS/CAMEL-AI).
-It runs thousands of AI agent personas in simulation to predict outcomes of a strategy.
-The simulation output becomes the blueprint for real Anima deployments.
+**DO NOT CLONE MIROFISH. DO NOT USE OASIS CODE. NO AGPL ANYWHERE.**
 
-### Source Repos to Fork
-- MiroFish: https://github.com/mirofish-dev/mirofish (if available, otherwise rebuild from OASIS)
-- OASIS: https://github.com/camel-ai/oasis (AGPL-3.0 — be aware of license)
-- CAMEL: https://github.com/camel-ai/camel (Apache-2.0)
+Ultimus is built from scratch using Anima Machina (CAMEL fork, Apache-2.0) as the foundation.
+MiroFish is REFERENCE ONLY — study the workflow, don't copy the code.
 
-### Rebrand Requirements
-- Remove ALL MiroFish naming from code, docs, UI, configs
-- Remove ALL OASIS naming
-- Replace with "Ultimus" everywhere
-- Remove any external API calls to MiroFish or OASIS services
-- Ultimus must run completely self-contained — no external dependencies
-- All simulation data stays local (user's MongoDB or local files)
+### Why Not MiroFish
+- MiroFish is Chinese (code, comments, UI, templates — all Chinese)
+- MiroFish is AGPL-3.0 (forces sharing simulation modifications)
+- MiroFish depends on Zep Cloud (external service)
+- MiroFish uses Vue.js (we use React)
+- Translating + adapting MiroFish = same effort as building from scratch on CAMEL
 
-### Key Components
-1. **Simulation Engine**: Takes a goal description + agent persona definitions → runs N rounds of multi-agent interaction → produces outcomes
-2. **GraphRAG Knowledge Base**: Builds knowledge graph from the user's domain data (network topology, market data, historical performance)
-3. **Report Generator**: Produces structured strategy document with roles, costs, confidence scores
-4. **Bridge (Genesis Prompt Generator)**: Converts strategy into specific genesis prompts — one per Anima role
-5. **Cost Calculator**: Computes seed funding needed, break-even timeline, projected network value
-6. **Feedback Ingestion**: Takes real execution results and feeds them back as training data for next simulation
+### Reference Only (study these, don't copy code)
+- MiroFish English README: https://github.com/666ghj/MiroFish/blob/main/README-EN.md
+- MiroFish workflow: seed → GraphRAG → personas → simulation → report → God's-eye interaction
+- CAMEL docs: https://docs.camel-ai.org/
+- CAMEL GraphRAG: https://docs.camel-ai.org/cookbooks/advanced_features/agents_with_graph_rag
+- CAMEL societies: https://docs.camel-ai.org/key_modules/society
+
+### Clone (the foundation)
+```
+git clone https://github.com/camel-ai/camel /app/anima-machina/
+```
+- Rebrand: all "camel" references → "anima_machina"
+- License: Apache-2.0 — all modifications are proprietary
+
+### Build Ultimus on Anima Machina (all proprietary)
+1. **Simulation runner** — uses Anima Machina's multi-agent societies
+2. **GraphRAG pipeline** — uses Anima Machina's built-in GraphRAG
+3. **Persona generator** — creates agent personas from knowledge graph
+4. **Report generator** — structured strategy with roles, costs, confidence
+5. **Bridge** — simulation output → genesis prompts (YOUR IP)
+6. **Cost calculator** — seed funding, break-even, projections (YOUR IP)
+7. **Execute flow** — triggers platform provisioning (YOUR IP)
+8. **Feedback loop** — real results → simulation parameters (YOUR IP)
+9. **React UI** — Ultimus screen in the platform dashboard (YOUR IP)
+
+### Seed Data Options (build all four)
+- **Quick Predict:** goal description only, LLM-generated personas, no seed data needed
+- **Deep Predict:** platform auto-researches domain via web search, builds knowledge graph
+- **Expert Predict:** user uploads documents, GraphRAG builds detailed knowledge graph
+- **Iterative Predict:** starts quick, identifies gaps, auto-researches, re-runs
+
+### Key Rules
+- NO AGPL ANYWHERE. No MiroFish code. No OASIS code. Everything is Apache-2.0 or proprietary.
+- Replace Zep Cloud with local MongoDB for agent memory.
+- Ultimus runs 100% locally with zero external service dependencies (except LLM inference which user configures).
 
 ### User Flow
 1. User opens Ultimus screen on platform
 2. Describes goal: "Expand to 3,000 nodes with $80 seed funding"
-3. Clicks "Simulate"
-4. Ultimus runs simulation (may take minutes — show progress)
-5. Results displayed: strategy, roles, costs, confidence, risks
-6. User adjusts parameters if needed, re-simulates
-7. User clicks "Execute"
-8. Platform provisions Animas with generated genesis prompts
-9. Dashboard switches to monitoring view showing all deployed Animas
-10. As Animas operate, results feed back to Ultimus
+3. Selects predict mode (Quick/Deep/Expert/Iterative)
+4. Clicks "Simulate"
+5. Ultimus runs simulation (may take minutes — show progress)
+6. Results displayed: strategy, roles, costs, confidence, risks
+7. User adjusts parameters if needed, re-simulates
+8. User clicks "Execute"
+9. Platform provisions Animas with generated genesis prompts
+10. Dashboard switches to monitoring view showing all deployed Animas
+11. As Animas operate, results feed back to Ultimus
 
 ## CONWAY STATUS
 
@@ -246,3 +278,4 @@ All Conway-specific code should be behind the generic BYOI provider interface.
 5. 96 custom skills are YOUR IP — protect them
 6. The Catalyst genesis prompt must not be stripped — changes must be additive
 7. Ultimus runs locally — no external API dependencies for simulation
+8. NO AGPL code anywhere — only Apache-2.0 (CAMEL) or proprietary

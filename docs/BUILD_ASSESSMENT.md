@@ -95,19 +95,20 @@
 | **Phase 2 Total** | | **~16 sessions** | |
 
 ### Phase 3: Prediction Layer (Simulation → Execution)
-**Goal:** Simulate scenarios, calculate costs, one-click deploy agent swarms.
+**Goal:** Simulate scenarios, calculate costs, one-click deploy agent swarms. Built from scratch on Anima Machina (CAMEL fork). NO MiroFish/OASIS code.
 
 | Task | Description | Effort | Priority |
 |---|---|---|---|
-| 3.1 Fork OASIS/MiroFish | Clone, rebrand as Anima Predict | 1 session | P0 |
-| 3.2 Build GraphRAG integration | Knowledge graph from your domain data | 2 sessions | P1 |
-| 3.3 Build simulation→execution bridge | Convert simulation outcomes to genesis prompts + cost model | 3 sessions | P0 |
-| 3.4 Build cost calculator UI | Show seed cost, break-even, projected value before launch | 1 session | P0 |
+| 3.1 Clone CAMEL → Anima Machina | Clone github.com/camel-ai/camel, rebrand as Anima Machina | 1 session | P0 |
+| 3.2 Build GraphRAG integration | Knowledge graph from your domain data (via Anima Machina GraphRAG) | 2 sessions | P1 |
+| 3.3 Build simulation→execution bridge | Convert simulation outcomes to genesis prompts + cost model (YOUR IP) | 3 sessions | P0 |
+| 3.4 Build cost calculator UI | Show seed cost, break-even, projected value before launch (YOUR IP) | 1 session | P0 |
 | 3.5 Build Network Treasurer | Seeds first wave, monitors expansion, reports | 2 sessions | P0 |
 | 3.6 Build wave deployment system | Automatic agent deployment as revenue thresholds are met | 2 sessions | P0 |
-| 3.7 Build feedback loop | Real execution results feed back into simulation | 2 sessions | P1 |
-| 3.8 Full simulation→execution test | Simulate 100 agents → calculate → seed 10 → propagate | 2 sessions | P0 |
-| **Phase 3 Total** | | **~15 sessions** | |
+| 3.7 Build feedback loop | Real execution results feed back into simulation (YOUR IP) | 2 sessions | P1 |
+| 3.8 Build 4 seed data modes | Quick/Deep/Expert/Iterative predict modes | 2 sessions | P0 |
+| 3.9 Full simulation→execution test | Simulate 100 agents → calculate → seed 10 → propagate | 2 sessions | P0 |
+| **Phase 3 Total** | | **~17 sessions** | |
 
 ### Phase 4: Your Network (Agents deploy nodes autonomously)
 **Goal:** Agents provision and manage nodes on your infrastructure.

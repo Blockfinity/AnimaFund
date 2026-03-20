@@ -1,7 +1,7 @@
 # Anima Platform — Changelog
 
 > **NOTE:** Earlier entries reference abandoned naming (Anima Engine, Anima Tools, Anima Predict, Anima Bridge).
-> Current naming: **Anima** (agent), **Ultimus** (prediction engine), **Platform** (dashboard+API), **OpenClaw** (capability layer).
+> Current naming: **Anima** (agent), **Anima Machina** (agent framework, CAMEL fork), **Ultimus** (prediction engine, built on Anima Machina), **Platform** (dashboard+API), **OpenClaw** (capability layer).
 > See ARCHITECTURE.md for definitive naming.
 
 ## 2026-03-20: Architecture Blueprint Created
