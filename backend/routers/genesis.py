@@ -279,23 +279,23 @@ async def engine_logs(lines: int = Query(default=50, le=200)):
 @router.get("/engine/live")
 async def engine_live():
     """Engine live status — reads from real-time webhook data."""
-    prov = await load_provisioning()
-    engine_deployed = prov.get("tools", {}).get("engine", {}).get("deployed", False)
-
-    if not engine_deployed:
-        return {"live": False, "db_exists": False, "agent_state": None, "turn_count": 0, "source": "none"}
-
     from sandbox_poller import get_cache
     cache = get_cache()
+
+    # Webhook cache IS the real-time truth — if it says engine is running, it is
     is_running = bool(cache.get("engine_running"))
     phase = cache.get("phase_state", {})
 
+    # Also check provisioning status
+    prov = await load_provisioning()
+    engine_deployed = prov.get("tools", {}).get("engine", {}).get("deployed", False)
+
     return {
         "live": is_running,
-        "db_exists": is_running,
-        "agent_state": phase.get("agent_state", None),
+        "db_exists": is_running or engine_deployed,
+        "agent_state": phase.get("agent_state", "running" if is_running else None),
         "turn_count": phase.get("turn_count", 0),
-        "source": "sandbox",
+        "source": "webhook" if is_running else ("sandbox" if engine_deployed else "none"),
     }
 
 
