@@ -79,10 +79,12 @@ def report_financial(wallet_address: str = "", usdc_balance: float = 0.0,
     return json.dumps({"reported": True})
 
 
-# ─── Persistent Memory (survives process restarts) ───
+# ─── Persistent Memory (simple key-value, survives restarts) ───
+# Note: CAMEL's MemoryToolkit (save/load full conversation) is used for agent memory.
+# These functions provide simple key-value persistence for facts the agent wants to remember.
 
 def save_memory(key: str, value: str) -> str:
-    """Save a fact to persistent memory. Survives process restarts."""
+    """Save a fact to persistent storage. Survives process restarts. Use for important data like wallet addresses, goals, learned facts."""
     os.makedirs(STATE_DIR, exist_ok=True)
     mem_file = os.path.join(STATE_DIR, "memory.json")
     memories = {}
@@ -96,7 +98,7 @@ def save_memory(key: str, value: str) -> str:
 
 
 def recall_memory(key: str = "") -> str:
-    """Recall facts from persistent memory. If key is empty, returns all memories."""
+    """Recall facts from persistent storage. If key is empty, returns all saved facts."""
     mem_file = os.path.join(STATE_DIR, "memory.json")
     if not os.path.exists(mem_file):
         return json.dumps({"memories": {}})
@@ -209,12 +211,14 @@ def main():
     except Exception as e:
         logger.warning(f"FileToolkit unavailable: {e}")
 
-    # Browser (web browsing)
+    # Browser (web browsing — uses Playwright with LLM-driven navigation)
     try:
         from camel.toolkits import BrowserToolkit
-        tk = BrowserToolkit(headless=True, web_agent_model=None, planning_agent_model=None)
+        # BrowserToolkit needs its own LLM models for planning and navigation
+        # When LLM key is in env, it uses OpenAI by default
+        tk = BrowserToolkit(headless=True)
         all_tools.extend(tk.get_tools())
-        logger.info(f"BrowserToolkit: {len(tk.get_tools())} tools")
+        logger.info(f"BrowserToolkit: {len(tk.get_tools())} tools (full Playwright)")
     except Exception as e:
         logger.warning(f"BrowserToolkit unavailable: {e}")
 
@@ -223,20 +227,52 @@ def main():
     # Create the agent ONCE — it maintains conversation history
     agent = ChatAgent(system_message=genesis_prompt, model=model, tools=all_tools)
 
+    # Register MemoryToolkit for conversation persistence
+    try:
+        from camel.toolkits import MemoryToolkit
+        mem_tk = MemoryToolkit(agent=agent)
+        # Add memory tools so agent can save/load its full conversation state
+        for tool in mem_tk.get_tools():
+            agent.update_tool(tool)
+        logger.info(f"MemoryToolkit registered: {len(mem_tk.get_tools())} tools")
+    except Exception as e:
+        logger.warning(f"MemoryToolkit unavailable: {e}")
+
     # Report startup
     report_state("running", "Agent deployed, starting autonomous operation")
 
-    # Send ONE initial message, then the agent drives itself
-    # The agent's genesis prompt IS its instructions. We just start it.
-    initial_msg = (
-        "You are now live in your sandboxed environment. "
-        "Your genesis prompt (system message) contains your complete mission. "
-        "You have full access to: shell (shell_exec), code execution, "
-        "file operations (read_file, write_to_file), web browsing (browse_url), "
-        "wallet (create_wallet, check_balance), persistent memory (save_memory, recall_memory), "
-        "and platform reporting (report_state, report_action, report_financial). "
-        "Begin executing your mission now."
-    )
+    # Restore previous conversation state if it exists (restart survival)
+    conversation_state_path = os.path.join(STATE_DIR, "conversation.json")
+    os.makedirs(STATE_DIR, exist_ok=True)
+    if os.path.exists(conversation_state_path):
+        try:
+            agent.load_memory(conversation_state_path)
+            logger.info("Restored conversation state from previous run")
+            initial_msg = (
+                "You have been restarted. Your previous conversation history has been restored. "
+                "Continue where you left off. Check your persistent memory (recall_memory) for context."
+            )
+        except Exception as e:
+            logger.warning(f"Could not restore conversation state: {e}")
+            initial_msg = (
+                "You are now live in your sandboxed environment. "
+                "Your genesis prompt (system message) contains your complete mission. "
+                "You have tools for: shell (shell_exec), code execution, "
+                "file operations, web browsing (browse_url), "
+                "wallet, persistent memory (save_memory, recall_memory), "
+                "and platform reporting (report_state, report_action, report_financial). "
+                "Begin executing your mission now."
+            )
+    else:
+        initial_msg = (
+            "You are now live in your sandboxed environment. "
+            "Your genesis prompt (system message) contains your complete mission. "
+            "You have tools for: shell (shell_exec), code execution, "
+            "file operations, web browsing (browse_url), "
+            "wallet, persistent memory (save_memory, recall_memory), "
+            "and platform reporting (report_state, report_action, report_financial). "
+            "Begin executing your mission now."
+        )
 
     turn = 0
     while _running and turn < MAX_TURNS:
@@ -247,8 +283,6 @@ def main():
             if turn == 1:
                 response = agent.step(initial_msg)
             else:
-                # The agent drives itself. We just give it a turn.
-                # ChatAgent's internal history means it knows what it did before.
                 response = agent.step("")
 
             content = response.msgs[0].content if response.msgs else ""
@@ -258,7 +292,14 @@ def main():
             for tc in tool_calls:
                 logger.info(f"  Tool: {tc.tool_name} -> {str(tc.result)[:150]}")
 
-            # Agent-driven pacing: if it used tools, it's active. If not, it's thinking.
+            # Save conversation state periodically (every 5 turns)
+            if turn % 5 == 0:
+                try:
+                    agent.save_memory(conversation_state_path)
+                    logger.info(f"Conversation state saved (turn {turn})")
+                except Exception as e:
+                    logger.warning(f"Could not save conversation state: {e}")
+
             time.sleep(2 if tool_calls else 5)
 
         except KeyboardInterrupt:
@@ -267,6 +308,13 @@ def main():
             logger.error(f"Turn {turn} error: {e}")
             report_error(str(e), "error")
             time.sleep(10)
+
+    # Save final state
+    try:
+        agent.save_memory(conversation_state_path)
+        logger.info("Final conversation state saved")
+    except Exception:
+        pass
 
     report_state("stopped", f"Agent completed {turn} turns")
     logger.info(f"Agent stopped after {turn} turns")

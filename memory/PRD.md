@@ -2,34 +2,40 @@
 
 ## Current State (March 2026)
 
-### What's Fixed This Session
-1. **Conversation memory**: ChatAgent reused across turns, maintains full history. Verified: Turn 3 summarizes Turns 1-2. `agent.step("")` works — agent drives itself without platform prompting.
-2. **Persistent memory**: save_memory/recall_memory write to disk (/app/anima/state/memory.json). Survives process restarts.
-3. **BrowserToolkit**: Installed playwright + chromium. browse_url available. Agent can browse the web.
-4. **All toolkits**: Terminal (6), Code (2), File (7), Browser (1), state reporting (4), wallet (2), memory (2) = 24 tools total.
-5. **Autonomy**: Runner sends ONE initial message, then `agent.step("")` — agent drives from its own context. No "Continue. What's next?" prompting.
-6. **LLM key safety**: Deploy REFUSES without user-provided LLM key. Emergent key NEVER pushed to sandbox. Clear error message tells user exactly what to do.
+### Verified This Session
+1. **BrowserToolkit**: Uses real Playwright with LLM-driven multi-step navigation (planning, observation, action execution). NOT a curl wrapper. Requires LLM key in environment.
+2. **agent.step("")**: Verified — agent drives itself from conversation history. Turn 1: runs uname. Turn 2 (empty): decides to run pwd. Turn 3 (empty): decides to ls /app. Each turn builds on previous.
+3. **MemoryToolkit**: CAMEL native — save/load full conversation state to JSON. Registered with agent for persistent memory.
+4. **Conversation persistence**: Agent saves state every 5 turns to /app/anima/state/conversation.json. On restart, loads previous state and continues.
+5. **LLM key safety**: Deploy REFUSES without user-provided key. Returns clear error message.
 
-### What Works End-to-End (verified)
-- Agent deployed and ran inside Conway sandbox (PID 978161)
-- The Catalyst genesis prompt (271 lines) loaded and executing
-- State reporting: sandbox → webhook → per-agent store (MongoDB) → dashboard
-- Dashboard Agent Mind: LIVE data, timestamps, tool calls, errors, Engine Status
-- Wallet: real generation (eth-account), real balance checks (Base mainnet, $3 USDC)
-- Per-agent state store handles concurrent agents and server restarts
+### Complete Tool Inventory for Sandbox Agent
+- TerminalToolkit: shell_exec, shell_view, shell_write_content_to_file, shell_write_to_process, shell_kill_process (6)
+- CodeExecutionToolkit: execute_code, execute_command (2)
+- FileToolkit: write_to_file, read_file, edit_file, search_files, glob_files, grep_files, notebook_edit_cell (7)
+- BrowserToolkit: browse_url (Playwright multi-step, 1 entry point but full page interaction)
+- MemoryToolkit: save, load, load_from_path, clear_memory (4 — CAMEL native)
+- State reporting: report_state, report_action, report_error, report_financial (4)
+- Wallet: create_wallet, check_balance (2)
+- Persistent KV: save_memory, recall_memory (2)
+Total: 28 tools
 
-### Acceptance Test (NOT YET RUN)
-Deploy The Catalyst with a real OpenAI key. Agent should execute Phase 0 from genesis prompt:
-15 specific tool tests (curl, git, node, python, telegram, wallet, credits, sandbox, domains, compute, browser, social, memory, self-modify, x402). Report each to Telegram.
-This test requires: user-provided OpenAI API key.
+### Acceptance Test (blocked on OpenAI key)
+Phase 0 from The Catalyst genesis prompt: 15 tool tests with real usage, report each to Telegram.
+User must provide OpenAI API key via: PUT /api/agents/anima-fund/llm-key
 
-### Known Issues
-- **LLM key blocker**: User must provide OpenAI key for sandbox agents
-- **pip install during provisioning**: Technical debt (should be pre-built images)
-- **x402 payments**: Not implemented (balance checks only)
-- **Generic BYOI**: Architecturally supported, untested with non-Conway
-- **Spawn**: Records in DB, doesn't create environments
-- **Old sandbox**: Tests reuse 47ba9dfd... (has remnants of old installs)
+### Dashboard: Single-Agent → Multi-Agent (after acceptance test)
+Current dashboard monitors one agent. Needs:
+- Multi-agent overview (all Animas at once)
+- Agent selector drill-down
+- Parent-child lineage
+- Aggregate views (total revenue, costs)
+- Ultimus screens (goal input, Dimensions, execute)
+Foundation exists: per-agent state store in agent_state_store.py + monitor.py
+
+### Ultimus (CORE — not backlog)
+Prerequisites: acceptance test pass → x402 payments → generic BYOI → spawn
+Then: predictor → calculator → executor → Dimensions → 4 seed data modes → frontend screens
 
 ## Architecture
 FORK_PROMPT.md = definitive source. ROADMAP.md = task list.
