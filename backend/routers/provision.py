@@ -133,16 +133,17 @@ async def deploy_agent(req: CreateSandboxRequest):
     platform_url = os.environ.get("REACT_APP_BACKEND_URL", "")
 
     # LLM key: read from agent's MongoDB config (user provides their own key)
-    # Falls back to EMERGENT_LLM_KEY for development only
+    # NEVER push the Emergent key to a sandbox — it won't work from external VMs
     agent_llm_key = agent_doc.get("llm_api_key", "")
     agent_llm_base_url = agent_doc.get("llm_base_url", "")
     agent_llm_model = agent_doc.get("llm_model", "gpt-4o-mini")
 
     if not agent_llm_key:
-        # Development fallback — will fail from external VMs on free Emergent plan
-        agent_llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
-        agent_llm_base_url = "https://integrations.emergentagent.com/llm/v1"
-        steps_log.append("WARNING: Using Emergent dev key. Set agent's LLM API key for production.")
+        raise HTTPException(400,
+            "No LLM API key configured for this agent. "
+            "Set one via PUT /api/agents/{agent_id}/llm-key with your OpenAI or Anthropic key. "
+            "The Emergent Universal Key does not work from external sandboxes."
+        )
 
     config = {
         "PLATFORM_URL": platform_url,
