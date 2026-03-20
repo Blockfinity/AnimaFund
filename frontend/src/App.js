@@ -464,10 +464,16 @@ function AppInner() {
     setRunningStep(null);
   };
 
-  // After all provisioning done, auto-transition to engine/wallet screen
+  // After all provisioning done, auto-transition to engine ONCE (not on every render)
+  const autoTransitioned = useRef(false);
   useEffect(() => {
-    if (allProvDone && view === 'genesis') {
+    if (allProvDone && view === 'genesis' && !autoTransitioned.current) {
+      autoTransitioned.current = true;
       setView('engine');
+    }
+    // Reset the flag when provisioning is reset (allProvDone goes false)
+    if (!allProvDone) {
+      autoTransitioned.current = false;
     }
   }, [allProvDone, view]);
 

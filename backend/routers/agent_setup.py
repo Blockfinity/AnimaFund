@@ -564,22 +564,24 @@ async def reset_sandbox():
 
     try:
         # Kill any running agent processes
-        r = await _sandbox_exec(sandbox_id, "pkill -f 'bundle.mjs' 2>/dev/null; pkill -f 'econ-monitor' 2>/dev/null; echo 'KILLED'")
+        r = await _sandbox_exec(sandbox_id, "pkill -f 'bundle.mjs' 2>/dev/null; pkill -f 'webhook-daemon' 2>/dev/null; pkill -f 'econ-monitor' 2>/dev/null; echo 'KILLED'")
         outputs.append(f"[kill] {r['stdout'].strip()}")
 
         # Wipe agent data directories but keep system tools installed
         r = await _sandbox_exec(sandbox_id, "rm -rf ~/.anima ~/.automaton /app/automaton /var/log/automaton.* /var/log/econ-monitor.log 2>/dev/null; echo 'WIPED'")
         outputs.append(f"[wipe] {r['stdout'].strip()}")
 
-        # Reset provisioning status — keep sandbox info, clear everything else
+        # Reset provisioning status — keep sandbox info + provider, clear everything else
         sandbox_info = status["sandbox"]
         new_status = {
             "sandbox": sandbox_info,
+            "provider": status.get("provider", "conway"),
             "tools": {},
             "ports": [],
             "domains": [],
             "compute_verified": False,
             "skills_loaded": False,
+            "wallet_address": "",
             "nudges": [],
             "last_updated": None,
         }

@@ -111,16 +111,27 @@ async def genesis_status():
     turn_count = 0
     engine_state = None
 
-    if engine_deployed:
-        # Read from webhook cache — this IS real-time data pushed by the daemon inside the sandbox
-        from sandbox_poller import get_cache
-        cache = get_cache()
+    # Read real-time data from webhook cache
+    from sandbox_poller import get_cache
+    cache = get_cache()
+
+    if engine_deployed or cache.get("engine_running"):
         engine_running = bool(cache.get("engine_running"))
         engine_live = engine_running
+        if engine_running:
+            stage = "running"
         phase = cache.get("phase_state", {})
         if phase:
             turn_count = phase.get("turn_count", 0)
             engine_state = phase.get("agent_state", None)
+
+    # Wallet: prefer webhook cache (real-time) over MongoDB (may be stale)
+    cache_wallet = cache.get("wallet_address", "")
+    econ_wallet = cache.get("economics", {}).get("wallet_address", "")
+    if not wallet_address and cache_wallet:
+        wallet_address = cache_wallet
+    if not wallet_address and econ_wallet:
+        wallet_address = econ_wallet
 
     qr_b64 = _generate_qr(wallet_address) if wallet_address else None
 
