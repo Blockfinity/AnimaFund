@@ -37,10 +37,10 @@ async def lifespan(app: FastAPI):
 
 
 async def _restore_active_agent_from_db():
-    """On startup, restore active agent's Conway API key from MongoDB into env.
-    No host filesystem reads — MongoDB is the source of truth."""
+    """On startup, restore active agent state from MongoDB.
+    Also runs health-check if agent has an active sandbox to detect wallet + tools."""
     try:
-        from agent_state import set_active_agent_id
+        from agent_state import set_active_agent_id, load_provisioning
         db = get_db()
 
         # Find the default agent and load its key
@@ -53,6 +53,17 @@ async def _restore_active_agent_from_db():
             logging.info("Active agent 'anima-fund' Conway key loaded from MongoDB")
 
         set_active_agent_id("anima-fund")
+
+        # If there's an active sandbox, run health-check to detect wallet + tool state
+        prov = await load_provisioning()
+        if prov.get("sandbox", {}).get("status") == "active" and prov.get("sandbox", {}).get("id"):
+            try:
+                from routers.agent_setup import health_check_sandbox
+                result = await health_check_sandbox()
+                if result.get("wallet_address"):
+                    logging.info(f"Wallet detected on startup: {result['wallet_address'][:20]}...")
+            except Exception as e:
+                logging.warning(f"Startup health-check failed: {e}")
     except Exception as e:
         logging.warning(f"Could not restore agent state from DB: {e}")
 
