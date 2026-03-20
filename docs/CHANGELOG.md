@@ -4,6 +4,21 @@
 > Current naming: **Anima** (agent), **Anima Machina** (agent framework, CAMEL fork — runs everywhere), **Ultimus** (prediction engine), **Dimensions** (God's-eye view), **Platform** (dashboard+API).
 > OpenClaw is NOT the runtime. Anima Machina IS the runtime. See FORK_PROMPT.md.
 
+## 2026-03-20: Step 2 — CAMEL Cloned, Custom Toolkits Built, Agents Working
+- Cloned CAMEL-AI (github.com/camel-ai/camel) to /app/anima-machina/ (227MB, 91 toolkits)
+- Installed CAMEL as editable package in Python 3.11 environment
+- Verified CAMEL ChatAgent works with Emergent Universal Key (gpt-4o-mini via proxy)
+- Verified tool calling works (FunctionTool with agent-initiated tool calls)
+- Created 3 custom toolkits:
+  - WalletToolkit (create_wallet, get_balance, send_payment, get_wallet_info)
+  - SpawnToolkit (request_environment, check_environment_status, destroy_environment)
+  - StateReportingToolkit (report_state, report_action, report_error, report_financial)
+- Registered custom toolkits in camel/toolkits/__init__.py
+- Tested StateReportingToolkit e2e: agent pushes state to platform webhook, dashboard receives it
+- Tested multi-agent: 3 agents (researcher, trader, coordinator) all reporting to platform simultaneously
+- LLM config: Emergent key sk-emergent-... via proxy https://integrations.emergentagent.com/llm/v1
+
+
 ## 2026-03-20: Architecture Pivot — Anima Machina IS the Runtime
 - FORK_PROMPT.md completely rewritten with definitive architecture
 - Anima Machina (CAMEL fork) is the agent runtime everywhere — NOT OpenClaw
