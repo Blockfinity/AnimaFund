@@ -34,8 +34,8 @@ async def webhook_status():
     """Check if webhooks are being received."""
     cache = get_cache()
     return {
-        "last_update": cache["last_update"],
-        "update_source": cache["update_source"],
-        "engine_running": cache["engine_running"],
-        "sandbox_id": cache["sandbox_id"],
+        "last_update": cache.get("last_update"),
+        "update_source": cache.get("update_source"),
+        "engine_running": cache.get("engine_running", False),
+        "sandbox_id": cache.get("sandbox_id"),
     }

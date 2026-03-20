@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from database import get_db
-from config import AUTOMATON_DIR
+from config import AUTOMATON_DIR, ENGINE_DIR
 from agent_state import get_active_agent_id, set_active_agent_id, get_conway_api_key, set_conway_api_key
 
 router = APIRouter(prefix="/api", tags=["agents"])
@@ -36,8 +36,8 @@ async def list_available_skills():
     skills = []
     seen = set()
 
-    # 1. Our custom skills from automaton/skills/
-    skills_dir = os.path.join(AUTOMATON_DIR, "skills")
+    # 1. Our custom skills from engine/skills/
+    skills_dir = os.path.join(ENGINE_DIR, "skills")
     if os.path.isdir(skills_dir):
         for name in sorted(os.listdir(skills_dir)):
             skill_file = os.path.join(skills_dir, name, "SKILL.md")
@@ -140,7 +140,7 @@ async def list_agents():
     if not agents:
         # Auto-register the default Anima Fund agent with pre-loaded system prompt
         genesis_prompt = ""
-        template_path = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+        template_path = os.path.join(ENGINE_DIR, "templates", "genesis-prompt.md")
         if os.path.exists(template_path):
             with open(template_path, "r") as f:
                 genesis_prompt = f.read()
@@ -365,7 +365,7 @@ async def start_agent_engine(agent_id: str):
 @router.post("/agents/push-constitution")
 async def push_constitution_to_all():
     """Push the latest constitution to agents' sandboxes."""
-    constitution_src = os.path.join(AUTOMATON_DIR, "constitution.md")
+    constitution_src = os.path.join(ENGINE_DIR, "templates", "constitution.md")
     if not os.path.exists(constitution_src):
         raise HTTPException(404, "Source constitution.md not found")
     with open(constitution_src, "r") as f:
@@ -376,7 +376,7 @@ async def push_constitution_to_all():
 @router.post("/agents/push-genesis")
 async def push_genesis_to_all():
     """Push the latest genesis-prompt.md — agents pick it up on next deploy."""
-    genesis_src = os.path.join(AUTOMATON_DIR, "genesis-prompt.md")
+    genesis_src = os.path.join(ENGINE_DIR, "templates", "genesis-prompt.md")
     if not os.path.exists(genesis_src):
         raise HTTPException(404, "Source genesis-prompt.md not found")
     with open(genesis_src, "r") as f:

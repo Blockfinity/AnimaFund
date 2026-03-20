@@ -26,12 +26,26 @@ A platform to launch, monitor, and manage fully autonomous AI agents (Animas) in
 - MiroFish is REFERENCE ONLY (study workflow, don't copy code)
 
 ## Current State (March 2026)
-- Dashboard: 14 pages, 40% functional
-- Provisioning: broken (2,457 lines, needs ~200)
-- Agent runtime: Conway fork, crashes (replacing with OpenClaw)
-- Anima Machina: not yet cloned
-- Ultimus: not yet built
-- Assets: 96 skills, The Catalyst genesis prompt, constitution, BYOI abstraction
+
+### Completed (Phase 1)
+- Repo restructured: engine/skills/, engine/templates/, archive/, providers/
+- 448MB Conway bloat deleted, 4,100 lines dead code archived
+- Thin provision.py (277 lines) replaces bloated agent_setup.py (2,457 lines)
+- Generic BYOI provider interface (providers/base.py + conway.py)
+- Clean server.py (97 lines, no dead imports)
+- Dashboard: 14 pages functional, all API endpoints responding
+- Assets: 96 custom skills in engine/skills/, The Catalyst genesis prompt, constitution
+- All documentation updated for new architecture (Anima Machina + Ultimus)
+
+### Next (Phase 2 — Thin Provisioning)
+- Wire provision.py to actually call Conway API (create VM, install OpenClaw, push config)
+- Test one Anima provisions end-to-end
+- Generic BYOI: user provides any provider endpoint + key
+
+### Upcoming
+- Phase 3: Dashboard Data — connect all pages to real OpenClaw data
+- Phase 4: Ultimus — clone CAMEL -> Anima Machina, build prediction engine
+- Phase 5: Your Network — your infra as BYOI provider
 
 ## Architecture Docs
 See /app/docs/ for full architecture, roadmap, and security docs.

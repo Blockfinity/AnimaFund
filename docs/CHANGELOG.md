@@ -4,6 +4,27 @@
 > Current naming: **Anima** (agent), **Anima Machina** (agent framework, CAMEL fork), **Ultimus** (prediction engine, built on Anima Machina), **Platform** (dashboard+API), **OpenClaw** (capability layer).
 > See ARCHITECTURE.md for definitive naming.
 
+## 2026-03-20: Phase 1 — Repo Restructure & Cleanup (COMPLETE)
+- Deleted 448MB Conway bloat (automaton/dist, native, node_modules, src, packages)
+- Archived 4,100 lines dead code to /app/archive/ (agent_setup, engine_bridge, payment_tracker, sandbox_poller, webhook_daemon)
+- Created /app/engine/skills/ (96 custom skills) and /app/engine/templates/ (genesis-prompt, constitution)
+- Created thin provision.py (277 lines, replaces 2,457-line agent_setup.py)
+- Created providers/base.py (generic BYOI interface) + providers/conway.py
+- Rewrote server.py (97 lines, clean imports, no sandbox_poller dependency)
+- Updated config.py to point to engine/ instead of automaton/
+- Updated agents.py to read skills/templates from engine/
+- All docs updated: no MiroFish fork, build Ultimus from scratch on Anima Machina (CAMEL fork)
+- Frontend loads, all API endpoints responding, dashboard functional
+
+## 2026-03-20: Documentation Overhaul
+- Updated all docs to reflect new architecture: Anima Machina (CAMEL fork) + Ultimus (proprietary)
+- Removed all "clone MiroFish" instructions — MiroFish is reference only
+- Added NO AGPL rule, Apache-2.0 foundation
+- Fixed directory paths (frontend/ and backend/ stay — supervisor locked)
+- Made ROADMAP.md the single authoritative task list
+- Updated Conway API key in backend/.env to funded key
+
+
 ## 2026-03-20: Architecture Blueprint Created
 - Created `/app/docs/ARCHITECTURE.md` — complete restructuring plan
 - Documented what to KEEP, ARCHIVE, and DELETE

@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-AUTOMATON_DIR = os.path.join(os.path.dirname(__file__), "..", "automaton")
+ENGINE_DIR = os.path.join(os.path.dirname(__file__), "..", "engine")
+AUTOMATON_DIR = ENGINE_DIR  # Backwards compat alias — old code references AUTOMATON_DIR
 ANIMA_DIR = os.path.expanduser("~/.anima")
 CREATOR_WALLET = os.environ.get("CREATOR_WALLET")
 CREATOR_ETH_ADDRESS = os.environ.get("CREATOR_ETH_ADDRESS")

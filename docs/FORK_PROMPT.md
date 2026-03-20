@@ -279,3 +279,26 @@ All Conway-specific code should be behind the generic BYOI provider interface.
 6. The Catalyst genesis prompt must not be stripped — changes must be additive
 7. Ultimus runs locally — no external API dependencies for simulation
 8. NO AGPL code anywhere — only Apache-2.0 (CAMEL) or proprietary
+
+## FINAL CLEANUP (Run AFTER all phases are complete)
+
+After Ultimus is built and working, do a final cleanup pass to remove all traces of upstream projects:
+
+```bash
+grep -ri "miro\|fish\|oasis\|camel" /app/ --include="*.py" --include="*.js" --include="*.md" --include="*.json" | grep -v node_modules | grep -v .git | grep -v LICENSE | grep -v NOTICE
+```
+
+Fix every result. Remove or replace. The final codebase must read as if MiroFish never existed.
+
+**Only exceptions:** `anima-machina/LICENSE` and `anima-machina/NOTICE` (Apache-2.0 legal requirement).
+
+**What the final docs should say about Ultimus:**
+- "Ultimus is our proprietary prediction/simulation engine built on Anima Machina"
+- No mention of MiroFish, OASIS, fish, or any Chinese project
+- No mention of "we studied X" or "inspired by Y"
+- The workflow (seed -> graph -> personas -> simulate -> report -> execute) is described as Ultimus's own design
+
+**What the final code should contain:**
+- Zero strings containing "miro", "fish", "oasis", "camel" in any source file
+- `anima-machina/LICENSE` and `anima-machina/NOTICE` for Apache-2.0 attribution (legal, not user-facing)
+- That's it
