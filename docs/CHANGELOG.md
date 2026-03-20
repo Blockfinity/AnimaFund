@@ -1,10 +1,19 @@
 # Anima Platform — Changelog
 
-> **NOTE:** Earlier entries reference abandoned naming (Anima Engine, Anima Tools, Anima Predict, Anima Bridge).
-> Current naming: **Anima** (agent), **Anima Machina** (agent framework, CAMEL fork), **Ultimus** (prediction engine, built on Anima Machina), **Platform** (dashboard+API), **OpenClaw** (capability layer).
-> See ARCHITECTURE.md for definitive naming.
+> **NOTE:** Earlier entries reference abandoned naming.
+> Current naming: **Anima** (agent), **Anima Machina** (agent framework, CAMEL fork — runs everywhere), **Ultimus** (prediction engine), **Dimensions** (God's-eye view), **Platform** (dashboard+API).
+> OpenClaw is NOT the runtime. Anima Machina IS the runtime. See FORK_PROMPT.md.
 
-## 2026-03-20: Phase 1 — Repo Restructure & Cleanup (COMPLETE)
+## 2026-03-20: Architecture Pivot — Anima Machina IS the Runtime
+- FORK_PROMPT.md completely rewritten with definitive architecture
+- Anima Machina (CAMEL fork) is the agent runtime everywhere — NOT OpenClaw
+- New concept: Dimensions (God's-eye view for simulation and live modes)
+- Multiple Animas can share environments (not 1-VM-per-agent)
+- Provisioning must be invisible to users
+- 96 skills are for The Catalyst only, not universal starter pack
+- All docs updated: ARCHITECTURE.md, ROADMAP.md, PRD.md
+
+## 2026-03-20: Step 1 — Repo Cleanup (PARTIAL)
 - Deleted 448MB Conway bloat (automaton/dist, native, node_modules, src, packages)
 - Archived 4,100 lines dead code to /app/archive/ (agent_setup, engine_bridge, payment_tracker, sandbox_poller, webhook_daemon)
 - Created /app/engine/skills/ (96 custom skills) and /app/engine/templates/ (genesis-prompt, constitution)

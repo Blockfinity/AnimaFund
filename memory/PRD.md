@@ -4,49 +4,40 @@
 A platform to launch, monitor, and manage fully autonomous AI agents (Animas) in sandboxed environments. Users define goals via genesis prompts or Ultimus-generated predictions. Animas operate with full autonomy to achieve those goals.
 
 ## Core Components
-- **Anima** — autonomous agent in its own VM with OpenClaw capabilities
-- **Anima Machina** — agent framework (forked from CAMEL, Apache-2.0, proprietary modifications)
-- **Ultimus** — prediction/simulation engine (built from scratch on Anima Machina, proprietary). CORE product, not future.
-- **Platform** — dashboard + API. Provisions VMs, monitors Animas, serves spawn API.
-- **OpenClaw** — capability layer in each VM. Browser, shell, memory, skills, self-modification. Installed as-is, not forked.
-- **BYOI** — any VM provider with an API. Not a hardcoded list.
+- **Anima** — autonomous agent instance
+- **Anima Machina** — agent framework (CAMEL fork, Apache-2.0). Runs on platform (Ultimus) AND in sandboxed environments (agent runtime). 50+ native toolkits. OpenClaw NOT needed.
+- **Ultimus** — prediction/simulation engine built on Anima Machina. CORE product. Three sub-processes: Predictor, Calculator, Executor.
+- **Dimensions** — God's-eye view. Observe simulated or live Animas, chat with them, inject variables.
+- **Platform** — React dashboard + FastAPI API. Thin control plane. BYOI provisioning.
 
 ## User Flows
 1. Manual: User creates Anima with custom genesis prompt -> platform provisions -> Anima operates
-2. Ultimus: User describes goal -> Ultimus simulates (Quick/Deep/Expert/Iterative) -> generates genesis prompts -> user executes -> platform provisions Animas -> they operate -> results feed back to Ultimus
+2. Ultimus: User describes goal -> select predict mode (Quick/Deep/Expert/Iterative) -> Ultimus simulates -> review in Dimensions -> execute -> Anima Machina deploys agents -> platform provisions environments -> Animas operate -> results feed back
 
 ## Key Principles
-- Animas have flexible autonomy (user decides constraints via genesis prompt)
-- Platform is thin (OpenClaw does heavy lifting)
-- BYOI is generic (any provider)
+- Animas are fully autonomous (choose tools, strategies, resources)
+- Platform is thin (Anima Machina does heavy lifting)
+- BYOI is generic (any provider API, not hardcoded list)
+- Provisioning is invisible to users
+- Multiple Animas can share environments
 - Ultimus is core (not optional)
-- Each Anima owns its wallet (private key never leaves VM)
+- Predictions are non-linear (thousands of paths simultaneously)
+- Genesis prompts auto-generated from simulation data
+- 96 custom skills are for The Catalyst ONLY
+- Each Anima owns its wallet (private key never leaves sandbox)
 - 50% creator revenue split
-- NO AGPL code anywhere — only Apache-2.0 (CAMEL/Anima Machina) or proprietary
-- MiroFish is REFERENCE ONLY (study workflow, don't copy code)
+- NO AGPL code — only Apache-2.0 or proprietary
 
 ## Current State (March 2026)
-
-### Completed (Phase 1)
-- Repo restructured: engine/skills/, engine/templates/, archive/, providers/
-- 448MB Conway bloat deleted, 4,100 lines dead code archived
-- Thin provision.py (277 lines) replaces bloated agent_setup.py (2,457 lines)
-- Generic BYOI provider interface (providers/base.py + conway.py)
-- Clean server.py (97 lines, no dead imports)
-- Dashboard: 14 pages functional, all API endpoints responding
-- Assets: 96 custom skills in engine/skills/, The Catalyst genesis prompt, constitution
-- All documentation updated for new architecture (Anima Machina + Ultimus)
-
-### Next (Phase 2 — Thin Provisioning)
-- Wire provision.py to actually call Conway API (create VM, install OpenClaw, push config)
-- Test one Anima provisions end-to-end
-- Generic BYOI: user provides any provider endpoint + key
-
-### Upcoming
-- Phase 3: Dashboard Data — connect all pages to real OpenClaw data
-- Phase 4: Ultimus — clone CAMEL -> Anima Machina, build prediction engine
-- Phase 5: Your Network — your infra as BYOI provider
+- Step 1 (CLEAN): Partially done. Bloat deleted, assets moved, dead code archived.
+- Step 2 (Anima Machina): Not started. CAMEL not yet cloned.
+- Step 3 (Platform connection): Not started.
+- Step 4 (Ultimus): Not started.
+- Step 5 (Multi-Anima + Economics): Not started.
+- Dashboard: 14 pages render but show empty data.
+- Assets: 96 skills (The Catalyst only), genesis prompt, constitution in engine/.
 
 ## Architecture Docs
-See /app/docs/ for full architecture, roadmap, and security docs.
-ROADMAP.md is the single authoritative task list with phase definitions.
+See /app/docs/ for full details.
+FORK_PROMPT.md is the definitive source of truth.
+ROADMAP.md is the authoritative task list.

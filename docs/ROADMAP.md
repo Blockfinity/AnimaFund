@@ -1,84 +1,85 @@
 # Anima Platform — Project Roadmap
 
-## Phase 1: Clean + Restructure (Immediate)
-**Goal:** Clean repo, working thin provisioning, one Anima running reliably.
+## Step 1: FINISH CLEAN (partially done)
+**Goal:** Clean repo, working platform shell.
 
-| # | Task | Input | Output | Dependencies |
-|---|---|---|---|---|
-| 1.1 | Create engine/, ultimus/, archive/ dirs | Current messy repo | New dirs created | None |
-| 1.2 | KEEP frontend/ and backend/ | N/A | Supervisor locked — do NOT rename | N/A |
-| 1.3 | Archive dead code from backend/ | engine_bridge.py, payment_tracker.py, etc. | archive/ + 1,322 lines removed from backend/ | 1.1 |
-| 1.4 | Move skills + templates | automaton/skills/, genesis-prompt.md, constitution.md | engine/skills/, engine/templates/ | 1.1 |
-| 1.5 | Delete Conway fork bloat | automaton/dist, native, node_modules, src, packages | 543MB freed | 1.4 |
-| 1.6 | Clean backend/ routers | agent_setup.py (2,457L), genesis.py, live.py, etc. | Slim routers: provision.py, monitor.py | 1.3 |
-| 1.7 | Update backend/ imports | Old router refs in server.py | Clean server.py with new routers | 1.6 |
-| 1.8 | Verify platform loads | Restructured repo | Dashboard renders, API responds | 1.7 |
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 1.1 | Delete automaton/ bloat (dist, native, node_modules, src, packages) | DONE | 448MB freed |
+| 1.2 | Move skills + templates to engine/ | DONE | 96 skills, genesis-prompt, constitution |
+| 1.3 | Archive dead code | DONE | agent_setup, engine_bridge, payment_tracker, sandbox_poller, webhook_daemon |
+| 1.4 | Delete sandbox_provider.py | TODO | Conway-specific, replaced by providers/ |
+| 1.5 | Create anima-machina/ placeholder | TODO | For Step 2 |
+| 1.6 | Verify backend + frontend working | DONE | All endpoints responding |
 
-## Phase 2: Thin Provisioning (Next)
-**Goal:** Provision an Anima in 4 commands, not 200+.
+## Step 2: CLONE CAMEL -> ANIMA MACHINA
+**Goal:** Working agent framework with wallet, spawn, state reporting toolkits.
 
-| # | Task | Input | Output | Dependencies |
-|---|---|---|---|---|
-| 2.1 | Write generic BYOI provider interface | sandbox_provider.py reference | providers/base.py — any API | 1.8 |
-| 2.2 | Write Conway provider | conway.py reference | providers/conway.py | 2.1 |
-| 2.3 | Write provision.py | agent_setup.py reference | ~200 lines: create VM → install OpenClaw → push config → start | 2.1 |
-| 2.4 | Write spawn.py | New | Animas request child VMs | 2.3 |
-| 2.5 | Test on existing Conway sandbox | Running sandbox | Anima boots with OpenClaw, wallet created, Telegram reports | 2.3 |
+| # | Task | Dependencies |
+|---|---|---|
+| 2.1 | git clone camel-ai/camel -> /app/anima-machina/ | 1.5 |
+| 2.2 | Full rebrand: camel -> anima_machina | 2.1 |
+| 2.3 | Remove telemetry, unused modules | 2.2 |
+| 2.4 | Add wallet toolkit (web3.py + x402) | 2.2 |
+| 2.5 | Add spawn toolkit (request environments from platform) | 2.2 |
+| 2.6 | Add state reporting toolkit (push state to platform webhook) | 2.2 |
+| 2.7 | Test: agent with BrowserToolkit + TerminalToolkit on platform server | 2.3 |
 
-## Phase 3: Dashboard Data (Connected)
-**Goal:** Every dashboard page shows real data from the running Anima.
+## Step 3: CONNECT PLATFORM TO ANIMA MACHINA
+**Goal:** Provisioning works, dashboard shows real data from Anima Machina agents.
 
-| # | Task | Input | Output | Dependencies |
-|---|---|---|---|---|
-| 3.1 | Research OpenClaw native state output | OpenClaw docs/source | Map of what data is available and where | None |
-| 3.2 | Write monitor.py | genesis.py, live.py, infrastructure.py reference | Single router reading OpenClaw state | 3.1 |
-| 3.3 | Connect AgentMind page | monitor.py | Live thought stream, engine status, session costs | 3.2 |
-| 3.4 | Connect AnimaVM page | monitor.py | Terminal, browser sessions, exec log, filters working | 3.2 |
-| 3.5 | Connect Financials page | monitor.py | Revenue, expenses, credits, wallet balance | 3.2 |
-| 3.6 | Connect Activity page | monitor.py | Decisions, revenue events, tool calls | 3.2 |
-| 3.7 | Connect Infrastructure page | monitor.py | Sandboxes, tools, domains, ports | 3.2 |
-| 3.8 | Connect Memory page | monitor.py | Agent's semantic memory | 3.2 |
-| 3.9 | Connect OpenClawViewer page | monitor.py | OpenClaw status, browsing sessions | 3.2 |
-| 3.10 | Multi-Anima wallet view | spawn.py + monitor.py | All Anima wallets on dashboard | 2.4, 3.2 |
-| 3.11 | Full dashboard test | All pages | Every page shows real data | 3.3-3.10 |
+| # | Task | Dependencies |
+|---|---|---|
+| 3.1 | Rewrite provision.py: truly generic BYOI, invisible to user | 2.7 |
+| 3.2 | Rewrite monitor.py: read from Anima Machina (replaces genesis.py + live.py + infrastructure.py) | 2.7 |
+| 3.3 | Connect AgentMind page to real data | 3.2 |
+| 3.4 | Connect AnimaVM page to real data | 3.2 |
+| 3.5 | Connect Financials page to real data | 3.2 |
+| 3.6 | Connect Infrastructure page to real data | 3.2 |
+| 3.7 | Connect Activity, Memory, Skills pages | 3.2 |
+| 3.8 | Connect SSE pipeline to Anima Machina state updates | 3.2 |
+| 3.9 | Test: deploy agent, verify ALL dashboard pages show real data | 3.3-3.8 |
 
-## Phase 4: Ultimus (Core Product)
-**Goal:** Working prediction engine that generates genesis prompts from simulations. Built from scratch on Anima Machina (CAMEL fork). NO MiroFish code, NO OASIS, NO AGPL.
+## Step 4: BUILD ULTIMUS
+**Goal:** Working prediction engine with Dimensions (God's-eye view).
 
-| # | Task | Input | Output | Dependencies |
-|---|---|---|---|---|
-| 4.1 | Clone CAMEL into /app/anima-machina/ | github.com/camel-ai/camel | Anima Machina foundation (Apache-2.0) | None |
-| 4.2 | Rebrand CAMEL → Anima Machina | All "camel" references | All references → "anima_machina" | 4.1 |
-| 4.3 | Build simulation runner | Anima Machina multi-agent societies | POST /api/ultimus/simulate → runs simulation | 4.2 |
-| 4.4 | Build GraphRAG pipeline | Anima Machina built-in GraphRAG | Knowledge graph from user domain data | 4.2 |
-| 4.5 | Build persona generator | Knowledge graph + goal | Agent personas with strategies/risk profiles | 4.4 |
-| 4.6 | Build report generator | Simulation output | Structured strategy: roles, costs, confidence | 4.3 |
-| 4.7 | Build bridge (genesis prompt generator) | Strategy document | N genesis prompts, one per Anima role (YOUR IP) | 4.6 |
-| 4.8 | Build cost calculator | Strategy + pricing data | Seed cost, break-even, projected value (YOUR IP) | 4.7 |
-| 4.9 | Build execute flow | User clicks Launch | Platform provisions Animas with generated prompts (YOUR IP) | 4.7, 2.3 |
-| 4.10 | Build feedback loop | Real execution results | Feed back into Ultimus for next simulation (YOUR IP) | 4.9 |
-| 4.11 | Build 4 seed data modes | Goal input | Quick/Deep/Expert/Iterative predict modes | 4.3 |
-| 4.12 | Build Ultimus UI | Ultimus API | New screen in frontend: describe goal → simulate → review → execute | 4.3-4.11 |
-| 4.13 | Full Ultimus test | End-to-end | Simulate → review → execute → Animas deploy → results feed back | 4.12 |
+| # | Task | Dependencies |
+|---|---|---|
+| 4.1 | Build ultimus/predictor.py (multi-agent simulation) | 2.7 |
+| 4.2 | Build ultimus/calculator.py (cost/infrastructure analysis) | 4.1 |
+| 4.3 | Build ultimus/executor.py (hands specs to Anima Machina) | 4.1, 3.1 |
+| 4.4 | Build ultimus/knowledge.py (GraphRAG) | 2.7 |
+| 4.5 | Build ultimus/personas.py (persona generation) | 4.4 |
+| 4.6 | Build ultimus/dimensions.py (God's-eye view API) | 4.1 |
+| 4.7 | Build all 4 seed data modes (Quick/Deep/Expert/Iterative) | 4.1 |
+| 4.8 | Build frontend: goal input, simulation progress, Dimensions, cost review, execute | 4.1-4.7 |
+| 4.9 | Test: goal -> simulate -> Dimensions -> execute -> Animas deploy -> results feed back | 4.8 |
 
-## Phase 5: Your Network
+## Step 5: MULTI-ANIMA + ECONOMICS
+**Goal:** Animas spawn children, manage wallets, achieve self-sustaining economy.
+
+| # | Task | Dependencies |
+|---|---|---|
+| 5.1 | Spawn API: Animas request new environments | 3.1 |
+| 5.2 | Treasury: per-node budget management | 5.1 |
+| 5.3 | Wallet/x402: pay for services, charge for services, earn revenue | 2.4 |
+| 5.4 | Multi-Anima dashboard: all Animas, wallets, parent-child lineage | 3.2, 5.1 |
+| 5.5 | Self-sustaining economics in predictions | 4.2, 5.3 |
+| 5.6 | Test: prediction deploys 10+ Animas, they operate, earn, spawn, achieve goal | 5.1-5.5 |
+
+## Step 6: YOUR NETWORK
 **Goal:** Agents use your infrastructure and inference.
 
-| # | Task | Input | Output | Dependencies |
-|---|---|---|---|---|
-| 5.1 | Your infra as BYOI provider | Network SDK | providers/your_network.py | 2.1 |
-| 5.2 | Your inference as routing option | Network inference API | Genesis prompt config option | 3.2 |
-| 5.3 | Animas deploy nodes on your network | Genesis prompt directive | Anima provisions nodes via SDK | 5.1 |
-| 5.4 | Agent-hosted inference | Animas run inference nodes | Other Animas pay via x402 | 5.2, 5.3 |
-| 5.5 | Full network test | Ultimus simulation | Simulate network expansion → execute → nodes deploy | 4.12, 5.3 |
+| # | Task | Dependencies |
+|---|---|---|
+| 6.1 | Your infra as BYOI provider | 3.1 |
+| 6.2 | Your inference as routing option | 3.1 |
+| 6.3 | Animas deploy nodes on your network | 6.1 |
 
-## Priority Order
-Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5
-(Phase 4 is CORE but needs Phases 1-3 working first)
-
-## Definition of Done (per phase)
-- Phase 1: `frontend/` loads, `backend/` API responds, repo is clean, old bloat deleted
-- Phase 2: One Anima provisions in <60 seconds on any BYOI provider, wallet shows, Telegram reports
-- Phase 3: Every dashboard page shows real data from running Anima
-- Phase 4: User describes goal → Ultimus (on Anima Machina) simulates → generates prompts → deploys Animas → results feed back
-- Phase 5: Animas deploy nodes on your network, use your inference
+## Definition of Done (per step)
+- Step 1: Backend starts, frontend loads, repo clean
+- Step 2: Anima Machina agent runs on platform server with toolkits
+- Step 3: All dashboard pages show real data from running Anima Machina agents
+- Step 4: Goal -> simulate -> Dimensions -> execute -> real Animas deploy
+- Step 5: 10+ Animas operating, earning, spawning, self-sustaining
+- Step 6: Animas on your network

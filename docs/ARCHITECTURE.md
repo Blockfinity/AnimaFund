@@ -6,113 +6,48 @@ A platform to launch, monitor, and manage fully autonomous AI agents (Animas)
 in sandboxed environments. Users define goals, the platform provisions
 infrastructure, and Animas operate autonomously to achieve those goals.
 
-Ultimus (prediction engine, built from scratch on Anima Machina) generates goals and
-agent definitions from simulations. Users can also create Animas manually.
-
 ## NAMING
 
-- **Anima** — an autonomous agent running in its own VM
-- **Anima Machina** — the agent framework (forked from CAMEL, Apache-2.0, proprietary modifications)
-- **Ultimus** — the prediction/simulation engine (built from scratch on Anima Machina, proprietary)
-- **Platform** — the dashboard + API (monitoring, provisioning, agent registry)
-- **OpenClaw** — the capability layer installed in each Anima's VM (installed as-is, not forked)
+- **Anima** — an individual autonomous agent
+- **Anima Machina** — the agent framework (forked from CAMEL-AI, Apache-2.0, fully rebranded). Runs BOTH on the platform (for Ultimus simulations) AND inside sandboxed environments (as the agent runtime). Has 50+ native toolkits.
+- **Ultimus** — the prediction/simulation engine. Built on Anima Machina. Dashboard screens, not a separate app.
+- **Dimensions** — the God's-eye view. Observe simulated or live Animas, chat with them, inject variables. Dashboard screens.
+- **Platform** — the React dashboard + FastAPI API. Thin control plane.
 
-## THREE LAYERS
+## THREE SEPARATE SYSTEMS
 
-### Layer 1: Platform (the control plane)
-- Provisions VMs on ANY provider the user connects (BYOI — not a hardcoded list)
-- Pushes genesis prompts + config into each Anima's VM
-- Monitors all Animas (wallets, state, logs, economics, goal progress)
-- Serves the spawn API so Animas can request child VMs
-- Tracks every Anima's wallet, parent lineage, and economics
-- Hosts Ultimus for simulation-driven deployments
+### 1. Anima Machina (agent framework — CAMEL fork)
+Creates agents. Runs them. Gives them tools, memory, personas, inference. Runs EVERYWHERE:
+- On the platform server: powers Ultimus simulations
+- Inside sandboxed environments: each Anima is an Anima Machina agent instance
 
-### Layer 2: OpenClaw (capability layer in each VM)
-- Browser, shell, memory, self-modification, ClawHub skills, MCP, channels
-- The Anima has full flexibility — it CAN make its own decisions on tools,
-  skills, inference, and strategy unless the genesis prompt constrains it
-- The user decides how much autonomy to give via the genesis prompt
+OpenClaw is NOT needed. Anima Machina has all capabilities natively (50+ toolkits).
+We ADD: wallet toolkit (x402), spawn toolkit, state reporting toolkit, full rebrand.
 
-### Layer 3: Anima (the agent)
-- Executes goals from its genesis prompt using OpenClaw capabilities
-- Has full flexibility to decide HOW to achieve goals unless constrained
-- Can spin up child Animas by requesting VMs through the platform's spawn API
-- Can write genesis prompts for its children
-- Creates its own wallet, manages its own economics
-- Reports state back to the platform
+### 2. Ultimus (prediction engine — built on Anima Machina)
+Three sub-processes: Predictor, Calculator, Executor.
+Four seed data modes: Quick/Deep/Expert/Iterative Predict.
+Dimensions: God's-eye view for both simulation and live modes.
 
-## ULTIMUS (Core Product — Not Future)
+### 3. Platform (thin control plane)
+Provisions environments via BYOI. Monitors Animas. Spawn API. Dimensions. Kill switch.
 
-Ultimus is the prediction/simulation engine. It is CORE to the product.
-Built from scratch on Anima Machina (CAMEL fork, Apache-2.0). NO MiroFish code, NO OASIS code, NO AGPL.
+## CRITICAL PRINCIPLES
 
-Flow:
-1. User describes a goal ("expand to 3,000 nodes" / "generate $50K DeFi revenue")
-2. Selects predict mode (Quick/Deep/Expert/Iterative)
-3. Ultimus runs simulation with thousands of agent personas via Anima Machina societies
-4. Produces: strategy, roles, genesis prompts per role, cost model, confidence scores
-5. User reviews, adjusts constraints, clicks Execute
-6. Platform provisions Animas with generated genesis prompts
-7. Animas operate autonomously to execute the strategy
-8. Real results feed back into Ultimus for next iteration
-
-Users can ALSO skip Ultimus and create Animas manually with custom genesis prompts.
-
-## BYOI (Bring Your Own Infrastructure)
-
-The platform provisions VMs on ANY provider the user connects:
-- User provides: provider API endpoint + API key + tier preferences
-- Platform calls the provider's API to create VMs
-- Conway, Fly.io, DigitalOcean, Hetzner, AWS, your own network — anything with an API
-- NOT a hardcoded list of providers — the platform adapts to whatever the user brings
-
-When an Anima requests a child VM via the spawn API, the platform uses the
-same BYOI config to provision it.
-
-## INFERENCE
-
-The genesis prompt can specify inference constraints or leave it open:
-- "Use only GPT-5-mini" → Anima uses only that model
-- "Use any model, minimize cost" → Anima picks cheapest available
-- "Use our network for inference" → Anima routes to user's inference nodes
-- No constraint → Anima decides based on task and wallet balance
-
-The platform provides inference config (available providers, API keys, cost tiers)
-as part of the genesis prompt. The Anima uses this config flexibly.
-
-## WHAT EXISTS (March 2026)
-
-### Working:
-- Dashboard: 14 pages, 3-screen flow (Genesis → Engine → Dashboard), SSE pipeline
-- Agent CRUD: create/select/delete Animas in MongoDB
-- Wallet display + QR code (when wallet exists)
-- Engine console with logs (from webhook cache)
-- Skills listing (146 available)
-- Telegram integration
-- BYOI provider abstraction (Conway + Fly.io — needs to be generic)
-- Security model (SECURITY.md)
-- Genesis prompt: The Catalyst soul (restored, 271 lines)
-- Constitution: ethical framework
-- 96 custom skills
-
-### Broken / Bloated:
-- Provisioning: 2,457 lines making 200+ API calls (should be ~200 lines, 4 calls)
-- Conway engine fork: 543MB, crashes constantly (replace with OpenClaw)
-- Data pipeline: reads JSON files that don't exist (connect to OpenClaw native state)
-- Dead code: engine_bridge.py (1,108L), payment_tracker.py (142L), webhook_daemon_template.py (72L)
-- Dashboard pages mostly empty (data pipeline broken)
-
-### Not Yet Built:
-- Anima Machina (CAMEL fork — agent framework foundation)
-- Ultimus (built from scratch on Anima Machina — core product, must build)
-- Generic BYOI (currently hardcoded to Conway + Fly.io)
-- Multi-Anima tracking (parent-child relationships, all wallets)
-- Spawn API (Animas request child VMs through platform)
-- Your network as BYOI provider + inference provider
+1. Animas are fully autonomous within their genesis prompt
+2. BYOI is generic — any provider API, not a hardcoded list
+3. Provisioning is invisible to users
+4. Multiple Animas can share environments or have dedicated ones
+5. All Animas are sandboxed — platform can kill any environment
+6. Every prediction must be self-sustaining
+7. Predictions are non-linear — thousands of paths explored simultaneously
+8. Genesis prompts are auto-generated from simulation data
+9. The 96 custom skills are for The Catalyst ONLY
+10. Ultimus and Anima Machina are SEPARATE systems
 
 ## TASK LIST
 
-See **ROADMAP.md** for the authoritative task list and phase definitions.
+See **ROADMAP.md** for the authoritative task list and step definitions.
 
 ## REPO STRUCTURE (Target)
 
@@ -120,41 +55,34 @@ See **ROADMAP.md** for the authoritative task list and phase definitions.
 
 ```
 /app
-├── frontend/           ← Dashboard (KEEP — supervisor locked)
-│   └── src/pages/     ← 14 dashboard pages
+├── frontend/           <- Dashboard (supervisor locked)
+│   └── src/pages/     <- 14 existing + Ultimus/Dimensions screens
 │
-├── backend/            ← Platform API (KEEP — supervisor locked)
+├── backend/            <- Platform API (supervisor locked)
 │   ├── routers/
-│   │   ├── agents.py      ← Anima CRUD
-│   │   ├── provision.py   ← Thin launcher (~200 lines)
-│   │   ├── monitor.py     ← Read Anima state
-│   │   ├── spawn.py       ← Child VM requests from Animas
-│   │   ├── telegram.py    ← Telegram integration
-│   │   └── webhooks.py    ← Receive Anima state reports
+│   │   ├── agents.py      <- Anima CRUD
+│   │   ├── provision.py   <- Generic BYOI provisioning (~200 lines)
+│   │   ├── monitor.py     <- Read Anima state from Anima Machina
+│   │   ├── spawn.py       <- Environment requests from Animas
+│   │   ├── dimensions.py  <- God's-eye view API
+│   │   ├── telegram.py    <- Telegram integration
+│   │   └── webhook.py     <- Receive Anima state reports
 │   └── providers/
-│       └── base.py        ← Generic BYOI interface
+│       └── base.py        <- Generic BYOI interface
 │
-├── engine/             ← What gets installed in each VM
-│   ├── skills/        ← 96 custom skills
-│   └── templates/     ← Genesis prompts, constitution
+├── engine/             <- Assets pushed to environments
+│   ├── skills/        <- 96 custom skills (The Catalyst only)
+│   └── templates/     <- Genesis prompts, constitution
 │
-├── anima-machina/     ← Agent framework (CAMEL fork, Apache-2.0, rebranded)
+├── anima-machina/     <- Agent framework (CAMEL fork, Apache-2.0, rebranded)
 │
-├── ultimus/            ← Prediction engine (built on Anima Machina, proprietary)
-│   ├── simulation/    ← Simulation runner
-│   ├── bridge/        ← Simulation → genesis prompt converter (YOUR IP)
-│   └── knowledge/     ← GraphRAG ontologies
+├── ultimus/            <- Prediction engine (built on Anima Machina, proprietary)
+│   ├── predictor.py   <- Simulation runner
+│   ├── calculator.py  <- Cost/infrastructure analysis
+│   ├── executor.py    <- Hands specs to Anima Machina
+│   ├── dimensions.py  <- God's-eye view
+│   └── api.py         <- REST endpoints
 │
-├── archive/            ← Reference from old codebase
-└── docs/               ← Architecture, security, changelog
+├── archive/            <- Reference from old codebase
+└── docs/               <- Architecture, security, changelog
 ```
-
-## CRITICAL RULES
-1. Platform is THIN — OpenClaw does heavy lifting inside VMs
-2. Animas have flexible autonomy — user decides constraints via genesis prompt
-3. BYOI is GENERIC — any provider with an API, not a hardcoded list
-4. Ultimus is CORE — not a future add-on
-5. NEVER expose platform internals to the sandbox (SECURITY.md)
-6. Each Anima owns its private key — never transmitted
-7. The genesis prompt is sacred — The Catalyst soul must not be stripped again
-8. 96 custom skills are YOUR IP
