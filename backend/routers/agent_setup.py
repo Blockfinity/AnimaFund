@@ -631,6 +631,17 @@ async def _ensure_system_ready(sandbox_id: str) -> tuple:
     r = await _sandbox_exec(sandbox_id, "command -v node && command -v npm && command -v curl && command -v git && echo ALL_OK || echo MISSING", timeout=10)
     if "ALL_OK" in r.get("stdout", ""):
         logs.append("[prereq] system tools + node already available")
+        # Verify native addon is not corrupted
+        r_native = await _sandbox_exec(sandbox_id, "node -e \"require('/app/automaton/native/linux-x64/better_sqlite3.node'); console.log('OK')\" 2>&1 || echo NATIVE_BAD", timeout=10)
+        if "NATIVE_BAD" in r_native.get("stdout", "") or "file too short" in r_native.get("stdout", ""):
+            logs.append("[prereq] native addon corrupted, reinstalling...")
+            await _sandbox_exec(sandbox_id,
+                "cd /tmp && npm install better-sqlite3 2>&1 | tail -3 && "
+                "mkdir -p /app/automaton/native/linux-x64 && "
+                "cp /tmp/node_modules/better-sqlite3/build/Release/better_sqlite3.node /app/automaton/native/linux-x64/better_sqlite3.node && "
+                "cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node",
+                timeout=60)
+            logs.append("[prereq] native addon reinstalled")
         return True, logs
 
     # Install missing tools
@@ -2143,31 +2154,16 @@ sys.exit(0 if passed == total else 1)
             r_check = await _sandbox_exec(sandbox_id, "wc -c /app/automaton/dist/bundle.mjs", timeout=5)
             outputs.append(f"[engine] verified: {r_check.get('stdout','').strip()}")
 
-            # 6b. Push native addon via file API, then recompile if wrong Node version
-            native_path = os.path.join(AUTOMATON_DIR, "native", "linux-x64", "better_sqlite3.node")
-            if os.path.exists(native_path):
-                import base64 as b64mod
-                with open(native_path, "rb") as f:
-                    native_b64 = b64mod.b64encode(f.read()).decode()
-                await _sandbox_write_file(sandbox_id, "/tmp/_native.b64", native_b64)
-                r_native = await _sandbox_exec(sandbox_id,
-                    "mkdir -p /app/automaton/native/linux-x64 && "
-                    "base64 -d /tmp/_native.b64 > /app/automaton/native/linux-x64/better_sqlite3.node && "
-                    "cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node && "
-                    "rm -f /tmp/_native.b64 && wc -c /app/automaton/native/linux-x64/better_sqlite3.node",
-                    timeout=30)
-                outputs.append(f"[native] {r_native.get('stdout','').strip()}")
-                # Recompile if wrong Node version
-                if r_native.get("exit_code") == 0:
-                    r_compat = await _sandbox_exec(sandbox_id, "node -e \"require('/app/automaton/native/linux-x64/better_sqlite3.node')\" 2>&1 || echo NEEDS_RECOMPILE", timeout=10)
-                    if "NEEDS_RECOMPILE" in r_compat.get("stdout", "") or "NODE_MODULE_VERSION" in r_compat.get("stdout", ""):
-                        outputs.append("[native] Recompiling for sandbox Node version...")
-                        r_recompile = await _sandbox_exec(sandbox_id,
-                            "cd /tmp && npm install better-sqlite3 2>&1 | tail -3 && "
-                            "cp /tmp/node_modules/better-sqlite3/build/Release/better_sqlite3.node /app/automaton/native/linux-x64/better_sqlite3.node && "
-                            "cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node && echo RECOMPILED",
-                            timeout=60)
-                        outputs.append(f"[native] {r_recompile.get('stdout','').strip()}")
+            # 6b. Install better-sqlite3 native addon via npm (NEVER transfer pre-built binary — it corrupts)
+            r_native = await _sandbox_exec(sandbox_id,
+                "cd /tmp && npm install better-sqlite3 2>&1 | tail -3 && "
+                "mkdir -p /app/automaton/native/linux-x64 && "
+                "cp /tmp/node_modules/better-sqlite3/build/Release/better_sqlite3.node /app/automaton/native/linux-x64/better_sqlite3.node && "
+                "cp /app/automaton/native/linux-x64/better_sqlite3.node /app/automaton/native/better_sqlite3.node && "
+                "node -e \"require('/app/automaton/native/linux-x64/better_sqlite3.node'); console.log('NATIVE_OK')\" && "
+                "wc -c /app/automaton/native/linux-x64/better_sqlite3.node",
+                timeout=60)
+            outputs.append(f"[native] {r_native.get('stdout','').strip()}")
         else:
             outputs.append("[engine] WARNING: dist/bundle.mjs not found on host")
 
