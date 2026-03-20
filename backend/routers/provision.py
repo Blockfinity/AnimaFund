@@ -132,17 +132,26 @@ async def deploy_agent(req: CreateSandboxRequest):
     webhook_token = secrets.token_hex(16)
     platform_url = os.environ.get("REACT_APP_BACKEND_URL", "")
 
-    # LLM key: read from agent's MongoDB config (user provides their own key)
-    # NEVER push the Emergent key to a sandbox — it won't work from external VMs
+    # LLM inference: determine which provider to use
+    # Priority: 1) agent's configured key, 2) Conway inference (if in Conway sandbox), 3) error
     agent_llm_key = agent_doc.get("llm_api_key", "")
     agent_llm_base_url = agent_doc.get("llm_base_url", "")
-    agent_llm_model = agent_doc.get("llm_model", "gpt-4o-mini")
+    agent_llm_model = agent_doc.get("llm_model", "gpt-5-mini")
+
+    if not agent_llm_key and req.provider == "conway":
+        # Use Conway's own inference endpoint — key is already in the sandbox
+        from agent_state import get_conway_api_key
+        conway_key = await get_conway_api_key()
+        if conway_key:
+            agent_llm_key = conway_key
+            agent_llm_base_url = "https://api.conway.tech/v1"
+            agent_llm_model = agent_doc.get("llm_model", "gpt-5-mini")
+            steps_log.append("Using Conway inference (sandbox's own key)")
 
     if not agent_llm_key:
         raise HTTPException(400,
-            "No LLM API key configured for this agent. "
-            "Set one via PUT /api/agents/{agent_id}/llm-key with your OpenAI or Anthropic key. "
-            "The Emergent Universal Key does not work from external sandboxes."
+            "No LLM inference configured. Either set an API key via PUT /api/agents/{id}/llm-key, "
+            "or deploy to a Conway sandbox (which has built-in inference)."
         )
 
     config = {
