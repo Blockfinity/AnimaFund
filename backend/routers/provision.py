@@ -153,7 +153,7 @@ async def deploy_agent(req: CreateSandboxRequest):
         "LLM_BASE_URL": agent_llm_base_url,
         "LLM_MODEL": agent_llm_model,
         "GENESIS_PROMPT_PATH": "/app/anima/genesis-prompt.md",
-        "MAX_TURNS": "20",
+        "MAX_TURNS": "0",
     }
 
     try:

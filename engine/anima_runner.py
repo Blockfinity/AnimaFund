@@ -24,7 +24,7 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 GENESIS_PROMPT_PATH = os.environ.get("GENESIS_PROMPT_PATH", "/app/anima/genesis-prompt.md")
-MAX_TURNS = int(os.environ.get("MAX_TURNS", "50"))
+MAX_TURNS = int(os.environ.get("MAX_TURNS", "0"))  # 0 = unlimited (agent runs until it decides to stop or can't pay)
 STATE_DIR = "/app/anima/state"
 
 _running = True
@@ -275,9 +275,9 @@ def main():
         )
 
     turn = 0
-    while _running and turn < MAX_TURNS:
+    while _running and (MAX_TURNS == 0 or turn < MAX_TURNS):
         turn += 1
-        logger.info(f"--- Turn {turn}/{MAX_TURNS} ---")
+        logger.info(f"--- Turn {turn} ---")
 
         try:
             if turn == 1:
