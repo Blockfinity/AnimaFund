@@ -1898,6 +1898,12 @@ async def deploy_agent():
         await _sandbox_write_file(sandbox_id, "/root/.anima/anima.json", json.dumps(anima_config, indent=2))
         outputs.append("[anima.json] engine config written")
 
+        # 4b. Sync Conway API key to ~/.conway/config.json (the engine reads from here)
+        if api_key:
+            conway_config = json.dumps({"apiKey": api_key})
+            await _sandbox_write_file(sandbox_id, "/root/.conway/config.json", conway_config)
+            outputs.append("[conway-config] API key synced to ~/.conway/config.json")
+
         # 5. Initialize phase-state.json at Phase 0
         phase_state = {
             "current_phase": 0,
