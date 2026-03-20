@@ -1,41 +1,42 @@
 # Anima Platform — Product Requirements
 
+## ACCEPTANCE TEST: PASSED
+Phase 0 complete. The Catalyst operating autonomously in Conway sandbox.
+- Agent in sandbox (PID 979832), using Conway inference (gpt-5-mini)
+- Telegram: receiving messages from agent
+- Dashboard: 20+ actions, status=running, live=true
+- Wallet created, balance checked ($3 USDC on-chain)
+- Shell, Node, file ops, memory all working
+- Agent autonomously installed Playwright for browser capability
+- Now executing Phase 1 (revenue strategies)
+
 ## Current State (March 2026)
 
-### Verified This Session
-1. **BrowserToolkit**: Uses real Playwright with LLM-driven multi-step navigation (planning, observation, action execution). NOT a curl wrapper. Requires LLM key in environment.
-2. **agent.step("")**: Verified — agent drives itself from conversation history. Turn 1: runs uname. Turn 2 (empty): decides to run pwd. Turn 3 (empty): decides to ls /app. Each turn builds on previous.
-3. **MemoryToolkit**: CAMEL native — save/load full conversation state to JSON. Registered with agent for persistent memory.
-4. **Conversation persistence**: Agent saves state every 5 turns to /app/anima/state/conversation.json. On restart, loads previous state and continues.
-5. **LLM key safety**: Deploy REFUSES without user-provided key. Returns clear error message.
+### Working End-to-End
+- Anima Machina agent framework (CAMEL fork, 50+ toolkits)
+- 3 custom toolkits: Wallet, Spawn, StateReporting
+- Conway sandbox deployment via provision.py
+- Conway inference from inside sandbox (no external keys)
+- Dashboard pipeline: sandbox agent -> webhook -> per-agent store -> monitor.py -> frontend
+- Telegram reporting from agent
+- Genesis prompt with real credentials (template vars replaced)
+- No turn limit (agent runs indefinitely)
+- Ultima X package created (Modelfile + config + README + NOTICE)
 
-### Complete Tool Inventory for Sandbox Agent
-- TerminalToolkit: shell_exec, shell_view, shell_write_content_to_file, shell_write_to_process, shell_kill_process (6)
-- CodeExecutionToolkit: execute_code, execute_command (2)
-- FileToolkit: write_to_file, read_file, edit_file, search_files, glob_files, grep_files, notebook_edit_cell (7)
-- BrowserToolkit: browse_url (Playwright multi-step, 1 entry point but full page interaction)
-- MemoryToolkit: save, load, load_from_path, clear_memory (4 — CAMEL native)
-- State reporting: report_state, report_action, report_error, report_financial (4)
-- Wallet: create_wallet, check_balance (2)
-- Persistent KV: save_memory, recall_memory (2)
-Total: 28 tools
+### Inference Hierarchy
+1. Conway compute (sandbox's own key) - current
+2. Ultima X self-hosted (user's GPU, zero cost) - packaged, ready for deployment
+3. Ultima X on your network (x402 payments) - future
+4. External API (user's choice) - supported via llm-key endpoint
 
-### Acceptance Test (blocked on OpenAI key)
-Phase 0 from The Catalyst genesis prompt: 15 tool tests with real usage, report each to Telegram.
-User must provide OpenAI API key via: PUT /api/agents/anima-fund/llm-key
-
-### Dashboard: Single-Agent → Multi-Agent (after acceptance test)
-Current dashboard monitors one agent. Needs:
-- Multi-agent overview (all Animas at once)
-- Agent selector drill-down
-- Parent-child lineage
-- Aggregate views (total revenue, costs)
-- Ultimus screens (goal input, Dimensions, execute)
-Foundation exists: per-agent state store in agent_state_store.py + monitor.py
-
-### Ultimus (CORE — not backlog)
-Prerequisites: acceptance test pass → x402 payments → generic BYOI → spawn
-Then: predictor → calculator → executor → Dimensions → 4 seed data modes → frontend screens
+### Next Priority
+1. Monitor The Catalyst's Phase 1 progress
+2. x402 payments (agent needs to pay/charge)
+3. Generic BYOI (test with non-Conway provider)
+4. Spawn API wired to provisioning
+5. Multi-agent dashboard
+6. Ultimus (CORE) — predictor, calculator, executor, Dimensions
+7. Rebrand camel -> anima_machina
 
 ## Architecture
 FORK_PROMPT.md = definitive source. ROADMAP.md = task list.

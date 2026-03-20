@@ -1,0 +1,26 @@
+{
+  "name": "Ultima X",
+  "version": "1.0.0",
+  "base_model": "qwen3.5-122b",
+  "architecture": "MoE (10B active / 122B total)",
+  "context_window": 262144,
+  "capabilities": ["tool_calling", "function_calling", "code_generation", "reasoning", "multi_step_planning"],
+  "deployment": {
+    "ollama": {
+      "command": "ollama create ultima-x -f Modelfile",
+      "run": "ollama run ultima-x",
+      "api": "http://localhost:11434/v1/chat/completions"
+    },
+    "vllm": {
+      "command": "vllm serve Qwen/Qwen3.5-122B-Instruct --model-name ultima-x",
+      "api": "http://localhost:8000/v1/chat/completions"
+    }
+  },
+  "license": "Apache-2.0",
+  "notice": "Ultima X is based on Qwen 3.5 by Alibaba Cloud, licensed under Apache 2.0",
+  "min_requirements": {
+    "ram": "40GB (quantized Q4)",
+    "vram": "24GB (single GPU, quantized)",
+    "full_precision": "80GB+ VRAM (A100/H100)"
+  }
+}
