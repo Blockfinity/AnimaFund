@@ -131,15 +131,26 @@ async def deploy_agent(req: CreateSandboxRequest):
     # Step 3: Push agent config
     webhook_token = secrets.token_hex(16)
     platform_url = os.environ.get("REACT_APP_BACKEND_URL", "")
-    llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
+
+    # LLM key: read from agent's MongoDB config (user provides their own key)
+    # Falls back to EMERGENT_LLM_KEY for development only
+    agent_llm_key = agent_doc.get("llm_api_key", "")
+    agent_llm_base_url = agent_doc.get("llm_base_url", "")
+    agent_llm_model = agent_doc.get("llm_model", "gpt-4o-mini")
+
+    if not agent_llm_key:
+        # Development fallback — will fail from external VMs on free Emergent plan
+        agent_llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
+        agent_llm_base_url = "https://integrations.emergentagent.com/llm/v1"
+        steps_log.append("WARNING: Using Emergent dev key. Set agent's LLM API key for production.")
 
     config = {
         "PLATFORM_URL": platform_url,
         "WEBHOOK_TOKEN": webhook_token,
         "AGENT_ID": agent_id,
-        "LLM_API_KEY": llm_key,
-        "LLM_BASE_URL": "https://integrations.emergentagent.com/llm/v1",
-        "LLM_MODEL": "gpt-4o-mini",
+        "LLM_API_KEY": agent_llm_key,
+        "LLM_BASE_URL": agent_llm_base_url,
+        "LLM_MODEL": agent_llm_model,
         "GENESIS_PROMPT_PATH": "/app/anima/genesis-prompt.md",
         "MAX_TURNS": "20",
     }

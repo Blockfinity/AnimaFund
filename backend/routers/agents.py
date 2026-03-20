@@ -352,6 +352,40 @@ async def update_agent_telegram(agent_id: str, req: UpdateTelegramRequest):
     }
 
 
+class UpdateLLMKeyRequest(BaseModel):
+    llm_api_key: str
+    llm_base_url: str = ""
+    llm_model: str = "gpt-4o-mini"
+
+
+@router.put("/agents/{agent_id}/llm-key")
+async def update_agent_llm_key(agent_id: str, req: UpdateLLMKeyRequest):
+    """Set the LLM API key for an agent. This key is pushed to the sandbox during deployment.
+    The user provides their own OpenAI/Anthropic/etc key — no platform proxy."""
+    col = get_db()["agents"]
+    agent = await col.find_one({"agent_id": agent_id})
+    if not agent:
+        raise HTTPException(404, f"Agent '{agent_id}' not found")
+
+    await col.update_one(
+        {"agent_id": agent_id},
+        {"$set": {
+            "llm_api_key": req.llm_api_key,
+            "llm_base_url": req.llm_base_url,
+            "llm_model": req.llm_model,
+        }},
+    )
+
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "model": req.llm_model,
+        "has_base_url": bool(req.llm_base_url),
+        "message": "LLM key configured. Will be used on next deployment.",
+    }
+
+
+
 @router.post("/agents/{agent_id}/start")
 async def start_agent_engine(agent_id: str):
     """DISABLED — engines run inside Conway VMs, not on the host.
