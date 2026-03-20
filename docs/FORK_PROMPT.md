@@ -58,9 +58,11 @@ A platform to launch, monitor, and manage fully autonomous AI agents (called Ani
 
 ## CURRENT REPO STATE
 
-The repo has NOT been restructured yet. Files are still in the old locations:
-- frontend/ (dashboard — KEEP, rename to platform/)
-- backend/ (API — KEEP, rename to api/, slim down)
+**IMPORTANT: Supervisor config is READONLY and locked to `/app/frontend/` and `/app/backend/`.
+Do NOT rename these directories — it will break the app immediately.**
+
+- frontend/ (dashboard — KEEP this path, supervisor locked)
+- backend/ (API — KEEP this path, supervisor locked. Slim down internally)
 - automaton/ (Conway fork — DELETE except skills/ and templates)
 - docs/ (ARCHITECTURE.md, BUILD_ASSESSMENT.md, SECURITY.md, CHANGELOG.md)
 - memory/PRD.md
@@ -69,13 +71,13 @@ The repo has NOT been restructured yet. Files are still in the old locations:
 
 ```
 /app
-├── platform/              ← Dashboard (renamed from frontend/)
+├── frontend/              ← Dashboard (KEEP — supervisor locked to this path)
 │   └── src/
 │       ├── pages/        ← 14 dashboard pages
 │       ├── components/   ← Header, Sidebar, EngineConsole, CreateAgentModal
 │       └── hooks/        ← useSSE, useSSETrigger
 │
-├── api/                   ← Platform API (renamed from backend/)
+├── backend/               ← Platform API (KEEP — supervisor locked to this path)
 │   ├── server.py
 │   ├── database.py
 │   ├── agent_state.py
@@ -103,7 +105,7 @@ The repo has NOT been restructured yet. Files are still in the old locations:
 │   ├── simulation/       ← Simulation runner (forked from OASIS)
 │   ├── bridge/           ← Simulation output → genesis prompt converter
 │   ├── knowledge/        ← GraphRAG ontologies
-│   ├── api/              ← Ultimus REST API (called by platform)
+│   ├── api/              ← Ultimus REST API (called by frontend)
 │   └── README.md
 │
 ├── archive/               ← Reference code from old architecture
@@ -124,18 +126,17 @@ The repo has NOT been restructured yet. Files are still in the old locations:
 ## WHAT TO DO NEXT (in order)
 
 ### Step 1: Restructure Repo
-- Create new directory structure
-- Move frontend/ → platform/ (keep all code)
-- Move backend/ → api/ (keep working code, archive bloat)
+- Create new directory structure (engine/, ultimus/, archive/)
+- KEEP frontend/ and backend/ paths (supervisor is READONLY — do NOT rename)
+- Clean backend/ internally: archive dead code, rewrite bloated routers
 - Move automaton/skills/ → engine/skills/
 - Move automaton/genesis-prompt.md → engine/templates/genesis-prompt.md
 - Move automaton/constitution.md → engine/templates/constitution.md
 - Archive old code to archive/
 - Delete automaton/dist/, native/, node_modules/, src/, packages/
-- Delete dead code files
-- Update imports in api/ to reflect new paths
-- Update supervisor config paths
-- Test: platform loads, API responds
+- Delete dead code files from backend/
+- Update imports in backend/ to reflect cleaned routers
+- Test: frontend loads, API responds
 
 ### Step 2: Rewrite Provisioning
 - Delete agent_setup.py (2,457 lines)
@@ -228,7 +229,7 @@ corrupted better_sqlite3.node binary. Conway API key: in MongoDB agent record.
 Conway is ONE optional BYOI provider. The platform should NOT depend on it.
 All Conway-specific code should be behind the generic BYOI provider interface.
 
-## CREDENTIALS (in backend/.env or api/.env)
+## CREDENTIALS (in backend/.env)
 - MONGO_URL=mongodb://localhost:27017
 - DB_NAME=anima_fund
 - TELEGRAM_BOT_TOKEN=8474833303:AAHAhnRoHSIZTEruDu4ic-tPvdzrnTadnrw

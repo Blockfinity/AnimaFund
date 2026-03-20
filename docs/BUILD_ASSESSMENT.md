@@ -62,7 +62,7 @@
 
 | Task | Description | Effort | Priority |
 |---|---|---|---|
-| 1.1 Restructure repo | Move files to new structure (platform/, api/, engine/) | 1 session | P0 |
+| 1.1 Restructure repo | Clean backend/, create engine/, archive bloat | 1 session | P0 |
 | 1.2 Fork OpenClaw | Clone repo, rebrand, add to engine/ | 1 session | P0 |
 | 1.3 Add wallet + x402 to OpenClaw fork | ethers.js wallet generation + x402 client | 1-2 sessions | P0 |
 | 1.4 Add state reporting | Agent pushes state to platform webhook (built into runtime) | 1 session | P0 |
@@ -180,16 +180,16 @@ Based on current usage patterns:
 
 | Asset | Value | Location |
 |---|---|---|
-| 14 dashboard pages | Weeks of UI work | platform/src/pages/ |
-| 4 components (Header, Sidebar, EngineConsole, CreateAgentModal) | Core UI | platform/src/components/ |
-| SSE hooks (useSSE, useSSETrigger) | Real-time data pipeline | platform/src/hooks/ |
-| 3-screen flow (Genesis → Engine → Dashboard) | Core UX | platform/src/App.js |
+| 14 dashboard pages | Weeks of UI work | frontend/src/pages/ |
+| 4 components (Header, Sidebar, EngineConsole, CreateAgentModal) | Core UI | frontend/src/components/ |
+| SSE hooks (useSSE, useSSETrigger) | Real-time data pipeline | frontend/src/hooks/ |
+| 3-screen flow (Genesis → Engine → Dashboard) | Core UX | frontend/src/App.js |
 | 96 custom skills | YOUR IP | engine/skills/ |
 | Genesis prompt (The Catalyst) | Agent soul | engine/templates/ |
 | Constitution | Ethical framework | engine/templates/ |
-| Agent CRUD + MongoDB state | Core data layer | api/routers/agents.py, api/agent_state.py |
-| BYOI provider abstraction | Multi-provider support | api/providers/ |
-| Telegram integration | Agent reporting | api/routers/telegram.py |
+| Agent CRUD + MongoDB state | Core data layer | backend/routers/agents.py, backend/agent_state.py |
+| BYOI provider abstraction | Multi-provider support | backend/providers/ |
+| Telegram integration | Agent reporting | backend/routers/telegram.py |
 | Security model | Agent isolation rules | docs/SECURITY.md |
 | Architecture blueprint | Complete plan | docs/ARCHITECTURE.md |
 

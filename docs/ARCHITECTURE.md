@@ -108,41 +108,18 @@ as part of the genesis prompt. The Anima uses this config flexibly.
 
 ## TASK LIST
 
-### Phase 1: Clean + Working Platform
-1. Delete bloat (543MB Conway fork, 4,100 lines dead code)
-2. Restructure repo (platform/, api/, engine/, ultimus/, docs/)
-3. Rewrite provisioning (~200 lines): create VM → install OpenClaw → push config → start
-4. Connect dashboard to OpenClaw's native state
-5. Generic BYOI (user provides any provider endpoint + key)
-6. Test: one Anima boots, wallet shows, logs stream, Telegram reports, dashboard populated
-
-### Phase 2: Multi-Anima + Spawn
-7. Spawn API (Animas request child VMs through platform)
-8. Multi-Anima wallet view (all Animas' wallets on dashboard)
-9. Parent-child lineage tracking
-10. Inference config in genesis prompt (flexible, user-decided)
-
-### Phase 3: Ultimus (Core)
-11. Fork MiroFish/OASIS, rebrand as Ultimus
-12. Build simulation runner (user describes goal → Ultimus simulates)
-13. Build genesis prompt generator (simulation output → Anima definitions)
-14. Build cost calculator (show seed cost, break-even, projected value)
-15. Build execute flow (user clicks Launch → platform deploys Animas)
-16. Build feedback loop (real results → Ultimus for next iteration)
-
-### Phase 4: Your Network
-17. Your infrastructure as generic BYOI provider
-18. Your inference nodes as routing option
-19. Animas deploy nodes on your network (directed by genesis prompt)
+See **ROADMAP.md** for the authoritative task list and phase definitions.
 
 ## REPO STRUCTURE (Target)
 
+**NOTE: Supervisor config is READONLY. frontend/ and backend/ paths cannot be renamed.**
+
 ```
 /app
-├── platform/           ← Dashboard (renamed from frontend/)
+├── frontend/           ← Dashboard (KEEP — supervisor locked)
 │   └── src/pages/     ← 14 dashboard pages
 │
-├── api/                ← Platform API (renamed from backend/)
+├── backend/            ← Platform API (KEEP — supervisor locked)
 │   ├── routers/
 │   │   ├── agents.py      ← Anima CRUD
 │   │   ├── provision.py   ← Thin launcher (~200 lines)
@@ -158,7 +135,7 @@ as part of the genesis prompt. The Anima uses this config flexibly.
 │   └── templates/     ← Genesis prompts, constitution
 │
 ├── ultimus/            ← Prediction engine (MiroFish/OASIS fork)
-│   ├── engine/        ← Simulation runner
+│   ├── simulation/    ← Simulation runner
 │   ├── bridge/        ← Simulation → genesis prompt converter
 │   └── knowledge/     ← GraphRAG ontologies
 │
