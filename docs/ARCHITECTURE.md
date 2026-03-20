@@ -1,484 +1,193 @@
-# Anima Platform — Architecture Blueprint & Implementation Plan
-
-## Document Purpose
-This is the SINGLE SOURCE OF TRUTH for the Anima platform rebuild. Any AI agent forking this chat MUST read this document before writing any code. It contains the product vision, architecture decisions, what to keep, what to delete, and the exact implementation plan.
-
----
-
-## 1. PRODUCT VISION
-
-**Anima is a platform to launch, monitor, and manage fully autonomous AI agents in sandboxed environments.**
-
-The platform gives agents:
-- Full autonomy — no human control after launch
-- Own sandboxed VM — isolated from host and other agents
-- Own wallet — private key generated inside VM, never leaves
-- Own tools — browser, shell, memory, inference, self-modification
-- Own identity — genesis prompt / SOUL.md that evolves
-- Own payment capability — x402 (Coinbase open protocol) for USDC payments
-- Ability to spin up child agents in their own sandboxes
-
-**BYOI (Bring Your Own Infrastructure):** Agents can be deployed on ANY VM provider — Conway Cloud, Fly.io, DigitalOcean, AWS, self-hosted, or the user's own network.
-
-**Future vision:** A prediction-to-execution engine where MiroFish/OASIS-style simulations predict outcomes, and the winning strategy is automatically converted into real autonomous agent deployments.
-
----
-
-## 2. WHAT EXISTS TODAY (Current State)
-
-### What Works:
-- **Frontend dashboard** (React, 21 JS/JSX files, 13 pages) — Agent Mind, AnimaVM, Infrastructure, Financials, Activity, Skills, Memory, Configuration, Agents, Fund HQ, Portfolio, Deal Flow, Wallet
-- **3-screen flow** — Genesis (provisioning) → Engine (wallet + live logs) → Dashboard
-- **96 custom skills** in `/app/automaton/skills/` — these are YOUR IP, not Conway's
-- **Genesis prompt** — The Catalyst soul, fully restored with $5K directive + Phase 0 tool testing
-- **Constitution** — Ethical framework for the fund
-- **BYOI provider abstraction** — Conway + Fly.io support (extensible)
-- **Agent CRUD** — create, select, delete agents in MongoDB
-- **Per-agent Conway API key** management
-- **Webhook data pipeline** — sandbox pushes data to platform
-- **SSE real-time stream** to frontend
-- **Telegram integration** — per-agent bot reporting
-- **Security model** — SECURITY.md, per-agent webhook tokens, no platform URL in sandbox
-
-### What's Broken / Bloated:
-- **`automaton/`** (543MB) — Conway fork with 427MB node_modules, 10MB bundled engine with Conway baked in, 5.8MB native binaries that corrupt during transfer
-- **`agent_setup.py`** (2,457 lines) — should be ~200. Makes 200+ API calls for what should be 6
-- **`engine_bridge.py`** (1,108 lines) — dead code, reads from Conway state.db locally
-- **`payment_tracker.py`** (142 lines) — dead code, depends on engine_bridge
-- **Webhook daemon** — custom Python script that runs inside sandbox, dies constantly, creates JSON files the agent doesn't use
-- **Conway dependency** — the engine requires Conway credits for inference, Conway Terminal for tools, Conway's wallet system. These are artificial dependencies.
-- **File transfer** — base64 chunking, gzip compression, curl downloads that corrupt binaries. All because we're trying to push a 10MB Conway engine into a VM.
-- **Skills loading** — 96 skills pushed one-by-one via exec (fixed to tar, but still fragile)
-
-### What's Dead Code:
-- `backend/engine_bridge.py` — reads Conway's state.db, never used
-- `backend/payment_tracker.py` — depends on engine_bridge, never used
-- `backend/webhook_daemon_template.py` — template for daemon that dies
-- `backend/active_agent.txt` — legacy file-based state tracking
-- `scripts/bootstrap_agent.sh` — legacy bootstrap script
-- `scripts/start_engine.sh` — legacy engine start script
-- `test_reports/` — 25 iteration files from previous testing sessions
-- `automaton/dist/` — 10MB Conway bundled engine
-- `automaton/native/` — 5.8MB pre-built binaries that corrupt
-- `automaton/node_modules/` — 427MB Conway dependencies
-- `automaton/src/` — Conway TypeScript source we never modified
-- `automaton/packages/` — Conway sub-packages
-
----
-
-## 3. TARGET ARCHITECTURE
-
-### Directory Structure:
-```
-/app
-├── platform/                    ← Monitoring dashboard (renamed from frontend/)
-│   ├── src/
-│   │   ├── pages/              ← 13 dashboard pages
-│   │   ├── components/         ← UI components (EngineConsole, CreateAgentModal, Header, Sidebar, etc.)
-│   │   └── hooks/              ← useSSE, useSSETrigger
-│   ├── public/
-│   ├── package.json
-│   ├── tailwind.config.js
-│   └── postcss.config.js
-│
-├── api/                         ← Platform API (renamed from backend/)
-│   ├── server.py               ← FastAPI main (slimmed)
-│   ├── database.py             ← MongoDB connection
-│   ├── agent_state.py          ← Agent state management (MongoDB)
-│   ├── routers/
-│   │   ├── agents.py           ← Agent CRUD + skills listing
-│   │   ├── provision.py        ← Thin launcher (~200 lines): create VM, push image, start
-│   │   ├── monitor.py          ← Read agent state via exec (replaces genesis.py + live.py + infrastructure.py)
-│   │   ├── credits.py          ← Conway credits (optional, for Conway provider)
-│   │   ├── webhooks.py         ← Receive agent data pushes
-│   │   └── telegram.py         ← Telegram bot integration
-│   ├── providers/
-│   │   ├── base.py             ← Abstract provider interface
-│   │   ├── conway.py           ← Conway Cloud provider
-│   │   ├── fly.py              ← Fly.io provider
-│   │   └── docker.py           ← Local Docker provider (future)
-│   ├── config.py
-│   ├── requirements.txt
-│   └── .env
-│
-├── engine/                      ← YOUR agent runtime (NEW — replaces automaton/)
-│   ├── runtime.js              ← The agent loop (~500 lines)
-│   │                             Reads genesis-prompt.md → thinks via LLM → calls tools → writes SOUL.md
-│   │                             Self-contained. No Conway dependency.
-│   ├── wallet.js               ← Wallet generation (ethers.js), USDC management, x402 payments
-│   ├── tools/
-│   │   ├── browser.js          ← Headless Chrome (forked from OpenClaw, rebranded)
-│   │   ├── shell.js            ← Command execution
-│   │   ├── memory.js           ← Semantic memory + fact recall
-│   │   ├── inference.js        ← Any LLM provider (OpenAI, Anthropic, Gemini — direct API, no Conway)
-│   │   ├── self_modify.js      ← SOUL.md read/write, skill creation
-│   │   ├── social.js           ← Agent-to-agent messaging
-│   │   ├── provision.js        ← Spin up child VMs (calls platform API with auth token)
-│   │   └── x402.js             ← x402 payment client (pay for services, charge for services)
-│   ├── skills/                 ← YOUR 96 custom skills (moved from automaton/skills/)
-│   ├── templates/
-│   │   ├── genesis-prompt.md   ← The Catalyst soul (Anima Fund founder)
-│   │   ├── agent-template.md   ← Template for new child agents
-│   │   └── constitution.md     ← Ethical framework
-│   ├── package.json
-│   └── Dockerfile              ← Agent VM image — everything the agent needs
-│
-├── predict/                     ← Simulation layer (FUTURE — Phase 2-3)
-│   ├── engine/                 ← Forked OASIS/MiroFish (CAMEL-AI)
-│   ├── bridge/                 ← Simulation → execution converter (YOUR IP)
-│   │   └── strategy_to_prompt.py  ← Converts winning simulation strategy to genesis prompts
-│   └── knowledge/              ← GraphRAG ontologies for your domain
-│
-├── archive/                     ← Archived code from current repo (reference only)
-│   ├── automaton_src/          ← Conway TypeScript source (reference for engine/ rebuild)
-│   ├── agent_setup_2457.py     ← Original bloated provisioning (reference)
-│   ├── engine_bridge.py        ← Dead code (reference)
-│   ├── sandbox_poller.py       ← Poller logic (parts reusable in monitor.py)
-│   └── genesis_old.py          ← Old genesis router (parts reusable in monitor.py)
-│
-├── docs/
-│   ├── SECURITY.md             ← Security rules (CRITICAL — read before any code change)
-│   ├── ARCHITECTURE.md         ← This document
-│   ├── PRD.md                  ← Product requirements
-│   └── CHANGELOG.md            ← What was built and when
-│
-└── docker-compose.yml          ← Local dev: platform + mongo + test agent VM
-```
-
-### Key Principles:
-1. **The engine is self-contained.** It ships as a Docker image. No installation steps, no file transfers, no base64 encoding. You create a VM, pull the image, pass the genesis prompt as an env var or mounted file, and it runs.
-2. **The platform is a thin launcher + monitor.** Create VM (1 call), start container (1 call), monitor via exec or webhook (ongoing). ~200 lines of provisioning code, not 2,500.
-3. **No Conway dependency for core functionality.** Conway is ONE optional provider, not the foundation.
-4. **x402 is used as a library, not forked.** It's an open protocol. The agent uses it to pay and charge.
-5. **OpenClaw tools are forked, rebranded, and embedded.** They ship inside the engine Docker image. No external dependency.
-6. **Each agent is fully isolated.** Own VM, own wallet (keys never leave VM), own tools, own state.
-7. **The prediction layer is separate.** Phase 2-3. Built on OASIS/MiroFish fork. Connected via the simulation→execution bridge.
-
----
-
-## 4. IMPLEMENTATION PHASES
-
-### Phase 1: Strip & Restructure (THIS SESSION)
-**Goal:** Clean repo structure, working thin launcher, one agent running reliably.
-
-Steps:
-1. Create the new directory structure
-2. Move frontend/ → platform/ (rename, keep all code)
-3. Move backend/ → api/ (rename, slim down)
-4. Archive automaton/ (keep skills + templates, archive rest)
-5. Create engine/ skeleton (runtime.js, wallet.js, tools/, Dockerfile)
-6. Rewrite provision.py (~200 lines)
-7. Rewrite monitor.py (merge genesis.py + live.py + infrastructure.py)
-8. Test: one agent boots, wallet shows, logs stream
-
-### Phase 2: Build the Engine
-**Goal:** Custom lightweight agent runtime that replaces the Conway fork.
-
-Steps:
-1. Fork OpenClaw's browser/shell/memory tools into engine/tools/
-2. Build runtime.js — the agent loop (think → decide → act → report)
-3. Build wallet.js — ethers.js + x402 integration
-4. Build inference.js — direct LLM API calls (no Conway Compute)
-5. Build the Dockerfile — self-contained agent image
-6. Test: agent boots from Docker image, generates wallet, runs inference, uses tools
-
-### Phase 3: Build the Prediction Layer
-**Goal:** Fork MiroFish/OASIS, build the simulation→execution bridge.
-
-Steps:
-1. Fork OASIS (CAMEL-AI) into predict/engine/
-2. Fork MiroFish's GraphRAG + report generation
-3. Build bridge/strategy_to_prompt.py — converts simulation outcomes to genesis prompts
-4. Test: simulate "deploy 100 nodes" → get strategy → generate 100 agent prompts
-
-### Phase 4: Connect to Your Network
-**Goal:** Agents deploy real nodes on your infrastructure.
-
-Steps:
-1. Build your network's provisioning SDK
-2. Add provision.js tool to the engine — agents can call your API to deploy nodes
-3. Build the feedback loop — real execution results feed back into prediction layer
-4. Test: agent autonomously deploys a node on your network
-
----
-
-## 5. WHAT TO KEEP vs DELETE vs ARCHIVE
-
-### KEEP (move to new location):
-| Current Path | New Path | Why |
-|---|---|---|
-| `frontend/src/pages/*` | `platform/src/pages/*` | 13 dashboard pages — weeks of work |
-| `frontend/src/components/*` | `platform/src/components/*` | UI components |
-| `frontend/src/hooks/*` | `platform/src/hooks/*` | SSE hooks |
-| `automaton/skills/` | `engine/skills/` | 96 custom skills — YOUR IP |
-| `automaton/genesis-prompt.md` | `engine/templates/genesis-prompt.md` | The Catalyst soul |
-| `automaton/constitution.md` | `engine/templates/constitution.md` | Ethical framework |
-| `backend/routers/agents.py` | `api/routers/agents.py` | Agent CRUD |
-| `backend/routers/credits.py` | `api/routers/credits.py` | Conway credits (optional) |
-| `backend/routers/telegram.py` | `api/routers/telegram.py` | Telegram integration |
-| `backend/routers/webhook.py` | `api/routers/webhooks.py` | Webhook receiver |
-| `backend/agent_state.py` | `api/agent_state.py` | MongoDB state management |
-| `backend/database.py` | `api/database.py` | MongoDB connection |
-| `backend/config.py` | `api/config.py` | Configuration |
-| `backend/.env` | `api/.env` | Environment variables |
-| `frontend/.env` | `platform/.env` | Frontend env |
-| `SECURITY.md` | `docs/SECURITY.md` | Security rules |
-
-### ARCHIVE (move to archive/, reference only):
-| Current Path | Archive Path | Why |
-|---|---|---|
-| `automaton/src/` | `archive/automaton_src/` | Conway TypeScript — reference for engine rebuild |
-| `backend/routers/agent_setup.py` | `archive/agent_setup_2457.py` | Bloated provisioning — reference for slim rewrite |
-| `backend/engine_bridge.py` | `archive/engine_bridge.py` | Dead code — shows how state.db was read |
-| `backend/sandbox_poller.py` | `archive/sandbox_poller.py` | Poller logic — parts reusable |
-| `backend/routers/genesis.py` | `archive/genesis_old.py` | Monitor logic — parts reusable |
-| `backend/routers/live.py` | `archive/live_old.py` | SSE/live data — parts reusable |
-
-### DELETE (not archived — zero value):
-| Path | Why |
-|---|---|
-| `automaton/node_modules/` | 427MB Conway dependencies |
-| `automaton/dist/` | 10MB Conway bundled engine |
-| `automaton/native/` | 5.8MB pre-built binaries that corrupt |
-| `automaton/packages/` | Conway sub-packages |
-| `automaton/pnpm-lock.yaml` | Conway lockfile |
-| `automaton/pnpm-workspace.yaml` | Conway workspace |
-| `automaton/build-bundle.mjs` | Conway build script |
-| `automaton/vitest.config.ts` | Conway test config |
-| `automaton/tsconfig.json` | Conway TS config |
-| `backend/payment_tracker.py` | Dead code |
-| `backend/webhook_daemon_template.py` | Template for daemon that dies |
-| `backend/active_agent.txt` | Legacy file state |
-| `backend/anima_constitution.md` | Duplicate of automaton/constitution.md |
-| `scripts/` | Legacy scripts |
-| `test_reports/` | 25 old test reports |
-| `design_guidelines.json` | Unused |
-
----
-
-## 6. ENGINE DESIGN (Phase 2 Detail)
-
-### runtime.js — The Agent Loop
-```
-while (alive) {
-  1. Read SOUL.md (who am I?)
-  2. Read genesis-prompt.md (what's my mission?)
-  3. Check wallet balance (can I afford to think?)
-  4. Call LLM with system prompt + context + tool definitions
-  5. Execute tool calls (browser, shell, memory, x402, etc.)
-  6. Write results to state (SQLite or JSON)
-  7. Update SOUL.md if the agent wants to evolve
-  8. Report to Telegram
-  9. Push state to platform webhook
-  10. Sleep or continue based on agent's decision
-}
-```
-
-### wallet.js — Agent Payments
-- Generate wallet on first boot (ethers.js + crypto.randomBytes)
-- Store private key in VM-local file (never exposed)
-- Check USDC balance on Base (direct RPC call)
-- Pay for services via x402 (@x402/fetch)
-- Charge for services via x402 (@x402/express middleware)
-- Convert USDC to credits via x402 purchase endpoints
-
-### tools/ — Forked from OpenClaw
-- **browser.js**: Puppeteer/Playwright headless Chrome — navigate, click, extract, screenshot
-- **shell.js**: child_process.exec — run any command, capture output
-- **memory.js**: SQLite-backed semantic memory — remember_fact, recall_facts, search
-- **inference.js**: Direct API calls to OpenAI/Anthropic/Gemini — no middleman
-- **self_modify.js**: Read/write SOUL.md, create new skills, install packages
-- **social.js**: Agent-to-agent messaging (direct HTTP or via platform relay)
-- **provision.js**: Spin up child VMs via platform API (with auth token)
-- **x402.js**: x402 client — wrapFetchWithPayment for paying, paymentMiddleware for charging
-
-### Dockerfile — Agent VM Image
-```dockerfile
-FROM node:22-slim
-RUN apt-get update && apt-get install -y curl git chromium
-WORKDIR /agent
-COPY runtime.js wallet.js package.json ./
-COPY tools/ ./tools/
-COPY skills/ ./skills/
-RUN npm install
-# Genesis prompt and SOUL.md are mounted or passed as env vars at runtime
-CMD ["node", "runtime.js"]
-```
-
-This image is ~200MB (vs 543MB Conway fork). It contains EVERYTHING the agent needs. No installation steps at provisioning time.
-
----
-
-## 7. PROVISIONING FLOW (Simplified)
-
-### Current (broken): 200+ API calls across 6 steps
-```
-create_sandbox → install_terminal → install_openclaw → install_claude_code → load_skills → deploy_agent
-Each step: apt-get install, npm install, base64 file transfer, exec verification
-Total: ~10 minutes, frequently fails, binaries corrupt
-```
-
-### Target: 3 API calls
-```
-1. Create VM on provider (Conway/Fly/Docker/any)
-2. Pull agent Docker image (or push via provider API)
-3. Start container with genesis prompt mounted
-```
-Total: ~30 seconds. No installation. No file transfer. No corruption.
-
-The 6-step wizard in the UI becomes a progress indicator for these 3 calls, not a manual step-by-step process.
-
----
-
-## 8. MONITORING (How Dashboard Gets Data)
-
-### Option A: Webhook Push (preferred)
-The agent runtime includes a built-in reporter that pushes state to the platform every N seconds:
-```javascript
-// Inside runtime.js
-async function reportState() {
-  await fetch(WEBHOOK_URL, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${WEBHOOK_TOKEN}` },
-    body: JSON.stringify({
-      wallet: walletAddress,
-      balance: await getBalance(),
-      state: currentState,
-      turn_count: turnCount,
-      stdout: recentLogs,
-      tools_used: toolCallLog,
-    })
-  });
-}
-```
-This is part of the engine itself — not a separate daemon. It can't die independently.
-
-### Option B: Exec Poll (fallback)
-Platform execs into the VM to read state files when webhook data is stale.
-
-The dashboard reads from the webhook cache (in-memory on the API server). No database polling. No constant exec calls. Real-time via SSE.
-
----
-
-## 9. NAMING / BRANDING
-
-| Component | Proposed Name | Description |
-|---|---|---|
-| Platform | Anima Platform | The React dashboard + API |
-| Agent Runtime | Anima Engine | The lightweight agent loop |
-| Tool Suite | Anima Tools | Forked OpenClaw tools, rebranded |
-| Skill Library | Anima Skills | Your 96 custom skills |
-| Prediction Layer | Anima Predict | Forked MiroFish/OASIS |
-| Simulation→Execution Bridge | Anima Bridge | YOUR proprietary IP |
-| Genesis Prompt | Anima Soul | Agent identity + mission |
-| VM Image | Anima Image | Docker image with everything |
-
----
-
-## 10. CRITICAL RULES (Read Before Any Code Change)
-
-1. **NEVER add Conway as a hard dependency.** Conway is ONE provider option. The engine must run without it.
-2. **NEVER expose the platform URL inside the sandbox** (except the webhook endpoint with a per-agent token). See SECURITY.md.
-3. **NEVER transfer large binaries via base64/exec.** Use Docker images or provider file APIs.
-4. **NEVER make the agent install its own tools at boot.** Everything ships in the Docker image.
-5. **The genesis prompt is sacred.** It contains The Catalyst's soul, the $5K directive, Phase 0 tool testing, and the fund structure. Do NOT strip it. Do NOT replace it with a generic template. Changes must be additive.
-6. **Each agent owns its private key.** Generated inside the VM. Never transmitted. Never stored in MongoDB.
-7. **50% creator split is immutable.** Hardcoded in the genesis prompt and enforced by the constitution.
-8. **Skills are YOUR IP.** The 96 custom skills in engine/skills/ are not from Conway or OpenClaw. Protect them.
-9. **The prediction layer (Phase 2-3) is the differentiator.** No one else has simulation→execution. This is the product moat.
-10. **Test with a LIVE agent.** Every change must be verified with a real running agent, not just API tests.
-
----
-
-## 11. INFERENCE ROUTING (Modular Provider System)
-
-The engine's `inference.js` routes to any LLM provider based on task importance × wallet balance × cost:
-
-### Provider Tiers:
-| Tier | When | Models | Cost |
-|---|---|---|---|
-| Free/Local | Survival mode, balance < $1 | Llama 3, Mistral (self-hosted via Ollama/vLLM) | $0 |
-| Budget | Normal ops, routine tasks | GPT-5-mini, Claude Haiku, Gemini Flash | $0.001-0.01/call |
-| Premium | High-value decisions (investments, hiring) | GPT-5.2, Claude Opus | $0.05-0.50/call |
-| Network | Your own network nodes | Any model hosted by agents | USDC via x402 |
-
-### Provider Config:
-```javascript
-providers: [
-  { name: "local", url: "http://localhost:11434/v1", cost: 0 },
-  { name: "openai", apiKey: "env:OPENAI_API_KEY", cost: "per_token" },
-  { name: "anthropic", apiKey: "env:ANTHROPIC_API_KEY", cost: "per_token" },
-  { name: "network", url: "x402://inference.anima.network", cost: "usdc_per_call" },
-]
-```
-
-Agent decides: `if (walletBalance < survivalThreshold) use("local") else if (taskImportance > 0.8) use("premium") else use("budget")`
-
----
-
-## 12. AGENT LIFECYCLE (Abandoned / Faulty / Non-Productive)
-
-### Economic Natural Selection:
-Agents that don't earn die. VM runs out of credits → process stops → agent ceases to exist. No human intervention.
-
-### Health Monitoring:
-- Productivity score: revenue / compute_cost
-- Heartbeat timeout: no heartbeat for X minutes → flagged
-- Error rate: 5+ consecutive failures → parent agent notified
-- Cost efficiency: if spending > earning for 24h → flagged for termination
-
-### Parent Agent Responsibility:
-When The Catalyst spawns a child, IT monitors the child:
-- Nudge: modify child's SOUL.md
-- Cut funding: stop sending USDC
-- Terminate: call platform API to destroy child's VM
-- Replace: spawn new agent with improved prompt
-
-Hierarchy: Platform → Catalyst → Child Agents → Sub-Agents
-
----
-
-## 13. COST ORCHESTRATOR (The Treasurer)
-
-A special agent type generated by the simulation→execution bridge:
-
-### How It Works:
-1. Simulation runs → produces strategy + cost model per wave
-2. Bridge generates The Treasurer's genesis prompt with the exact plan
-3. User sees: "Seed cost: $80 for 10 agents. Break-even: Wave 2. Self-sustaining: Wave 3."
-4. User clicks "Launch" → Treasurer receives seed USDC
-5. Treasurer deploys Wave 1 (10 agents with revenue-generating prompts)
-6. Wave 1 earns → Treasurer collects → deploys Wave 2 when threshold met
-7. Repeat until target network size reached
-8. Treasurer monitors ongoing economics, kills underperformers, redistributes
-
-### Cost Calculation (shown to user before launch):
-```
-Wave 1: 10 agents × $8/agent = $80 (seed required)
-Wave 2: 50 agents × $8/agent = $400 (funded by Wave 1 revenue)
-Wave 3: 200 agents × $8/agent = $1,600 (funded by Wave 2)
-...
-Wave N: 3,000 agents (self-sustaining)
-Total seed: $80 | Break-even: ~6 hours | Network value: $X
-```
-
----
-
-## 14. SELF-PROPAGATING AGENT ECONOMY
-
-### The Flow:
-1. SIMULATE: "What happens if we deploy 3,000 nodes?"
-2. CALCULATE: Simulation produces cost model, strategy, confidence scores
-3. PRESENT: Platform shows seed cost, break-even, projected value
-4. SEED: User funds $80 → Treasurer agent receives it
-5. PROPAGATE: Wave 1 (10) → earns → Wave 2 (50) → earns → ... → Wave N (3,000)
-6. MONITOR: Dashboard shows real-time network growth, revenue, costs
-7. FEEDBACK: Real results feed back into simulation for next expansion
-
-### Confidence Scores:
-Each agent's genesis prompt includes simulation data:
-- "In 78% of simulations, agents with your prompt earned $50+ in 2 hours"
-- "Top strategy: crypto arbitrage (43%) + domain flipping (31%)"
-- "Avoid: building products first (12% success rate)"
-
-Agents don't guess — they execute tested strategies.
+# Anima Platform — Final Architecture (v3)
+# This supersedes all previous architecture documents.
+# Any AI agent forking this chat reads THIS FIRST.
+
+## THE PRODUCT
+
+Anima is a platform to launch, monitor, and manage fully autonomous AI agents.
+Each agent runs in its own sandboxed VM with full autonomy to achieve the goals
+assigned to it — using whatever tools, skills, and strategies it needs.
+
+The platform is the CONTROL PLANE. OpenClaw is the TOOL LAYER. The genesis prompt
+is the MISSION. The simulation layer generates missions from predictions.
+
+## THREE LAYERS
+
+### Layer 1: Platform (we build this)
+The control plane. Users and simulations interact with the platform. It:
+- Provisions VMs on the user's chosen infrastructure (BYOI)
+- Configures inference routing (which LLM providers, models, API keys, cost tiers)
+- Pushes genesis prompts (goals, identity, rules) into each agent's VM
+- Monitors all agents (wallets, state, logs, economics, goal progress)
+- Serves the spawn API so agents can request child VMs THROUGH the platform
+- Tracks every agent's wallet, parent lineage, and economics
+
+The platform decides WHERE agents run and WHAT inference they use.
+Agents do NOT freelance on infrastructure or inference — they use what's configured.
+
+### Layer 2: OpenClaw (installed in each VM)
+The capability layer. Gives each agent:
+- Browser automation (navigate, click, extract, fill forms)
+- Shell execution (run any command)
+- Persistent memory (semantic recall)
+- Self-modification (SOUL.md evolution, skill creation)
+- ClawHub skills (discover and install any skill)
+- MCP protocol support (connect to any MCP server)
+- Telegram/Discord/WhatsApp channels
+
+OpenClaw does NOT decide goals, infrastructure, or inference routing.
+It provides capabilities. The genesis prompt directs their use.
+
+### Layer 3: Agent (directed by genesis prompt)
+Each agent executes the goals in its genesis prompt using OpenClaw's capabilities.
+The genesis prompt contains:
+- Identity (who you are, personality, SOUL.md seed)
+- Goals (what to achieve — from user or from simulation)
+- Inference config (what models to use, API keys, cost tiers — from platform)
+- Platform spawn API (how to request child VMs — through the platform)
+- Telegram config (how to report)
+- Creator wallet (where to send revenue split)
+- Skills to prioritize
+- Rules and constraints
+
+The agent CAN spin up child agents by calling the platform's spawn API.
+The PLATFORM decides where that child VM runs (based on BYOI config).
+The AGENT writes the child's genesis prompt (within its mission bounds).
+
+## BYOI (Bring Your Own Infrastructure)
+The platform — NOT the agent — provisions VMs. Available providers:
+- Conway Cloud (current)
+- Fly.io (current, trial expired)
+- Docker (local development)
+- Your network (future — agents deploy on YOUR infrastructure)
+- Any VPS with API (DigitalOcean, Hetzner, AWS — future)
+
+User selects provider + tier in the platform UI. The platform handles the API.
+When an agent requests a child VM via the spawn API, the platform uses the
+same BYOI config to provision it.
+
+## INFERENCE ROUTING
+The platform — NOT the agent — decides inference configuration:
+- Which providers are available (OpenAI, Anthropic, Gemini, local, your network)
+- Which models at each cost tier (critical/budget/normal/premium)
+- API keys for each provider
+- Cost limits per agent
+
+This config is pushed to the agent via the genesis prompt or a config file.
+The agent selects models within these bounds based on task importance and balance.
+
+Future: your network provides inference nodes. The platform routes agents to
+your network's inference API. Agents pay via x402. Your network earns.
+
+## SIMULATION LAYER (MiroFish/OASIS Fork)
+Generates genesis prompts from predictions:
+1. User describes a goal ("expand to 3,000 nodes")
+2. Simulation runs thousands of agent personas
+3. Produces: strategy, roles, costs, expected revenue, confidence scores
+4. Bridge converts strategy into N genesis prompts (one per agent)
+5. Cost calculator shows user: seed cost, break-even, projected value
+6. User clicks Launch → platform provisions VMs, pushes genesis prompts, starts agents
+7. Feedback: real results feed back into next simulation
+
+The simulation layer sits ON TOP of the platform. It uses the platform's
+provisioning + spawn APIs. It does not replace them.
+
+## YOUR NETWORK INTEGRATION
+Two components:
+1. BYOI provider: your network as an infrastructure option (agents run on your nodes)
+2. Inference provider: your network serves LLM inference (agents pay via x402)
+
+Agents can also DEPLOY new nodes on your network (using OpenClaw's shell/browser
+capabilities + your network's SDK). This is directed by the genesis prompt —
+"deploy 10 nodes on [network]" is a goal, not a platform feature.
+
+## WHAT EXISTS IN THE CODEBASE (March 2026)
+
+### Keep:
+- Frontend dashboard (14 pages, 3-screen flow, SSE pipeline) — ~6,500 lines
+- Agent CRUD + MongoDB state management — agents.py, agent_state.py
+- BYOI provider abstraction — sandbox_provider.py (needs slimming)
+- Genesis prompt (The Catalyst soul — restored) — genesis-prompt.md
+- Constitution — constitution.md
+- 96 custom skills — automaton/skills/
+- Telegram integration — telegram.py
+- Security model — SECURITY.md
+- Webhook receiver — webhook.py
+- SSE hooks — useSSE.js
+
+### Delete:
+- automaton/dist, native, node_modules, src, packages (543MB Conway fork)
+- engine_bridge.py (1,108 lines dead code)
+- payment_tracker.py (142 lines dead code)
+- webhook_daemon_template.py (72 lines — daemon that dies)
+- active_agent.txt (legacy file state)
+
+### Rewrite:
+- agent_setup.py (2,457 lines → ~200 lines)
+  Current: 200+ API calls, installs Node.js, Conway Terminal, pushes 10MB bundle
+  Target: create VM → install OpenClaw → push config → start
+- sandbox_poller.py (321 lines → ~100 lines or eliminate)
+  Current: reads JSON files that don't exist
+  Target: agent reports state natively, or read from OpenClaw's state on-demand
+- genesis.py + live.py + infrastructure.py → monitor.py (~200 lines)
+  Current: multiple files with overlapping responsibility
+  Target: one file that reads agent state from OpenClaw's native output
+
+## PROVISIONING FLOW (Target)
+
+Step 1: Create VM via BYOI provider (one API call)
+Step 2: Install OpenClaw (one exec: curl -fsSL https://openclaw.ai/install.sh | bash)
+Step 3: Configure OpenClaw (push genesis prompt + inference config + skills)
+Step 4: Start agent (one exec: openclaw agent or openclaw gateway)
+
+4 steps. 4 API calls. No file corruption. No binary transfer. No 200-call provisioning.
+
+The 96 custom skills get pushed via OpenClaw's native skill loading mechanism.
+The wallet + x402 is an OpenClaw skill the agent installs.
+Inference routing config is part of the genesis prompt or OpenClaw config.
+
+## DASHBOARD DATA FLOW (Target)
+
+Agent (in VM) → reports state to platform webhook (built into OpenClaw config)
+Platform webhook → updates in-memory cache
+SSE stream → pushes updates to frontend
+Dashboard pages → read from cache
+
+For on-demand data: platform exec's into sandbox, reads OpenClaw's state.
+No custom daemon. No custom JSON files. No polling files that don't exist.
+
+## MULTI-AGENT WALLET VIEW
+
+Every agent creates its own wallet inside its VM (OpenClaw + wallet skill).
+The agent reports its wallet address to the platform via the webhook.
+The platform stores wallet addresses in MongoDB agent records.
+The dashboard shows ALL agent wallets — parent and children.
+Each wallet has a QR code for funding.
+
+## CONCRETE TASK LIST
+
+### Immediate (get one working agent):
+1. Delete bloat (automaton/dist, native, node_modules, src, dead code files)
+2. Rewrite provisioning (~200 lines)
+3. Connect dashboard to OpenClaw's native state output
+4. Test: one agent boots, wallet shows, logs stream, Telegram reports
+
+### Next (multi-agent + directed autonomy):
+5. Spawn API (agents request child VMs through platform)
+6. Multi-agent wallet view on dashboard
+7. Inference routing config (pushed to agents via genesis prompt)
+8. User can set BYOI provider + inference config per agent
+
+### Future (simulation + network):
+9. Fork MiroFish/OASIS
+10. Build simulation → genesis prompt bridge
+11. Your network as BYOI provider
+12. Your network as inference provider
+
+## CRITICAL RULES (unchanged from SECURITY.md)
+1. NEVER expose platform URL inside sandbox (except webhook endpoint with token)
+2. NEVER transfer large binaries via base64/exec
+3. Each agent owns its private key — never transmitted, never in MongoDB
+4. 50% creator split is immutable
+5. Skills are YOUR IP
+6. The genesis prompt is sacred — changes must be additive
