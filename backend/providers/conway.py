@@ -59,7 +59,7 @@ class ConwayProvider(BaseProvider):
                     return {"output": f"exec failed: {text}", "exit_code": 1}
                 data = await resp.json()
                 return {
-                    "output": data.get("output", ""),
+                    "output": data.get("stdout", data.get("output", "")),
                     "exit_code": data.get("exit_code", 0),
                 }
 
