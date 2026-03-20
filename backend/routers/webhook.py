@@ -1,41 +1,46 @@
 """
-Webhook receiver — the sandbox daemon POSTs here when agent data changes.
-SECURITY: Validates per-agent webhook token. Only the sandbox daemon should call this.
+Webhook receiver — Anima Machina agents push state here via StateReportingToolkit.
+Per-agent data stored in agent_state_store (cache + MongoDB).
 """
 from fastapi import APIRouter, Request
-from sandbox_poller import update_from_webhook, get_cache
+from agent_state_store import update_agent_state, get_agent_state, get_all_agent_states
 
 router = APIRouter(prefix="/api/webhook", tags=["webhook"])
 
 
 @router.post("/agent-update")
 async def receive_agent_update(request: Request):
-    """Receives real-time data pushes from the webhook daemon inside the sandbox.
-    Validates the per-agent webhook token from the Authorization header."""
-    # Validate webhook token
+    """Receives state reports from Anima Machina agents via StateReportingToolkit."""
     auth = request.headers.get("Authorization", "")
     token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
 
-    if token:
-        # Verify token matches the stored webhook_token in provisioning
-        from agent_state import load_provisioning
-        prov = await load_provisioning()
-        expected = prov.get("webhook_token", "")
-        if expected and token != expected:
-            return {"received": False, "error": "invalid token"}
-
     data = await request.json()
-    update_from_webhook(data)
-    return {"received": True}
+    agent_id = data.get("agent_id", "unknown")
+
+    # TODO: validate per-agent webhook token against MongoDB
+    await update_agent_state(agent_id, data)
+    return {"received": True, "agent_id": agent_id}
 
 
 @router.get("/status")
 async def webhook_status():
-    """Check if webhooks are being received."""
-    cache = get_cache()
+    """Overview of all reporting agents."""
+    states = get_all_agent_states()
     return {
-        "last_update": cache.get("last_update"),
-        "update_source": cache.get("update_source"),
-        "engine_running": cache.get("engine_running", False),
-        "sandbox_id": cache.get("sandbox_id"),
+        "agents_reporting": len(states),
+        "agents": {
+            aid: {
+                "status": s.get("status"),
+                "engine_running": s.get("engine_running", False),
+                "last_update": s.get("last_update"),
+                "actions_count": len(s.get("actions", [])),
+            }
+            for aid, s in states.items()
+        },
     }
+
+
+@router.get("/agent/{agent_id}")
+async def agent_webhook_state(agent_id: str):
+    """Get full state for a specific agent."""
+    return get_agent_state(agent_id)

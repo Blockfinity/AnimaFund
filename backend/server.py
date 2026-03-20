@@ -1,7 +1,7 @@
 """
 Anima Platform API — Main Server
-The platform provisions VMs, monitors Animas, and serves the spawn API.
-Agents run inside VMs with OpenClaw. The platform is THIN.
+Thin control plane: provisions environments, monitors Animas, serves spawn API.
+Anima Machina agents run everywhere and report state via webhook.
 """
 import os
 import logging
@@ -16,18 +16,24 @@ load_dotenv()
 
 from config import CREATOR_WALLET
 from database import init_db, close_db, get_db
-from agent_state import set_active_agent_id, load_provisioning
+from agent_state import set_active_agent_id
+from agent_state_store import load_states_from_db
 
 # Import routers
-from routers import agents, genesis, live, telegram, infrastructure
-from routers import conway, openclaw, credits, webhook
+from routers import agents, telegram, webhook
 from routers.provision import router as provision_router
+from routers.monitor import router as monitor_router
+from routers.spawn import router as spawn_router
+
+# Keep these for backward compat until fully replaced
+from routers import conway, openclaw, credits
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     await _restore_active_agent()
+    await load_states_from_db()
     yield
     close_db()
 
@@ -61,15 +67,12 @@ app.add_middleware(
 # Core routers
 app.include_router(agents.router)
 app.include_router(provision_router)
-app.include_router(telegram.router)
+app.include_router(monitor_router)
+app.include_router(spawn_router)
 app.include_router(webhook.router)
+app.include_router(telegram.router)
 
-# Data routers (reads from webhook cache — will be replaced by monitor.py)
-app.include_router(genesis.router)
-app.include_router(live.router)
-app.include_router(infrastructure.router)
-
-# Provider-specific (behind BYOI interface)
+# Provider-specific (kept for Conway compatibility)
 app.include_router(conway.router)
 app.include_router(openclaw.router)
 app.include_router(credits.router)
@@ -93,5 +96,4 @@ async def health_check():
 
 @app.get("/api/payments/status")
 async def payments_status():
-    """Payment compliance — handled inside VMs via x402."""
-    return {"status": "sandbox_managed", "message": "Payments handled inside the sandbox via x402."}
+    return {"status": "sandbox_managed", "message": "Payments handled inside sandbox via x402."}
