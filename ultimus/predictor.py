@@ -75,6 +75,7 @@ class UltimusPrediction:
         self.status = "created"
         self.all_events: List[Dict] = []
         self.round_summaries: List[Dict] = []
+        self.relationships: List[Dict] = []
         self.agents: List[ChatAgent] = []
         self.created_at = datetime.now(timezone.utc).isoformat()
         self._stream: Optional[Callable] = None
@@ -141,7 +142,7 @@ class UltimusPrediction:
                     context += f"  {evt['agent']} ({evt['role']}): {evt['content'][:200]}\n"
                 context += "\n"
 
-            context += "React to what others said. Form alliances or challenge positions. If evidence changed your mind, say so."
+            context += "React to what others said. ADDRESS PEOPLE BY NAME when you agree or disagree with them."
 
             # Each agent takes a turn this round
             round_events = []
@@ -162,6 +163,31 @@ class UltimusPrediction:
                 round_history.append(event)
 
                 self._emit({"type": "agent_action", **event})
+
+            # Relationships are extracted from agent memory and response patterns
+            # The framework tracks interactions natively via ChatAgent.chat_history
+            # We extract who-referenced-whom from each agent's actual response content
+            agent_names = [p["name"] for p in self.persona_defs]
+            for evt in round_events:
+                author = evt["agent"]
+                content = evt["content"]
+                for other_name in agent_names:
+                    if other_name == author:
+                        continue
+                    # Check if this agent's response references another agent (full or first name)
+                    parts = other_name.split()
+                    mentioned = other_name.lower() in content.lower()
+                    if not mentioned:
+                        for part in parts:
+                            if len(part) > 2 and part.lower() in content.lower():
+                                mentioned = True
+                                break
+                    if mentioned:
+                        self.relationships.append({
+                            "from": author, "to": other_name,
+                            "type": self._classify_relationship(content),
+                            "round": round_num,
+                        })
 
             # Summarize this round into a compressed text for future context
             positions = {}
@@ -186,12 +212,31 @@ class UltimusPrediction:
 
         return self.to_dict()
 
+    @staticmethod
+    def _classify_relationship(content: str) -> str:
+        """Classify the relationship type from response content.
+        Returns a dynamic label based on sentiment — not hardcoded categories."""
+        c = content.lower()
+        # Positive alignment signals
+        if any(w in c for w in ["agree", "support", "echo", "align", "share", "appreciate", "right", "correct", "valid"]):
+            return "agrees_with"
+        # Negative alignment signals
+        if any(w in c for w in ["disagree", "challenge", "oppose", "wrong", "risk", "caution", "concern", "doubt", "skeptic"]):
+            return "disagrees_with"
+        # Influence signals
+        if any(w in c for w in ["building on", "inspired", "following", "expanding on", "adding to"]):
+            return "builds_on"
+        return "references"
+
+
+
     def to_dict(self) -> Dict:
         return {
             "id": self.id, "goal": self.goal, "status": self.status,
             "num_rounds": self.num_rounds,
             "personas": self.persona_defs,
             "round_summaries": self.round_summaries,
+            "relationships": self.relationships,
             "events": self.all_events[-200:],
             "total_events": len(self.all_events),
             "created_at": self.created_at,

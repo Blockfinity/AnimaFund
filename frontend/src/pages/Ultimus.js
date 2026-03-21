@@ -157,11 +157,11 @@ export default function Ultimus({ onSelectAgent }) {
         const src = `kg:${r.from}:${p.id}`, tgt = `kg:${r.to}:${p.id}`;
         if (nodeIds.has(src) && nodeIds.has(tgt)) links.push({ source: src, target: tgt, label: r.type || '' });
       });
-      // Links between personas in same prediction
-      const pIds = (p.personas || []).map(ps => `sim:${ps.name}:${p.id}`);
-      for (let i = 0; i < pIds.length; i++) for (let j = i + 1; j < pIds.length; j++) {
-        if (nodeIds.has(pIds[i]) && nodeIds.has(pIds[j])) links.push({ source: pIds[i], target: pIds[j], label: 'interacts' });
-      }
+      // Links from simulation relationships (who referenced whom)
+      (p.relationships || []).forEach(r => {
+        const src = `sim:${r.from}:${p.id}`, tgt = `sim:${r.to}:${p.id}`;
+        if (nodeIds.has(src) && nodeIds.has(tgt)) links.push({ source: src, target: tgt, label: r.type || 'interacts' });
+      });
     });
     return { nodes, links };
   }, [agents, predictions]);
