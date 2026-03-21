@@ -112,17 +112,25 @@ async def deploy_agent(req: CreateSandboxRequest):
     else:
         steps_log.append(f"Reusing environment: {sandbox_id}")
 
-    # Step 2: Install Anima Machina runtime
+    # Step 2: Install Anima Machina runtime + fix environment
     try:
         install_cmd = (
+            # Core runtime
             "pip3 install camel-ai openai httpx eth-account web3 2>&1 | tail -3 && "
-            "python3 -c 'from camel.agents import ChatAgent; print(\"RUNTIME_OK\")'"
+            # Fix: python symlink (CAMEL's CodeExecutionToolkit calls 'python' not 'python3')
+            "ln -sf $(which python3) /usr/bin/python 2>/dev/null; "
+            # Fix: Install Playwright + Chromium for BrowserToolkit
+            "pip3 install playwright 2>&1 | tail -1 && "
+            "python3 -m playwright install --with-deps chromium 2>&1 | tail -1 && "
+            # Verify
+            "python3 -c 'from camel.agents import ChatAgent; print(\"RUNTIME_OK\")' && "
+            "python --version 2>&1"
         )
-        result = await provider.exec_in_vm(sandbox_id, install_cmd, timeout=120)
+        result = await provider.exec_in_vm(sandbox_id, install_cmd, timeout=180)
         output = result.get("output", "")
         if "RUNTIME_OK" in output:
             prov.setdefault("tools", {})["runtime"] = {"status": "installed", "installed_at": datetime.now(timezone.utc).isoformat()}
-            steps_log.append("Runtime installed: camel-ai + dependencies")
+            steps_log.append("Runtime installed: camel-ai + playwright + python symlink")
         else:
             steps_log.append(f"Runtime install output: {output[:200]}")
     except Exception as e:

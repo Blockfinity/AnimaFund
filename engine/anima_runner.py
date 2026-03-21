@@ -113,13 +113,27 @@ def recall_memory(key: str = "") -> str:
 # ─── Wallet ───
 
 def create_wallet() -> str:
-    """Create a new Ethereum wallet on Base network. Returns the address."""
+    """Create a new Ethereum wallet OR load existing one from /root/.anima/wallet.json. Returns the address."""
+    # Check for existing wallet first
+    existing_wallet = "/root/.anima/wallet.json"
+    if os.path.exists(existing_wallet):
+        try:
+            with open(existing_wallet) as f:
+                w = json.load(f)
+            pk = w.get("privateKey", "")
+            if pk:
+                from eth_account import Account
+                acct = Account.from_key(pk)
+                save_memory("wallet_address", acct.address)
+                return json.dumps({"success": True, "wallet_address": acct.address, "source": "existing_wallet"})
+        except Exception as e:
+            pass  # Fall through to create new
+
     try:
         from eth_account import Account
         account = Account.create()
-        # Save to persistent memory
         save_memory("wallet_address", account.address)
-        return json.dumps({"success": True, "wallet_address": account.address})
+        return json.dumps({"success": True, "wallet_address": account.address, "source": "new_wallet"})
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)})
 
@@ -306,9 +320,23 @@ def main():
         except KeyboardInterrupt:
             break
         except Exception as e:
-            logger.error(f"Turn {turn} error: {e}")
-            report_error(str(e), "error")
-            time.sleep(10)
+            error_msg = str(e)
+            logger.error(f"Turn {turn} error: {error_msg}")
+
+            # Fix 5: Graceful credit exhaustion handling
+            if "402" in error_msg or "Insufficient credits" in error_msg or "credits" in error_msg.lower():
+                logger.warning("CREDITS EXHAUSTED — entering sleep mode")
+                report_state("sleeping", "Credits exhausted. Waiting for funding.")
+                report_error("Credits exhausted. Fund the wallet to continue.", "critical")
+                # Sleep and retry every 5 minutes
+                while _running:
+                    time.sleep(300)  # 5 minutes
+                    logger.info("Checking if credits restored...")
+                    # The next loop iteration will try the LLM call again
+                    break
+            else:
+                report_error(error_msg, "error")
+                time.sleep(10)
 
     # Save final state
     try:
