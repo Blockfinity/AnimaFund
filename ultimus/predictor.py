@@ -116,22 +116,32 @@ class UltimusPrediction:
 
         # RUN ROUNDS — the core simulation loop
         round_history = []  # All events from all rounds
+        round_summaries_text = []  # Compressed summaries of each completed round
 
         for round_num in range(1, self.num_rounds + 1):
             self._emit({"type": "round_start", "round": round_num})
 
-            # Build context: what happened in all previous rounds
+            # Build context: FULL history — summaries for old rounds, detail for recent
             context = f"=== ROUND {round_num}/{self.num_rounds} ===\n"
             context += f"Goal: {self.goal}\n\n"
 
-            if round_history:
-                context += "WHAT HAPPENED SO FAR:\n"
-                # Show last 2 rounds in detail, summarize earlier ones
-                for evt in round_history[-(len(self.persona_defs) * 2):]:
-                    context += f"[Round {evt['round']}] {evt['agent']}: {evt['content'][:150]}\n"
+            if round_summaries_text:
+                # Include compressed summaries of ALL earlier rounds
+                context += "EARLIER ROUNDS (summary):\n"
+                for rs in round_summaries_text[:-1]:  # All except the most recent
+                    context += rs + "\n"
                 context += "\n"
 
-            context += "Based on everything above, what is your position NOW? React to what others said. Have you changed your mind? Who do you agree/disagree with?"
+            # Include the MOST RECENT round in full detail
+            recent_round = round_num - 1
+            recent_events = [e for e in round_history if e["round"] == recent_round]
+            if recent_events:
+                context += f"LAST ROUND ({recent_round}) — FULL DETAIL:\n"
+                for evt in recent_events:
+                    context += f"  {evt['agent']} ({evt['role']}): {evt['content'][:200]}\n"
+                context += "\n"
+
+            context += "React to what others said. Form alliances or challenge positions. If evidence changed your mind, say so."
 
             # Each agent takes a turn this round
             round_events = []
@@ -153,10 +163,13 @@ class UltimusPrediction:
 
                 self._emit({"type": "agent_action", **event})
 
-            # Summarize round
+            # Summarize this round into a compressed text for future context
             positions = {}
+            summary_lines = [f"Round {round_num}:"]
             for evt in round_events:
                 positions[evt["agent"]] = evt["content"][:100]
+                summary_lines.append(f"  {evt['agent']}: {evt['content'][:80]}")
+            round_summaries_text.append("\n".join(summary_lines))
 
             self.round_summaries.append({
                 "round": round_num,

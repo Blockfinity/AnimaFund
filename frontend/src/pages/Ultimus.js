@@ -21,6 +21,8 @@ export default function Ultimus() {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  const [simEvents, setSimEvents] = useState([]);
+  const [simRound, setSimRound] = useState(0);
   const graphRef = useRef();
 
   const fetchPredictions = useCallback(async () => {
@@ -28,15 +30,47 @@ export default function Ultimus() {
   }, []);
   useEffect(() => { fetchPredictions(); }, [fetchPredictions]);
 
+  // Run prediction with live SSE streaming
   const runPrediction = async () => {
     if (!goal.trim()) return;
     setLoading(true); setPrediction(null); setSelectedNode(null); setChatMessages([]);
+    setSimEvents([]); setSimRound(0);
     try {
-      const r = await fetch(`${API}/api/ultimus/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goal, mode: 'deep', num_personas: 5, num_rounds: 3, seed_capital: 10 }) });
-      const d = await r.json();
-      if (d.detail) alert(d.detail); else { setPrediction(d); fetchPredictions(); }
-    } catch (e) { alert(e.message); }
+      const response = await fetch(`${API}/api/ultimus/predict/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal, mode: 'quick', num_personas: 10, num_rounds: 3, seed_capital: 10 }),
+      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === 'agent_action') setSimEvents(prev => [...prev, event]);
+              else if (event.type === 'round_start') setSimRound(event.round);
+              else if (event.type === 'complete' || (event.id && event.status)) {
+                setPrediction(event); fetchPredictions();
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (e) {
+      // Fallback to non-streaming
+      try {
+        const r = await fetch(`${API}/api/ultimus/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ goal, mode: 'quick', num_personas: 10, num_rounds: 3, seed_capital: 10 }) });
+        const d = await r.json();
+        if (d.detail) alert(d.detail); else { setPrediction(d); fetchPredictions(); }
+      } catch (e2) { alert(e2.message); }
+    }
     setLoading(false);
   };
 
@@ -211,9 +245,30 @@ export default function Ultimus() {
               )}
             </>
           ) : loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '8px' }}>
-              <Loader2 size={28} style={{ color: '#111', animation: 'spin 1s linear infinite' }} />
-              <span style={{ color: '#9ca3af', fontSize: '13px' }}>Building knowledge graph and simulating personas...</span>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {/* Live simulation header */}
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Loader2 size={14} style={{ color: '#111', animation: 'spin 1s linear infinite' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#111' }}>Simulating</span>
+                </div>
+                <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#6b7280' }}>
+                  <span>Round {simRound}</span>
+                  <span>{simEvents.length} actions</span>
+                </div>
+              </div>
+              {/* Live event stream */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px' }}>
+                {simEvents.map((evt, i) => (
+                  <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: '12px' }}>
+                    <span style={{ color: '#9ca3af', marginRight: '8px' }}>R{evt.round}</span>
+                    <span style={{ fontWeight: 600, color: '#111' }}>{evt.agent}</span>
+                    <span style={{ color: '#6b7280', marginLeft: '4px' }}>({evt.role})</span>
+                    <div style={{ color: '#374151', marginTop: '2px', paddingLeft: '24px', lineHeight: 1.4 }}>{evt.content?.slice(0, 200)}</div>
+                  </div>
+                ))}
+                {simEvents.length === 0 && <div style={{ color: '#d1d5db', textAlign: 'center', padding: '40px 0' }}>Generating personas...</div>}
+              </div>
             </div>
           ) : (
             <div style={{ padding: '20px', overflowY: 'auto', height: '100%' }}>
