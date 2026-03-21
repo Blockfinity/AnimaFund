@@ -22,26 +22,23 @@ logger = logging.getLogger(__name__)
 # ─── BYOI Provider Resolution ───
 
 async def _get_provider(provider_name: str):
-    """Resolve a BYOI provider by name. User provides endpoint + key in agent config."""
+    """Resolve a BYOI provider by name."""
     if provider_name == "conway":
         from providers.conway import ConwayProvider
         from agent_state import get_conway_api_key
         api_key = await get_conway_api_key()
         if not api_key:
-            raise HTTPException(400, "No Conway API key. Configure it in agent settings.")
+            raise HTTPException(400, "No Conway API key configured.")
         return ConwayProvider(api_key)
+    elif provider_name == "fly":
+        from providers.fly import FlyProvider
+        api_key = os.environ.get("FLY_API_TOKEN", "")
+        app_name = os.environ.get("FLY_APP_NAME", "animafund")
+        if not api_key:
+            raise HTTPException(400, "No Fly.io API token configured.")
+        return FlyProvider(api_key, app_name)
     else:
-        # Generic BYOI: look up provider config from MongoDB
-        db = get_db()
-        agent_id = get_active_agent_id()
-        agent = await db.agents.find_one({"agent_id": agent_id}, {"_id": 0, "byoi_providers": 1})
-        providers = (agent or {}).get("byoi_providers", {})
-        if provider_name not in providers:
-            raise HTTPException(400, f"Provider '{provider_name}' not configured. Add it in Settings → Infrastructure.")
-        cfg = providers[provider_name]
-        # Import generic provider that wraps any API
-        from providers.generic import GenericProvider
-        return GenericProvider(api_key=cfg["api_key"], api_url=cfg["api_url"])
+        raise HTTPException(400, f"Provider '{provider_name}' not configured. Available: conway, fly")
 
 
 # ─── Models ───
@@ -96,7 +93,12 @@ async def deploy_agent(req: CreateSandboxRequest):
     steps_log = []
 
     # Step 1: Get or create environment
-    if not sandbox_id or prov.get("sandbox", {}).get("status") != "active":
+    # Check if existing sandbox matches the requested provider
+    existing_provider = prov.get("sandbox", {}).get("provider", "")
+    if sandbox_id and prov.get("sandbox", {}).get("status") == "active" and existing_provider == req.provider:
+        steps_log.append(f"Reusing environment: {sandbox_id} ({req.provider})")
+    else:
+        # Create new environment (different provider or no existing)
         try:
             result = await provider.create_vm(tier=req.tier, region=req.region)
             sandbox_id = result["vm_id"]
@@ -106,11 +108,9 @@ async def deploy_agent(req: CreateSandboxRequest):
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
             await save_provisioning(prov)
-            steps_log.append(f"Created environment: {sandbox_id}")
+            steps_log.append(f"Created environment: {sandbox_id} ({req.provider})")
         except Exception as e:
             raise HTTPException(500, f"Failed to create environment: {e}")
-    else:
-        steps_log.append(f"Reusing environment: {sandbox_id}")
 
     # Step 2: Install runtime (SKIP if already installed to save credits)
     try:
@@ -149,26 +149,27 @@ async def deploy_agent(req: CreateSandboxRequest):
     webhook_url = f"{platform_url}/api/webhook/agent-update"
 
     # LLM inference: determine which provider to use
-    # Priority: 1) agent's configured key, 2) Conway inference (if in Conway sandbox), 3) error
     agent_llm_key = agent_doc.get("llm_api_key", "")
     agent_llm_base_url = agent_doc.get("llm_base_url", "")
-    agent_llm_model = agent_doc.get("llm_model", "gpt-5-mini")
+    agent_llm_model = agent_doc.get("llm_model", "gpt-4o-mini")
 
     if not agent_llm_key and req.provider == "conway":
-        # Use Conway's own inference endpoint — key is already in the sandbox
         from agent_state import get_conway_api_key
         conway_key = await get_conway_api_key()
         if conway_key:
             agent_llm_key = conway_key
             agent_llm_base_url = "https://api.conway.tech/v1"
             agent_llm_model = agent_doc.get("llm_model", "gpt-5-mini")
-            steps_log.append("Using Conway inference (sandbox's own key)")
+            steps_log.append("Using Conway inference")
 
     if not agent_llm_key:
-        raise HTTPException(400,
-            "No LLM inference configured. Either set an API key via PUT /api/agents/{id}/llm-key, "
-            "or deploy to a Conway sandbox (which has built-in inference)."
-        )
+        # For non-Conway providers, use Emergent key through the platform proxy
+        # The agent calls the platform's webhook URL which proxies LLM requests
+        # This avoids putting API keys in the sandbox
+        agent_llm_key = os.environ.get("EMERGENT_LLM_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
+        agent_llm_base_url = "https://integrations.emergentagent.com/llm/v1"
+        if agent_llm_key:
+            steps_log.append("Using platform inference key")
 
     config = {
         "WEBHOOK_URL": webhook_url,
