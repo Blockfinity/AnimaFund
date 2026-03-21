@@ -122,71 +122,73 @@ def recall_memory(key: str = "") -> str:
     return json.dumps({"memories": {k: v["value"] for k, v in memories.items()}})
 
 
-# ─── Wallet ───
+# ─── Wallet (code-level enforcement: core wallet NEVER exposed through any tool) ───
 
-def create_wallet() -> str:
-    """Load the agent's CORE wallet (private, never shared) and create a PUBLIC wallet for sharing.
-    The core wallet at /root/.anima/wallet.json is for receiving funds. NEVER expose its address publicly.
-    Returns both addresses but marks which is which."""
-    core_address = ""
-    public_address = ""
+_CORE_WALLET_ADDR = ""
 
-    # Load core wallet (existing funded wallet — PRIVATE)
-    existing_wallet = "/root/.anima/wallet.json"
-    if os.path.exists(existing_wallet):
+def _init_core_wallet():
+    global _CORE_WALLET_ADDR
+    if _CORE_WALLET_ADDR:
+        return
+    existing = "/root/.anima/wallet.json"
+    if os.path.exists(existing):
         try:
-            with open(existing_wallet) as f:
+            with open(existing) as f:
                 w = json.load(f)
             pk = w.get("privateKey", "")
             if pk:
                 from eth_account import Account
-                acct = Account.from_key(pk)
-                core_address = acct.address
-                save_memory("core_wallet_address", core_address)
+                _CORE_WALLET_ADDR = Account.from_key(pk).address
         except Exception:
             pass
 
-    # Create a PUBLIC wallet for sharing (separate from core)
-    public_wallet_path = os.path.join(STATE_DIR, "public_wallet.json")
-    os.makedirs(STATE_DIR, exist_ok=True)
-    if os.path.exists(public_wallet_path):
-        try:
-            with open(public_wallet_path) as f:
-                pw = json.load(f)
-            public_address = pw.get("address", "")
-        except Exception:
-            pass
-
-    if not public_address:
-        try:
-            from eth_account import Account
-            pub_acct = Account.create()
-            public_address = pub_acct.address
-            with open(public_wallet_path, "w") as f:
-                json.dump({"address": public_address, "privateKey": pub_acct.key.hex()}, f)
-            os.chmod(public_wallet_path, 0o600)
-        except Exception as e:
-            return json.dumps({"success": False, "error": str(e)})
-
-    save_memory("public_wallet_address", public_address)
-
-    return json.dumps({
-        "success": True,
-        "core_wallet": core_address or "NOT FOUND",
-        "public_wallet": public_address,
-        "note": "NEVER share core_wallet publicly. Use public_wallet for receiving payments from others."
-    })
-
-
-def check_balance(address: str) -> str:
-    """Check USDC balance for a wallet address on Base mainnet."""
+def get_wallet_balance() -> str:
+    """Check your wallet's USDC balance on Base. Returns balance without revealing the address."""
+    _init_core_wallet()
+    if not _CORE_WALLET_ADDR:
+        return json.dumps({"success": False, "error": "No wallet configured"})
     try:
         from web3 import Web3
         w3 = Web3(Web3.HTTPProvider("https://mainnet.base.org"))
         abi = [{"inputs": [{"name": "account", "type": "address"}], "name": "balanceOf",
                 "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view", "type": "function"}]
-        contract = w3.eth.contract(
-            address=Web3.to_checksum_address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), abi=abi)
+        contract = w3.eth.contract(address=Web3.to_checksum_address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), abi=abi)
+        balance = contract.functions.balanceOf(Web3.to_checksum_address(_CORE_WALLET_ADDR)).call() / 1e6
+        return json.dumps({"success": True, "usdc_balance": balance, "network": "Base"})
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)})
+
+def share_wallet_address() -> str:
+    """Get a public wallet address safe to share for receiving payments. NOT your core wallet."""
+    pub_path = os.path.join(STATE_DIR, "public_wallet.json")
+    os.makedirs(STATE_DIR, exist_ok=True)
+    addr = ""
+    if os.path.exists(pub_path):
+        try:
+            with open(pub_path) as f:
+                addr = json.load(f).get("address", "")
+        except Exception:
+            pass
+    if not addr:
+        try:
+            from eth_account import Account
+            a = Account.create()
+            addr = a.address
+            with open(pub_path, "w") as f:
+                json.dump({"address": addr, "privateKey": a.key.hex()}, f)
+            os.chmod(pub_path, 0o600)
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+    return json.dumps({"success": True, "public_wallet": addr})
+
+def check_balance(address: str) -> str:
+    """Check USDC balance for any wallet address on Base mainnet."""
+    try:
+        from web3 import Web3
+        w3 = Web3(Web3.HTTPProvider("https://mainnet.base.org"))
+        abi = [{"inputs": [{"name": "account", "type": "address"}], "name": "balanceOf",
+                "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view", "type": "function"}]
+        contract = w3.eth.contract(address=Web3.to_checksum_address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), abi=abi)
         balance = contract.functions.balanceOf(Web3.to_checksum_address(address)).call() / 1e6
         return json.dumps({"success": True, "usdc_balance": balance, "address": address})
     except Exception as e:
@@ -241,7 +243,7 @@ def main():
     all_tools.extend([
         FunctionTool(report_state), FunctionTool(report_action),
         FunctionTool(report_error), FunctionTool(report_financial),
-        FunctionTool(create_wallet), FunctionTool(check_balance),
+        FunctionTool(get_wallet_balance), FunctionTool(share_wallet_address), FunctionTool(check_balance),
         FunctionTool(save_memory), FunctionTool(recall_memory),
     ])
 

@@ -220,6 +220,8 @@ echo "CONFIG_WRITTEN"
         # This ensures the Python process inherits ALL env vars from env.sh.
         start_cmd = (
             "cd /app/anima && "
+            # Kill any previous runner instances first
+            "pkill -f runner.py 2>/dev/null; pkill -f start.sh 2>/dev/null; sleep 1; "
             "cat > start.sh << 'STARTEOF'\n"
             "#!/bin/bash\n"
             "source /app/anima/env.sh\n"
