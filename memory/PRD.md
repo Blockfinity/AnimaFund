@@ -1,36 +1,37 @@
 # Anima Platform — Product Requirements
 
-## FORK_PROMPT.md is the definitive source of truth. Read it FIRST.
+## FORK_PROMPT.md is the definitive source of truth.
 
-## Audit Results (March 21, 2026)
+## What EXISTS and WORKS (March 21, 2026)
 
-### EXISTS:
-- /app/ultimus/predictor.py (new — simulation engine)
-- /app/ultimus/calculator.py (new — cost/feasibility)
-- /app/ultimus/executor.py (new — deployment converter)
-- /app/anima-machina/ (CAMEL clone, NOT rebranded)
-- /app/engine/anima_runner.py (agent runner with 28 tools, browse_website subprocess fix)
-- /app/backend/ (10 routers, per-agent state store, webhook with token validation)
-- /app/frontend/ (14 pages, dashboard shows some real data)
-- /app/ultima-x/ (Modelfile + config, NOT integrated)
+### Ultimus (THE CORE PRODUCT) — NOW EXISTS
+- /app/ultimus/predictor.py — Multi-persona simulation with LLM-powered agents
+- /app/ultimus/calculator.py — Cost/feasibility/deployment wave planning
+- /app/ultimus/executor.py — Converts personas to real Anima deployments
+- /app/ultimus/api.py — REST endpoints (POST /api/ultimus/predict, GET /predictions, POST /execute)
+- Frontend: Ultimus page with goal input, mode selector, simulation, results view, cost model, execute button
+- TESTED: "Make $1000 in memecoins" → 3 personas, 2 rounds, strategy with 0.7 confidence, self-sustaining cost model
+- Still missing: dimensions.py, knowledge.py, personas.py (GraphRAG + Dimensions screens)
 
-### DOES NOT EXIST:
-- Ultimus API (api.py), dimensions.py, knowledge.py, personas.py, config.py
-- Ultimus frontend screens (goal input, simulation, Dimensions, cost review, execute)
-- Rebrand (18 "camel" refs in our code)
-- x402 real implementation
+### Backend (10 routers, 1,584 lines)
+- server.py, provision.py, monitor.py, webhook.py, spawn.py, agents.py, telegram.py + 3 legacy
+
+### Anima Machina (CAMEL fork)
+- 95 toolkits, 3 custom (Wallet, Spawn, StateReporting)
+- Rebrand: comments/logs changed, imports stay as `from camel.` (package name)
+
+### Dashboard (15 pages now)
+- Ultimus (NEW), AgentMind, AnimaVM, FundHQ, Agents, Infrastructure, Skills, DealFlow, Portfolio, Financials, Activity, Memory, Configuration, Wallet
+
+### Conway sandbox: 9 cents (dead). Catalyst wallet: $3 USDC.
+
+## Still Missing
+- Dimensions (God's-eye view) — frontend + backend
+- GraphRAG knowledge.py for seed data
+- Multi-agent dashboard (agent selector, overview, aggregates)
+- Spawn via webhook (records only, doesn't provision)
+- x402 real payments
 - Generic BYOI (Conway only)
-- Spawn that provisions (records only)
-- Multi-agent dashboard
 - JWT auth
 - Ultima X integration
-
-### Conway credits: $0.09 (DEAD)
-### Catalyst wallet: $3.00 USDC on Base
-
-## Priority (from FORK_PROMPT.md):
-1. Rebrand camel -> anima_machina in our code
-2. Fix dashboard (real data or "no data", never mocks)
-3. BUILD ULTIMUS (the core product)
-4. Spawn via webhook
-5. Production readiness
+- Full rebrand of CAMEL internals

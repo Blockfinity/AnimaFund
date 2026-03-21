@@ -136,7 +136,7 @@ async def deploy_agent(req: CreateSandboxRequest):
             output = result.get("output", "")
             if "RUNTIME_OK" in output:
                 prov.setdefault("tools", {})["runtime"] = {"status": "installed", "installed_at": datetime.now(timezone.utc).isoformat()}
-                steps_log.append("Runtime installed: camel-ai + playwright + python symlink")
+                steps_log.append("Runtime installed: anima-machina + playwright + python symlink")
             else:
                 steps_log.append(f"Runtime install output: {output[:200]}")
         except Exception as e:
@@ -208,7 +208,7 @@ echo "CONFIG_WRITTEN"
 
         # Write custom toolkits
         for toolkit_name in ["wallet_toolkit.py", "state_reporting_toolkit.py", "spawn_toolkit.py"]:
-            toolkit_path = f"/app/anima-machina/camel/toolkits/{toolkit_name}"
+            toolkit_path = f"/app/anima-machina/camel/toolkits/{toolkit_name}"  # Package dir is still camel/ (upstream)
             if os.path.exists(toolkit_path):
                 with open(toolkit_path) as f:
                     tk_code = f.read()

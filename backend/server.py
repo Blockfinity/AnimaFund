@@ -25,6 +25,11 @@ from routers.provision import router as provision_router
 from routers.monitor import router as monitor_router
 from routers.spawn import router as spawn_router
 
+# Ultimus prediction engine
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from ultimus.api import router as ultimus_router
+
 # Keep these for backward compat until fully replaced
 from routers import conway, openclaw, credits
 
@@ -71,6 +76,7 @@ app.include_router(monitor_router)
 app.include_router(spawn_router)
 app.include_router(webhook.router)
 app.include_router(telegram.router)
+app.include_router(ultimus_router)
 
 # Provider-specific (kept for Conway compatibility)
 app.include_router(conway.router)

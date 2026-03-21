@@ -17,6 +17,11 @@ LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 LLM_URL = "https://integrations.emergentagent.com/llm/v1"
 
 
+def _get_llm_key():
+    """Get LLM key at runtime (after dotenv loads)."""
+    return os.environ.get("EMERGENT_LLM_KEY", "") or LLM_KEY
+
+
 class Persona:
     """A simulated agent persona with personality, strategy, and capabilities."""
 
@@ -132,7 +137,7 @@ class Predictor:
         model = ModelFactory.create(
             model_platform=ModelPlatformType.OPENAI,
             model_type="gpt-4o-mini",
-            api_key=LLM_KEY,
+            api_key=_get_llm_key(),
             url=LLM_URL,
         )
 
@@ -181,7 +186,7 @@ Return ONLY valid JSON, no other text."""
         model = ModelFactory.create(
             model_platform=ModelPlatformType.OPENAI,
             model_type="gpt-4o-mini",
-            api_key=LLM_KEY,
+            api_key=_get_llm_key(),
             url=LLM_URL,
         )
 
@@ -239,7 +244,7 @@ Return ONLY valid JSON."""
         model = ModelFactory.create(
             model_platform=ModelPlatformType.OPENAI,
             model_type="gpt-4o-mini",
-            api_key=LLM_KEY,
+            api_key=_get_llm_key(),
             url=LLM_URL,
         )
 

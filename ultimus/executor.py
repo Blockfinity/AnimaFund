@@ -27,7 +27,7 @@ class Executor:
         model = ModelFactory.create(
             model_platform=ModelPlatformType.OPENAI,
             model_type="gpt-4o-mini",
-            api_key=LLM_KEY,
+            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
             url=LLM_URL,
         )
 

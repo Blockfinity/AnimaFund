@@ -2,7 +2,7 @@
 """
 Anima Runner — Runs inside a sandboxed environment.
 The agent operates AUTONOMOUSLY — the runner starts it and gets out of the way.
-CAMEL ChatAgent maintains conversation history across turns.
+Anima Machina ChatAgent maintains conversation history across turns.
 Agent decides what to do, when to act, and when to stop.
 """
 import os
@@ -93,7 +93,7 @@ def report_financial(wallet_address: str = "", usdc_balance: float = 0.0,
 
 
 # ─── Persistent Memory (simple key-value, survives restarts) ───
-# Note: CAMEL's MemoryToolkit (save/load full conversation) is used for agent memory.
+# Note: Anima Machina's MemoryToolkit (save/load full conversation) is used for agent memory.
 # These functions provide simple key-value persistence for facts the agent wants to remember.
 
 def save_memory(key: str, value: str) -> str:
@@ -332,13 +332,13 @@ def main():
         genesis_prompt = "You are an autonomous agent. Explore your environment and report."
         logger.warning("No genesis prompt found, using default")
 
-    # Set LLM key in environment — this is the GLOBAL config that ALL CAMEL sub-agents inherit.
+    # Set LLM key in environment — GLOBAL config for ALL Anima Machina sub-agents.
     # BrowserToolkit's navigation agent, CodeExecutionToolkit's evaluator, and any other internal
     # agent will automatically use Conway inference via these env vars.
     os.environ["OPENAI_API_KEY"] = LLM_API_KEY
     if LLM_BASE_URL:
         os.environ["OPENAI_API_BASE_URL"] = LLM_BASE_URL
-        os.environ["OPENAI_API_BASE"] = LLM_BASE_URL  # Some CAMEL internals check this variant
+        os.environ["OPENAI_API_BASE"] = LLM_BASE_URL  # Some Anima Machina internals check this variant
     # Set default model for sub-agents (BrowserToolkit etc.) to match our inference provider
     os.environ["DEFAULT_MODEL_TYPE"] = LLM_MODEL
     os.environ["DEFAULT_MODEL_PLATFORM_TYPE"] = "openai"
@@ -395,7 +395,7 @@ def main():
         logger.warning(f"FileToolkit unavailable: {e}")
 
     # Browser (subprocess-based to avoid Playwright/greenlet thread conflict)
-    # CAMEL's BrowserToolkit has a known threading issue (#1868) — no upstream fix.
+    # Anima Machina's BrowserToolkit has a known threading issue (#1868) — no upstream fix.
     # Running Playwright in a subprocess avoids the greenlet conflict entirely.
     all_tools.append(FunctionTool(browse_website))
     logger.info("Browser: browse_website (subprocess Playwright)")
