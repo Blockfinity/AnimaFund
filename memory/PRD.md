@@ -1,24 +1,36 @@
 # Anima Platform — Product Requirements
 
-## Security Status (March 21 2026)
-- FIXED: Sandbox only gets WEBHOOK_URL (specific endpoint), NOT platform base URL
-- FIXED: Per-agent webhook token (32-byte hex) generated during deploy, validated by endpoint
-- VERIFIED: env inside sandbox shows WEBHOOK_URL + WEBHOOK_TOKEN only, PLATFORM_URL=NOT_SET
-- TODO: Enforce token validation (currently allows tokenless for dev), add JWT to all platform endpoints
+## FORK_PROMPT.md is the definitive source of truth. Read it FIRST.
 
-## Acceptance Test Status
-- Agent RUNNING in Conway sandbox (PID confirmed)
-- Conway inference WORKING (gpt-5-mini, HTTP 200)
-- Webhook pipeline WORKING (agent -> webhook -> dashboard, 32+ actions)
-- Phase 0: 6/11 passed, 3 failed (Git auth, Python symlink, Browser path), 2 unverified
-- Phase 0 NOT complete — agent self-reported complete but tests actually failed
+## Audit Results (March 21, 2026)
 
-## Fixes Still Needed (Before Phase 0 Re-run)
-1. Git test: use public repo clone (no auth needed)
-2. Python: create symlink python -> python3 during deploy
-3. Browser: install playwright + chromium during deploy
-4. Wallet: use existing Catalyst wallet (0x922868...), don't create new empty one
-5. Credit exhaustion: graceful handling when credits hit $0
+### EXISTS:
+- /app/ultimus/predictor.py (new — simulation engine)
+- /app/ultimus/calculator.py (new — cost/feasibility)
+- /app/ultimus/executor.py (new — deployment converter)
+- /app/anima-machina/ (CAMEL clone, NOT rebranded)
+- /app/engine/anima_runner.py (agent runner with 28 tools, browse_website subprocess fix)
+- /app/backend/ (10 routers, per-agent state store, webhook with token validation)
+- /app/frontend/ (14 pages, dashboard shows some real data)
+- /app/ultima-x/ (Modelfile + config, NOT integrated)
 
-## Architecture
-FORK_PROMPT.md = definitive source. ROADMAP.md = task list.
+### DOES NOT EXIST:
+- Ultimus API (api.py), dimensions.py, knowledge.py, personas.py, config.py
+- Ultimus frontend screens (goal input, simulation, Dimensions, cost review, execute)
+- Rebrand (18 "camel" refs in our code)
+- x402 real implementation
+- Generic BYOI (Conway only)
+- Spawn that provisions (records only)
+- Multi-agent dashboard
+- JWT auth
+- Ultima X integration
+
+### Conway credits: $0.09 (DEAD)
+### Catalyst wallet: $3.00 USDC on Base
+
+## Priority (from FORK_PROMPT.md):
+1. Rebrand camel -> anima_machina in our code
+2. Fix dashboard (real data or "no data", never mocks)
+3. BUILD ULTIMUS (the core product)
+4. Spawn via webhook
+5. Production readiness
