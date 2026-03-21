@@ -164,14 +164,9 @@ async def ultimus_status():
 
 
 async def _analyze_result(prediction: UltimusPrediction) -> Dict:
-    """Analyze Workforce output into a structured strategy."""
-    if not prediction.result:
+    """Analyze multi-round simulation into a deployment strategy."""
+    if not prediction.round_summaries:
         return {}
-    try:
-        from anima_machina.agents import ChatAgent
-        model = prediction._UltimusPrediction__class__  # Avoid reimporting
-    except Exception:
-        pass
 
     key = os.environ.get("EMERGENT_LLM_KEY", "")
     if not key:
@@ -184,17 +179,26 @@ async def _analyze_result(prediction: UltimusPrediction) -> Dict:
     model = ModelFactory.create(model_platform=ModelPlatformType.OPENAI, model_type="gpt-4o-mini",
                                 api_key=key, url="https://integrations.emergentagent.com/llm/v1")
 
-    result_text = str(prediction.result.get("task_result", ""))[:3000]
-    persona_summary = ", ".join(f"{p['name']} ({p['role']})" for p in prediction.persona_defs[:10])
+    # Build simulation summary from round data
+    sim_summary = f"Goal: {prediction.goal}\nAgents: {len(prediction.persona_defs)}\nRounds: {prediction.num_rounds}\n\n"
+    for rs in prediction.round_summaries:
+        sim_summary += f"Round {rs['round']}:\n"
+        for agent, pos in list(rs.get("positions", {}).items())[:8]:
+            sim_summary += f"  {agent}: {pos}\n"
+        sim_summary += "\n"
 
-    prompt = f"""Analyze this simulation result and produce a deployment strategy.
+    persona_summary = ", ".join(f"{p['name']} ({p['role']})" for p in prediction.persona_defs[:15])
 
-Goal: {prediction.goal}
-Personas: {persona_summary}
-Result: {result_text}
+    prompt = f"""Analyze this multi-round simulation and produce a deployment strategy.
+
+{sim_summary[:3000]}
+
+All personas: {persona_summary}
+
+Identify: coalitions formed, strategies that emerged, risks discovered, who changed positions and why.
 
 Return JSON:
-{{"summary":"...","recommended_agents":[{{"role":"...","genesis_prompt_focus":"...","priority":"high/medium/low","estimated_cost":0.0}}],"total_seed_cost":0.0,"estimated_break_even_hours":0,"confidence_score":0.0,"risks":["..."],"key_actions":["..."]}}
+{{"summary":"2-3 sentence strategy based on simulation","recommended_agents":[{{"role":"...","genesis_prompt_focus":"...","priority":"high/medium/low","estimated_cost":0.0}}],"total_seed_cost":0.0,"estimated_break_even_hours":0,"confidence_score":0.0,"risks":["..."],"key_actions":["..."],"coalitions_formed":["..."],"sentiment_shifts":["..."]}}
 ONLY valid JSON."""
 
     agent = ChatAgent(system_message="Analyze simulation results. Return JSON only.", model=model)
