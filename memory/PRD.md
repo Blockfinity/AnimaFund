@@ -4,34 +4,43 @@
 
 ## What EXISTS and WORKS (March 21, 2026)
 
-### Ultimus (THE CORE PRODUCT) — NOW EXISTS
-- /app/ultimus/predictor.py — Multi-persona simulation with LLM-powered agents
-- /app/ultimus/calculator.py — Cost/feasibility/deployment wave planning
-- /app/ultimus/executor.py — Converts personas to real Anima deployments
-- /app/ultimus/api.py — REST endpoints (POST /api/ultimus/predict, GET /predictions, POST /execute)
-- Frontend: Ultimus page with goal input, mode selector, simulation, results view, cost model, execute button
-- TESTED: "Make $1000 in memecoins" → 3 personas, 2 rounds, strategy with 0.7 confidence, self-sustaining cost model
-- Still missing: dimensions.py, knowledge.py, personas.py (GraphRAG + Dimensions screens)
+### Ultimus (CORE PRODUCT) — BUILT
+- predictor.py — Multi-persona LLM simulation (tested: 3 personas, 2 rounds, 0.7 confidence)
+- calculator.py — Cost model, deployment waves, break-even, self-sustaining analysis
+- executor.py — Converts strategy to real Anima deployments with auto-generated genesis prompts
+- api.py — POST /api/ultimus/predict, GET /predictions, POST /execute
+- Frontend: MiroFish-inspired 5-phase UI (Seed Input → Simulation → Strategy → Cost Review → Execute)
+  - Persona cards, system dashboard, cost model panel, deployment agent list, execute button
+  - Past predictions list with status
 
-### Backend (10 routers, 1,584 lines)
-- server.py, provision.py, monitor.py, webhook.py, spawn.py, agents.py, telegram.py + 3 legacy
+### Dimensions (GOD'S-EYE VIEW) — BUILT
+- dimensions.py — Simulation world viewer, live agent viewer, chat with any persona, variable injection
+- API: GET /api/dimensions/status, GET /simulation/{id}, GET /live, POST /chat, POST /inject
+- Frontend: 3-panel layout (worlds/personas list | entity detail | chat panel)
+  - Simulation mode: load completed predictions, observe personas, chat with them
+  - Live mode: observe real running Animas, chat with them
+  - Variable injection for re-running scenarios
 
-### Anima Machina (CAMEL fork)
-- 95 toolkits, 3 custom (Wallet, Spawn, StateReporting)
-- Rebrand: comments/logs changed, imports stay as `from camel.` (package name)
+### Spawn via Webhook — IMPLEMENTED
+- Agents send {"type": "spawn_request"} through existing WEBHOOK_URL
+- No new URL exposed to sandbox
+- Records in MongoDB with parent_agent_id, genesis_prompt, specs
 
-### Dashboard (15 pages now)
-- Ultimus (NEW), AgentMind, AnimaVM, FundHQ, Agents, Infrastructure, Skills, DealFlow, Portfolio, Financials, Activity, Memory, Configuration, Wallet
+### Dashboard (16 pages now)
+- Ultimus, Dimensions, AgentMind, AnimaVM, FundHQ, Agents, Infrastructure, Skills,
+  DealFlow, Portfolio, Financials, Activity, Memory, Configuration, Wallet, AgentSetup
 
-### Conway sandbox: 9 cents (dead). Catalyst wallet: $3 USDC.
+### Backend (13 endpoints active)
+- ultimus/predict, ultimus/predictions, ultimus/execute, ultimus/status
+- dimensions/status, dimensions/simulation/{id}, dimensions/live, dimensions/chat, dimensions/inject
+- agents, provision, monitor, webhook, spawn, telegram + legacy
 
 ## Still Missing
-- Dimensions (God's-eye view) — frontend + backend
-- GraphRAG knowledge.py for seed data
+- Knowledge graph (GraphRAG) for Deep/Expert predict modes
 - Multi-agent dashboard (agent selector, overview, aggregates)
-- Spawn via webhook (records only, doesn't provision)
 - x402 real payments
-- Generic BYOI (Conway only)
+- Generic BYOI (Conway only, no second provider)
 - JWT auth
 - Ultima X integration
-- Full rebrand of CAMEL internals
+- Full CAMEL internals rebrand
+- Conway credits (9 cents — sandbox dead)

@@ -29,6 +29,7 @@ from routers.spawn import router as spawn_router
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from ultimus.api import router as ultimus_router
+from ultimus.dimensions import router as dimensions_router
 
 # Keep these for backward compat until fully replaced
 from routers import conway, openclaw, credits
@@ -77,6 +78,7 @@ app.include_router(spawn_router)
 app.include_router(webhook.router)
 app.include_router(telegram.router)
 app.include_router(ultimus_router)
+app.include_router(dimensions_router)
 
 # Provider-specific (kept for Conway compatibility)
 app.include_router(conway.router)

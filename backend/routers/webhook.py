@@ -8,6 +8,32 @@ from agent_state_store import update_agent_state, get_agent_state, get_all_agent
 from agent_state import load_provisioning
 from database import get_db
 
+
+async def _handle_spawn_request(parent_agent_id: str, data: dict):
+    """Handle spawn requests from agents — routed through webhook for security.
+    No new URL exposed to the sandbox. Agent sends {"type": "spawn_request", ...} to webhook."""
+    from datetime import datetime, timezone
+    db = get_db()
+    if db is None:
+        return {"success": False, "error": "Database not available"}
+
+    spawn_id = f"spawn-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    spawn_record = {
+        "spawn_id": spawn_id,
+        "parent_agent_id": parent_agent_id,
+        "purpose": data.get("purpose", ""),
+        "genesis_prompt": data.get("genesis_prompt", ""),
+        "specs": data.get("specs", {}),
+        "status": "requested",
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.spawns.insert_one(spawn_record)
+    del spawn_record["_id"]
+
+    return {"success": True, "spawn_id": spawn_id, "status": "requested",
+            "message": "Spawn request recorded. Platform will provision the environment."}
+
+
 router = APIRouter(prefix="/api/webhook", tags=["webhook"])
 
 
@@ -38,6 +64,7 @@ async def receive_agent_update(request: Request):
 
     data = await request.json()
     agent_id = data.get("agent_id", "unknown")
+    update_type = data.get("type", "state")
 
     # Validate webhook token
     if token:
@@ -45,6 +72,10 @@ async def receive_agent_update(request: Request):
         if not valid:
             raise HTTPException(403, "Invalid webhook token")
     # Allow tokenless updates during development (TODO: enforce in production)
+
+    # Handle spawn requests from agents (routed through webhook for security)
+    if update_type == "spawn_request":
+        return await _handle_spawn_request(agent_id, data)
 
     await update_agent_state(agent_id, data)
     return {"received": True, "agent_id": agent_id}

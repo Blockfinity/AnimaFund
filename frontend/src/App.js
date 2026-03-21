@@ -16,6 +16,7 @@ import Skills from './pages/Skills';
 import Infrastructure from './pages/Infrastructure';
 import AnimaVM from './pages/AnimaVM';
 import Ultimus from './pages/Ultimus';
+import Dimensions from './pages/Dimensions';
 import EngineConsole from './components/EngineConsole';
 import { SSEProvider, useSSE, useSSETrigger } from './hooks/useSSE';
 import {
@@ -1012,6 +1013,7 @@ function AppInner() {
       case 'animavm': return <AnimaVM selectedAgent={selectedAgent} />;
       case 'mind': return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'ultimus': return <Ultimus />;
+      case 'dimensions': return <Dimensions />;
       case 'agents': return <Agents selectedAgent={selectedAgent} />;
       case 'infra': return <Infrastructure selectedAgent={selectedAgent} />;
       case 'skills': return <Skills selectedAgent={selectedAgent} />;
