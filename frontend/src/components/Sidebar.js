@@ -7,7 +7,6 @@ import {
 
 const navItems = [
   { id: 'ultimus', label: 'Ultimus', icon: Sparkles },
-  { id: 'dimensions', label: 'Dimensions', icon: Eye },
   { id: 'animavm', label: 'Anima VM', icon: Rocket },
   { id: 'mind', label: 'Agent Mind', icon: Brain },
   { id: 'fundhq', label: 'Fund HQ', icon: Building2 },
