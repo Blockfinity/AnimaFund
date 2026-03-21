@@ -216,9 +216,17 @@ echo "CONFIG_WRITTEN"
 
     # Step 4: Start the agent
     try:
+        # Create a wrapper script that sources env vars then starts the runner.
+        # This ensures the Python process inherits ALL env vars from env.sh.
         start_cmd = (
-            "cd /app/anima && source env.sh && "
-            "nohup python3 runner.py > /app/anima/agent.log 2>&1 &\n"
+            "cd /app/anima && "
+            "cat > start.sh << 'STARTEOF'\n"
+            "#!/bin/bash\n"
+            "source /app/anima/env.sh\n"
+            "exec python3 /app/anima/runner.py\n"
+            "STARTEOF\n"
+            "chmod +x start.sh && "
+            "nohup /app/anima/start.sh > /app/anima/agent.log 2>&1 &\n"
             "sleep 2 && "
             "ps aux | grep runner.py | grep -v grep | head -1 && "
             "echo AGENT_STARTED"

@@ -16,7 +16,19 @@ from datetime import datetime, timezone
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("anima-runner")
 
-# Config from environment (pushed by platform during deploy)
+# Load config from env.sh file directly (more reliable than depending on shell sourcing)
+_env_file = "/app/anima/env.sh"
+if os.path.exists(_env_file):
+    with open(_env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("export ") and "=" in line:
+                kv = line[7:]  # strip "export "
+                key, _, val = kv.partition("=")
+                val = val.strip('"').strip("'")
+                os.environ[key] = val
+
+# Config from environment
 # SECURITY: Sandbox only gets WEBHOOK_URL (not the full platform URL)
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
 WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN", "")
@@ -25,7 +37,7 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 GENESIS_PROMPT_PATH = os.environ.get("GENESIS_PROMPT_PATH", "/app/anima/genesis-prompt.md")
-MAX_TURNS = int(os.environ.get("MAX_TURNS", "0"))  # 0 = unlimited (agent runs until it decides to stop or can't pay)
+MAX_TURNS = int(os.environ.get("MAX_TURNS", "0"))  # 0 = unlimited
 STATE_DIR = "/app/anima/state"
 
 _running = True
@@ -113,8 +125,13 @@ def recall_memory(key: str = "") -> str:
 # ─── Wallet ───
 
 def create_wallet() -> str:
-    """Create a new Ethereum wallet OR load existing one from /root/.anima/wallet.json. Returns the address."""
-    # Check for existing wallet first
+    """Load the agent's CORE wallet (private, never shared) and create a PUBLIC wallet for sharing.
+    The core wallet at /root/.anima/wallet.json is for receiving funds. NEVER expose its address publicly.
+    Returns both addresses but marks which is which."""
+    core_address = ""
+    public_address = ""
+
+    # Load core wallet (existing funded wallet — PRIVATE)
     existing_wallet = "/root/.anima/wallet.json"
     if os.path.exists(existing_wallet):
         try:
@@ -124,18 +141,41 @@ def create_wallet() -> str:
             if pk:
                 from eth_account import Account
                 acct = Account.from_key(pk)
-                save_memory("wallet_address", acct.address)
-                return json.dumps({"success": True, "wallet_address": acct.address, "source": "existing_wallet"})
-        except Exception as e:
-            pass  # Fall through to create new
+                core_address = acct.address
+                save_memory("core_wallet_address", core_address)
+        except Exception:
+            pass
 
-    try:
-        from eth_account import Account
-        account = Account.create()
-        save_memory("wallet_address", account.address)
-        return json.dumps({"success": True, "wallet_address": account.address, "source": "new_wallet"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    # Create a PUBLIC wallet for sharing (separate from core)
+    public_wallet_path = os.path.join(STATE_DIR, "public_wallet.json")
+    os.makedirs(STATE_DIR, exist_ok=True)
+    if os.path.exists(public_wallet_path):
+        try:
+            with open(public_wallet_path) as f:
+                pw = json.load(f)
+            public_address = pw.get("address", "")
+        except Exception:
+            pass
+
+    if not public_address:
+        try:
+            from eth_account import Account
+            pub_acct = Account.create()
+            public_address = pub_acct.address
+            with open(public_wallet_path, "w") as f:
+                json.dump({"address": public_address, "privateKey": pub_acct.key.hex()}, f)
+            os.chmod(public_wallet_path, 0o600)
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
+    save_memory("public_wallet_address", public_address)
+
+    return json.dumps({
+        "success": True,
+        "core_wallet": core_address or "NOT FOUND",
+        "public_wallet": public_address,
+        "note": "NEVER share core_wallet publicly. Use public_wallet for receiving payments from others."
+    })
 
 
 def check_balance(address: str) -> str:
