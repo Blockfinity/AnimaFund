@@ -110,11 +110,13 @@ async def genesis_status():
     agent_id = get_active_agent_id()
     state = get_agent_state(agent_id)
     prov = await load_provisioning()
+    # Dashboard shows CORE wallet (from provisioning), not agent-reported public wallet
+    core_wallet = prov.get("wallet_address", "")
     return {
         "status": state.get("status", "unknown"),
         "engine_running": state.get("engine_running", False),
         "message": state.get("message", ""),
-        "wallet_address": state.get("financials", {}).get("wallet_address") or prov.get("wallet_address", ""),
+        "wallet_address": core_wallet,
         "sandbox_id": prov.get("sandbox", {}).get("id"),
         "sandbox_status": prov.get("sandbox", {}).get("status", "none"),
         "last_update": state.get("last_update"),
@@ -326,8 +328,10 @@ async def wallet_balance():
     state = get_agent_state(agent_id)
     fin = state.get("financials", {})
     prov = await load_provisioning()
+    # Dashboard shows CORE wallet address (from provisioning record)
+    core_wallet = prov.get("wallet_address", "")
     return {
-        "wallet_address": fin.get("wallet_address") or prov.get("wallet_address", ""),
+        "wallet_address": core_wallet,
         "usdc_balance": fin.get("usdc_balance", 0.0),
         "eth_balance": 0.0,
         "credits": 0.0,

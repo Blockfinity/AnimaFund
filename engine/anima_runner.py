@@ -122,6 +122,44 @@ def recall_memory(key: str = "") -> str:
     return json.dumps({"memories": {k: v["value"] for k, v in memories.items()}})
 
 
+# ─── Browser (runs Playwright in subprocess to avoid greenlet thread conflict) ───
+
+def browse_website(url: str, task: str = "Extract the main content and title of this page") -> str:
+    """Browse a website using a real browser. Can extract content, read text, see page structure.
+    Runs in a subprocess to avoid threading conflicts."""
+    import subprocess
+    script = f'''
+import json, sys
+try:
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("{url}", timeout=15000)
+        page.wait_for_load_state("domcontentloaded", timeout=10000)
+        title = page.title()
+        content = page.inner_text("body")[:3000]
+        browser.close()
+        print(json.dumps({{"success": True, "title": title, "url": "{url}", "content": content[:2000]}}))
+except Exception as e:
+    print(json.dumps({{"success": False, "error": str(e), "url": "{url}"}}))
+'''
+    try:
+        result = subprocess.run(
+            ["python3", "-c", script],
+            capture_output=True, text=True, timeout=30
+        )
+        output = result.stdout.strip()
+        if output:
+            return output
+        return json.dumps({"success": False, "error": result.stderr[:500] if result.stderr else "No output"})
+    except subprocess.TimeoutExpired:
+        return json.dumps({"success": False, "error": "Browser timed out after 30s"})
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)})
+
+
+
 # ─── Wallet (code-level enforcement: core wallet address NEVER exposed to the agent) ───
 # The agent can CHECK balance and SEND payments without knowing the core address.
 # Only the PUBLIC wallet address is shareable. The platform stores the core address for dashboard display.
@@ -356,16 +394,11 @@ def main():
     except Exception as e:
         logger.warning(f"FileToolkit unavailable: {e}")
 
-    # Browser (web browsing — uses Playwright with LLM-driven navigation)
-    try:
-        from camel.toolkits import BrowserToolkit
-        # BrowserToolkit needs its own LLM models for planning and navigation
-        # When LLM key is in env, it uses OpenAI by default
-        tk = BrowserToolkit(headless=True)
-        all_tools.extend(tk.get_tools())
-        logger.info(f"BrowserToolkit: {len(tk.get_tools())} tools (full Playwright)")
-    except Exception as e:
-        logger.warning(f"BrowserToolkit unavailable: {e}")
+    # Browser (subprocess-based to avoid Playwright/greenlet thread conflict)
+    # CAMEL's BrowserToolkit has a known threading issue (#1868) — no upstream fix.
+    # Running Playwright in a subprocess avoids the greenlet conflict entirely.
+    all_tools.append(FunctionTool(browse_website))
+    logger.info("Browser: browse_website (subprocess Playwright)")
 
     logger.info(f"Total tools: {len(all_tools)}")
 
@@ -413,7 +446,7 @@ def main():
             "You are now live in your sandboxed environment. "
             "Your genesis prompt (system message) contains your complete mission. "
             "You have tools for: shell (shell_exec), code execution, "
-            "file operations, web browsing (browse_url), "
+            "file operations, web browsing (browse_website), "
             "wallet, persistent memory (save_memory, recall_memory), "
             "and platform reporting (report_state, report_action, report_financial). "
             "Begin executing your mission now."
