@@ -220,7 +220,7 @@ echo "CONFIG_WRITTEN"
         # This ensures the Python process inherits ALL env vars from env.sh.
         start_cmd = (
             "cd /app/anima && "
-            # Kill any previous runner instances first
+            # Kill ONLY the previous runner (not system Python processes)
             "pkill -f runner.py 2>/dev/null; pkill -f start.sh 2>/dev/null; sleep 1; "
             "cat > start.sh << 'STARTEOF'\n"
             "#!/bin/bash\n"
@@ -242,6 +242,21 @@ echo "CONFIG_WRITTEN"
             steps_log.append(f"Agent start output: {output[:200]}")
     except Exception as e:
         steps_log.append(f"Agent start warning: {e}")
+
+    # Store core wallet address in MongoDB for dashboard display
+    # The dashboard shows the core wallet to the USER (owner) — not to the agent or public
+    try:
+        result = await provider.exec_in_vm(sandbox_id,
+            "python3 -c \"import json; from eth_account import Account; "
+            "w=json.load(open('/root/.anima/wallet.json')); "
+            "print(Account.from_key(w['privateKey']).address)\" 2>/dev/null",
+            timeout=15)
+        core_addr = result.get("output", "").strip()
+        if core_addr.startswith("0x"):
+            prov["wallet_address"] = core_addr
+            steps_log.append("Core wallet address stored for dashboard")
+    except Exception:
+        pass
 
     await save_provisioning(prov)
 

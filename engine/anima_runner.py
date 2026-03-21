@@ -122,12 +122,15 @@ def recall_memory(key: str = "") -> str:
     return json.dumps({"memories": {k: v["value"] for k, v in memories.items()}})
 
 
-# ─── Wallet (code-level enforcement: core wallet NEVER exposed through any tool) ───
+# ─── Wallet (code-level enforcement: core wallet address NEVER exposed to the agent) ───
+# The agent can CHECK balance and SEND payments without knowing the core address.
+# Only the PUBLIC wallet address is shareable. The platform stores the core address for dashboard display.
 
 _CORE_WALLET_ADDR = ""
+_CORE_WALLET_KEY = ""
 
 def _init_core_wallet():
-    global _CORE_WALLET_ADDR
+    global _CORE_WALLET_ADDR, _CORE_WALLET_KEY
     if _CORE_WALLET_ADDR:
         return
     existing = "/root/.anima/wallet.json"
@@ -138,7 +141,9 @@ def _init_core_wallet():
             pk = w.get("privateKey", "")
             if pk:
                 from eth_account import Account
-                _CORE_WALLET_ADDR = Account.from_key(pk).address
+                acct = Account.from_key(pk)
+                _CORE_WALLET_ADDR = acct.address
+                _CORE_WALLET_KEY = pk
         except Exception:
             pass
 
@@ -155,6 +160,81 @@ def get_wallet_balance() -> str:
         contract = w3.eth.contract(address=Web3.to_checksum_address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), abi=abi)
         balance = contract.functions.balanceOf(Web3.to_checksum_address(_CORE_WALLET_ADDR)).call() / 1e6
         return json.dumps({"success": True, "usdc_balance": balance, "network": "Base"})
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)})
+
+def send_payment(to_address: str, amount_usdc: float) -> str:
+    """Send USDC from your wallet to another address on Base. You don't need to know your wallet address — the payment is signed internally."""
+    _init_core_wallet()
+    if not _CORE_WALLET_KEY:
+        return json.dumps({"success": False, "error": "No wallet configured for sending"})
+    if amount_usdc <= 0:
+        return json.dumps({"success": False, "error": "Amount must be positive"})
+    try:
+        from web3 import Web3
+        from eth_account import Account
+        w3 = Web3(Web3.HTTPProvider("https://mainnet.base.org"))
+        usdc_addr = Web3.to_checksum_address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
+        to = Web3.to_checksum_address(to_address)
+        amount_raw = int(amount_usdc * 1e6)
+        abi = [
+            {"inputs": [{"name": "account", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view", "type": "function"},
+            {"inputs": [{"name": "to", "type": "address"}, {"name": "amount", "type": "uint256"}], "name": "transfer", "outputs": [{"name": "", "type": "bool"}], "stateMutability": "nonpayable", "type": "function"},
+        ]
+        contract = w3.eth.contract(address=usdc_addr, abi=abi)
+        balance = contract.functions.balanceOf(Web3.to_checksum_address(_CORE_WALLET_ADDR)).call()
+        if balance < amount_raw:
+            return json.dumps({"success": False, "error": f"Insufficient balance: have {balance/1e6} USDC, need {amount_usdc}"})
+        acct = Account.from_key(_CORE_WALLET_KEY)
+        nonce = w3.eth.get_transaction_count(acct.address)
+        tx = contract.functions.transfer(to, amount_raw).build_transaction({
+            "from": acct.address, "nonce": nonce,
+            "gas": 100000, "gasPrice": w3.eth.gas_price,
+            "chainId": 8453,
+        })
+        signed = acct.sign_transaction(tx)
+        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+        return json.dumps({"success": True, "tx_hash": tx_hash.hex(), "amount": amount_usdc, "to": to_address})
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)})
+
+def sweep_public_wallet() -> str:
+    """Move all funds from your public wallet to your main wallet. Call this after receiving payments."""
+    _init_core_wallet()
+    if not _CORE_WALLET_ADDR:
+        return json.dumps({"success": False, "error": "No core wallet"})
+    pub_path = os.path.join(STATE_DIR, "public_wallet.json")
+    if not os.path.exists(pub_path):
+        return json.dumps({"success": False, "error": "No public wallet exists"})
+    try:
+        with open(pub_path) as f:
+            pw = json.load(f)
+        pub_key = pw.get("privateKey", "")
+        pub_addr = pw.get("address", "")
+        if not pub_key or not pub_addr:
+            return json.dumps({"success": False, "error": "Public wallet incomplete"})
+        from web3 import Web3
+        from eth_account import Account
+        w3 = Web3(Web3.HTTPProvider("https://mainnet.base.org"))
+        usdc_addr = Web3.to_checksum_address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
+        abi = [
+            {"inputs": [{"name": "account", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view", "type": "function"},
+            {"inputs": [{"name": "to", "type": "address"}, {"name": "amount", "type": "uint256"}], "name": "transfer", "outputs": [{"name": "", "type": "bool"}], "stateMutability": "nonpayable", "type": "function"},
+        ]
+        contract = w3.eth.contract(address=usdc_addr, abi=abi)
+        balance = contract.functions.balanceOf(Web3.to_checksum_address(pub_addr)).call()
+        if balance == 0:
+            return json.dumps({"success": True, "message": "Public wallet is empty, nothing to sweep"})
+        acct = Account.from_key(pub_key)
+        nonce = w3.eth.get_transaction_count(acct.address)
+        tx = contract.functions.transfer(Web3.to_checksum_address(_CORE_WALLET_ADDR), balance).build_transaction({
+            "from": acct.address, "nonce": nonce,
+            "gas": 100000, "gasPrice": w3.eth.gas_price,
+            "chainId": 8453,
+        })
+        signed = acct.sign_transaction(tx)
+        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+        return json.dumps({"success": True, "tx_hash": tx_hash.hex(), "swept": balance / 1e6})
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)})
 
@@ -243,7 +323,9 @@ def main():
     all_tools.extend([
         FunctionTool(report_state), FunctionTool(report_action),
         FunctionTool(report_error), FunctionTool(report_financial),
-        FunctionTool(get_wallet_balance), FunctionTool(share_wallet_address), FunctionTool(check_balance),
+        FunctionTool(get_wallet_balance), FunctionTool(send_payment),
+        FunctionTool(sweep_public_wallet), FunctionTool(share_wallet_address),
+        FunctionTool(check_balance),
         FunctionTool(save_memory), FunctionTool(recall_memory),
     ])
 
