@@ -56,12 +56,12 @@ class FlyProvider(BaseProvider):
                 }
 
     async def exec_in_vm(self, vm_id: str, command: str, timeout: int = 30) -> dict:
-        """Execute a command in a Fly Machine."""
+        """Execute a command in a Fly Machine via bash."""
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{self.api_url}/apps/{self.app_name}/machines/{vm_id}/exec",
                 headers=self._headers(),
-                json={"cmd": f"bash -c '{command}'"},
+                json={"command": ["bash", "-c", command]},
                 timeout=aiohttp.ClientTimeout(total=timeout + 10),
             ) as resp:
                 if resp.status != 200:
