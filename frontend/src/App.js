@@ -1013,7 +1013,7 @@ function AppInner() {
       case 'animavm': return <AnimaVM selectedAgent={selectedAgent} />;
       case 'mind': return <AgentMind genesisState={genesisState} selectedAgent={selectedAgent} />;
       case 'ultimus': return <Ultimus />;
-      case 'dimensions': return <Dimensions />;
+      case 'dimensions': return <Dimensions onSelectAgent={(id) => { setSelectedAgent(id); }} />;
       case 'agents': return <Agents selectedAgent={selectedAgent} />;
       case 'infra': return <Infrastructure selectedAgent={selectedAgent} />;
       case 'skills': return <Skills selectedAgent={selectedAgent} />;
