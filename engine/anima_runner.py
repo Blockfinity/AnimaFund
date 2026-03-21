@@ -172,10 +172,16 @@ def main():
         genesis_prompt = "You are an autonomous agent. Explore your environment and report."
         logger.warning("No genesis prompt found, using default")
 
-    # Set LLM key in environment (needed by BrowserToolkit and other CAMEL internals)
+    # Set LLM key in environment — this is the GLOBAL config that ALL CAMEL sub-agents inherit.
+    # BrowserToolkit's navigation agent, CodeExecutionToolkit's evaluator, and any other internal
+    # agent will automatically use Conway inference via these env vars.
     os.environ["OPENAI_API_KEY"] = LLM_API_KEY
     if LLM_BASE_URL:
         os.environ["OPENAI_API_BASE_URL"] = LLM_BASE_URL
+        os.environ["OPENAI_API_BASE"] = LLM_BASE_URL  # Some CAMEL internals check this variant
+    # Set default model for sub-agents (BrowserToolkit etc.) to match our inference provider
+    os.environ["DEFAULT_MODEL_TYPE"] = LLM_MODEL
+    os.environ["DEFAULT_MODEL_PLATFORM_TYPE"] = "openai"
 
     from camel.agents import ChatAgent
     from camel.models import ModelFactory

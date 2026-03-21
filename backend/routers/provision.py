@@ -116,7 +116,7 @@ async def deploy_agent(req: CreateSandboxRequest):
     try:
         install_cmd = (
             # Core runtime
-            "pip3 install camel-ai openai httpx eth-account web3 2>&1 | tail -3 && "
+            "pip3 install camel-ai openai httpx eth-account web3 markitdown 2>&1 | tail -3 && "
             # Fix: python symlink (CAMEL's CodeExecutionToolkit calls 'python' not 'python3')
             "ln -sf $(which python3) /usr/bin/python 2>/dev/null; "
             # Fix: Install Playwright + Chromium for BrowserToolkit
