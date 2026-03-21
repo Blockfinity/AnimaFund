@@ -129,8 +129,10 @@ async def deploy_agent(req: CreateSandboxRequest):
         steps_log.append(f"Runtime install warning: {e}")
 
     # Step 3: Push agent config
+    # SECURITY: Only expose the webhook endpoint URL, NOT the full platform URL
     webhook_token = secrets.token_hex(16)
     platform_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+    webhook_url = f"{platform_url}/api/webhook/agent-update"
 
     # LLM inference: determine which provider to use
     # Priority: 1) agent's configured key, 2) Conway inference (if in Conway sandbox), 3) error
@@ -155,7 +157,7 @@ async def deploy_agent(req: CreateSandboxRequest):
         )
 
     config = {
-        "PLATFORM_URL": platform_url,
+        "WEBHOOK_URL": webhook_url,
         "WEBHOOK_TOKEN": webhook_token,
         "AGENT_ID": agent_id,
         "LLM_API_KEY": agent_llm_key,

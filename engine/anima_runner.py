@@ -17,7 +17,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("anima-runner")
 
 # Config from environment (pushed by platform during deploy)
-PLATFORM_URL = os.environ.get("PLATFORM_URL", "")
+# SECURITY: Sandbox only gets WEBHOOK_URL (not the full platform URL)
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
 WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN", "")
 AGENT_ID = os.environ.get("AGENT_ID", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
@@ -38,7 +39,7 @@ signal.signal(signal.SIGINT, _shutdown)
 # ─── State Reporting (pushed to platform webhook) ───
 
 def _push_webhook(data: dict):
-    if not PLATFORM_URL:
+    if not WEBHOOK_URL:
         return
     import httpx
     data["agent_id"] = AGENT_ID
@@ -47,7 +48,7 @@ def _push_webhook(data: dict):
     if WEBHOOK_TOKEN:
         headers["Authorization"] = f"Bearer {WEBHOOK_TOKEN}"
     try:
-        httpx.post(f"{PLATFORM_URL}/api/webhook/agent-update", json=data, headers=headers, timeout=10)
+        httpx.post(WEBHOOK_URL, json=data, headers=headers, timeout=10)
     except Exception as e:
         logger.warning(f"Webhook push failed: {e}")
 
