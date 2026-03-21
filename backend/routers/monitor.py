@@ -235,11 +235,27 @@ async def live_activity():
 
 @router.get("/live/agents")
 async def live_agents():
+    """All registered agents with their current state — foundation for multi-agent dashboard."""
     states = get_all_agent_states()
-    return {"agents": [
-        {"agent_id": aid, "status": s.get("status"), "engine_running": s.get("engine_running", False)}
-        for aid, s in states.items()
-    ]}
+    db = get_db()
+    agents = []
+    if db is not None:
+        async for doc in db.agents.find({}, {"_id": 0}):
+            aid = doc.get("agent_id", "")
+            state = states.get(aid, {})
+            agents.append({
+                "agent_id": aid,
+                "name": doc.get("name", aid),
+                "status": state.get("status", "offline"),
+                "engine_running": state.get("engine_running", False),
+                "actions_count": len(state.get("actions", [])),
+                "goal_progress": state.get("goal_progress", 0),
+                "prediction_id": doc.get("prediction_id"),
+                "wave": doc.get("wave"),
+                "last_update": state.get("last_update"),
+                "financials": state.get("financials", {}),
+            })
+    return {"agents": agents, "total": len(agents)}
 
 
 @router.get("/live/discovered")

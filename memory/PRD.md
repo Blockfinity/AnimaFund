@@ -2,45 +2,39 @@
 
 ## FORK_PROMPT.md is the definitive source of truth.
 
-## What EXISTS and WORKS (March 21, 2026)
+## What EXISTS (March 21, 2026)
 
-### Ultimus (CORE PRODUCT) — BUILT
-- predictor.py — Multi-persona LLM simulation (tested: 3 personas, 2 rounds, 0.7 confidence)
-- calculator.py — Cost model, deployment waves, break-even, self-sustaining analysis
-- executor.py — Converts strategy to real Anima deployments with auto-generated genesis prompts
-- api.py — POST /api/ultimus/predict, GET /predictions, POST /execute
-- Frontend: MiroFish-inspired 5-phase UI (Seed Input → Simulation → Strategy → Cost Review → Execute)
-  - Persona cards, system dashboard, cost model panel, deployment agent list, execute button
-  - Past predictions list with status
+### Ultimus (CORE) — predictor + calculator + executor + api + frontend
+- POST /api/ultimus/predict — multi-persona simulation, tested with real prediction
+- POST /api/ultimus/execute — deploys agents from prediction strategy
+- Frontend: MiroFish-inspired 5-phase flow, no boxes, compact data-dense layout
 
-### Dimensions (GOD'S-EYE VIEW) — BUILT
-- dimensions.py — Simulation world viewer, live agent viewer, chat with any persona, variable injection
-- API: GET /api/dimensions/status, GET /simulation/{id}, GET /live, POST /chat, POST /inject
-- Frontend: 3-panel layout (worlds/personas list | entity detail | chat panel)
-  - Simulation mode: load completed predictions, observe personas, chat with them
-  - Live mode: observe real running Animas, chat with them
-  - Variable injection for re-running scenarios
+### Dimensions (God's-Eye View) — simulation viewer + live viewer + chat + injection
+- GET /api/dimensions/simulation/{id} — load simulated world with personas + relationships
+- GET /api/dimensions/live — all running Animas with state
+- POST /api/dimensions/chat — LLM-powered chat with any persona or live Anima
+- POST /api/dimensions/inject — inject variables into simulations
+- Frontend: 3-column layout with force-directed graph canvas, compact entity list, chat panel
 
 ### Spawn via Webhook — IMPLEMENTED
-- Agents send {"type": "spawn_request"} through existing WEBHOOK_URL
-- No new URL exposed to sandbox
-- Records in MongoDB with parent_agent_id, genesis_prompt, specs
+- Agents send {"type": "spawn_request"} through WEBHOOK_URL
+- Records in MongoDB, no new URL exposed
 
-### Dashboard (16 pages now)
-- Ultimus, Dimensions, AgentMind, AnimaVM, FundHQ, Agents, Infrastructure, Skills,
-  DealFlow, Portfolio, Financials, Activity, Memory, Configuration, Wallet, AgentSetup
+### Multi-Agent Foundation — IMPLEMENTED
+- /api/live/agents returns ALL agents with state, financials, prediction_id
+- App.js has selectedAgent state and agent selector dropdown
+- Dashboard pages accept selectedAgent prop
 
-### Backend (13 endpoints active)
-- ultimus/predict, ultimus/predictions, ultimus/execute, ultimus/status
-- dimensions/status, dimensions/simulation/{id}, dimensions/live, dimensions/chat, dimensions/inject
-- agents, provision, monitor, webhook, spawn, telegram + legacy
+### Dashboard: 16 pages
+- Ultimus, Dimensions + 14 existing pages
+
+### Backend: 15+ active endpoints across ultimus, dimensions, monitor, webhook, spawn, agents
 
 ## Still Missing
-- Knowledge graph (GraphRAG) for Deep/Expert predict modes
-- Multi-agent dashboard (agent selector, overview, aggregates)
+- Knowledge graph (GraphRAG) for Deep/Expert modes
 - x402 real payments
-- Generic BYOI (Conway only, no second provider)
+- Generic BYOI (Conway only)
 - JWT auth
 - Ultima X integration
 - Full CAMEL internals rebrand
-- Conway credits (9 cents — sandbox dead)
+- Conway credits ($0.09 — sandbox dead)
