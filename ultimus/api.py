@@ -1,19 +1,20 @@
 """
-Ultimus API — Runs live multi-agent simulations, not static graph generation.
+Ultimus API — Routes for the prediction engine.
+Uses Anima Machina's Workforce for orchestration.
 """
 import os
 import json
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from database import get_db
-from ultimus.simulation import Simulation, generate_personas_from_knowledge, Persona
+from ultimus.predictor import UltimusPrediction, generate_personas
 from ultimus.knowledge import build_knowledge_graph, build_from_web_search
 from ultimus.calculator import Calculator
 from ultimus.executor import Executor
@@ -21,9 +22,7 @@ from ultimus.executor import Executor
 router = APIRouter(prefix="/api/ultimus", tags=["ultimus"])
 logger = logging.getLogger(__name__)
 
-LLM_URL = "https://integrations.emergentagent.com/llm/v1"
-
-_simulations: Dict[str, Simulation] = {}
+_predictions: Dict[str, UltimusPrediction] = {}
 _calculator = Calculator()
 _executor = Executor()
 
@@ -43,10 +42,10 @@ class ExecuteRequest(BaseModel):
 
 @router.post("/predict")
 async def run_prediction(req: PredictRequest):
-    """Start a LIVE multi-agent simulation. Agents interact across rounds producing emergent behavior."""
-    sim_id = f"sim-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    """Run a multi-agent prediction using Workforce orchestration."""
+    pred_id = f"pred-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
-    # Step 1: Build knowledge from seed data
+    # Build knowledge context
     kg_context = ""
     kg_data = None
     if req.mode == "deep" or req.mode == "iterative":
@@ -58,67 +57,49 @@ async def run_prediction(req: PredictRequest):
         kg_context = kg.get_context_for_simulation()
         kg_data = kg.to_dict()
 
-    # Step 2: Generate personas from knowledge
-    personas = await generate_personas_from_knowledge(req.goal, kg_context or req.goal, req.num_personas)
+    # Generate personas
+    persona_defs = await generate_personas(req.goal, kg_context, req.num_personas)
 
-    # Step 3: Run the simulation
-    sim = Simulation(sim_id, req.goal, personas, req.num_rounds)
-    _simulations[sim_id] = sim
+    # Create and run prediction
+    prediction = UltimusPrediction(pred_id, req.goal, persona_defs, req.num_rounds)
+    _predictions[pred_id] = prediction
 
-    # Collect events for response
-    events = []
-    sim.on_event(lambda e: events.append(e))
+    result = await prediction.run()
 
-    result = await sim.run()
-
-    # Step 4: Calculate costs
-    # Build strategy summary from simulation results
-    strategy = await _generate_strategy_from_simulation(sim)
+    # Generate strategy analysis from result
+    strategy = await _analyze_result(prediction)
     cost_model = _calculator.calculate(strategy, req.seed_capital) if strategy else None
 
     # Save to MongoDB
     db = get_db()
     if db is not None:
-        doc = {
-            **result,
-            "mode": req.mode,
-            "knowledge_graph": kg_data,
-            "strategy": strategy,
-            "cost_model": cost_model,
-            "events": events[-50:],  # Keep last 50 events
-        }
+        doc = {**result, "mode": req.mode, "knowledge_graph": kg_data,
+               "strategy": strategy, "cost_model": cost_model}
         await db.predictions.insert_one(doc)
 
-    return {
-        **result,
-        "mode": req.mode,
-        "knowledge_graph": kg_data,
-        "strategy": strategy,
-        "cost_model": cost_model,
-        "events_count": len(events),
-    }
+    return {**result, "mode": req.mode, "knowledge_graph": kg_data,
+            "strategy": strategy, "cost_model": cost_model}
 
 
 @router.post("/predict/stream")
 async def run_prediction_stream(req: PredictRequest):
-    """Start simulation with SSE streaming — frontend sees agents act in real-time."""
-    sim_id = f"sim-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    """SSE stream — frontend sees simulation events in real-time."""
+    pred_id = f"pred-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
     kg_context = ""
     if req.mode == "deep":
         kg = await build_from_web_search(req.goal)
         kg_context = kg.get_context_for_simulation()
 
-    personas = await generate_personas_from_knowledge(req.goal, kg_context or req.goal, req.num_personas)
-    sim = Simulation(sim_id, req.goal, personas, req.num_rounds)
-    _simulations[sim_id] = sim
+    persona_defs = await generate_personas(req.goal, kg_context, req.num_personas)
+    prediction = UltimusPrediction(pred_id, req.goal, persona_defs, req.num_rounds)
+    _predictions[pred_id] = prediction
 
     queue = asyncio.Queue()
-    sim.on_event(lambda e: queue.put_nowait(e))
+    prediction.on_event(lambda e: queue.put_nowait(e))
 
-    async def event_stream():
-        # Start simulation in background
-        task = asyncio.create_task(sim.run())
+    async def stream():
+        task = asyncio.create_task(prediction.run())
         try:
             while not task.done() or not queue.empty():
                 try:
@@ -126,13 +107,12 @@ async def run_prediction_stream(req: PredictRequest):
                     yield f"data: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
                     yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
-            # Send final result
             result = await task
-            yield f"data: {json.dumps({'type': 'result', **result})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', **result})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @router.get("/predictions")
@@ -141,20 +121,20 @@ async def list_predictions():
     if db is not None:
         preds = await db.predictions.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
         return {"predictions": preds}
-    return {"predictions": [s.to_dict() for s in _simulations.values()]}
+    return {"predictions": [p.to_dict() for p in _predictions.values()]}
 
 
-@router.get("/predictions/{sim_id}")
-async def get_prediction(sim_id: str):
+@router.get("/predictions/{pred_id}")
+async def get_prediction(pred_id: str):
     db = get_db()
     if db is not None:
-        pred = await db.predictions.find_one({"id": sim_id}, {"_id": 0})
+        pred = await db.predictions.find_one({"id": pred_id}, {"_id": 0})
         if pred:
             return pred
-    sim = _simulations.get(sim_id)
-    if sim:
-        return sim.to_dict()
-    raise HTTPException(404, f"Simulation '{sim_id}' not found")
+    p = _predictions.get(pred_id)
+    if p:
+        return p.to_dict()
+    raise HTTPException(404, "Not found")
 
 
 @router.post("/execute")
@@ -164,15 +144,12 @@ async def execute_prediction(req: ExecuteRequest):
     if db is not None:
         pred = await db.predictions.find_one({"id": req.prediction_id}, {"_id": 0})
     if not pred:
-        raise HTTPException(404, "Prediction not found")
-
+        raise HTTPException(404, "Not found")
     strategy = pred.get("strategy", {})
     cost_model = pred.get("cost_model", {})
     result = await _executor.execute(req.prediction_id, strategy, pred.get("goal", ""), cost_model, db)
-
     if db is not None:
         await db.predictions.update_one({"id": req.prediction_id}, {"$set": {"status": "executing", "execution": result}})
-
     return result
 
 
@@ -182,50 +159,47 @@ async def ultimus_status():
     count = 0
     if db is not None:
         count = await db.predictions.count_documents({})
-    running = [s for s in _simulations.values() if s.status == "running"]
+    running = [p for p in _predictions.values() if p.status == "running"]
     return {"status": "ready", "predictions_total": count, "active_simulations": len(running)}
 
 
-async def _generate_strategy_from_simulation(sim: Simulation) -> Dict:
-    """Analyze simulation results and produce deployment strategy."""
-    llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
-    if not llm_key:
+async def _analyze_result(prediction: UltimusPrediction) -> Dict:
+    """Analyze Workforce output into a structured strategy."""
+    if not prediction.result:
+        return {}
+    try:
+        from camel.agents import ChatAgent
+        model = prediction._UltimusPrediction__class__  # Avoid reimporting
+    except Exception:
+        pass
+
+    key = os.environ.get("EMERGENT_LLM_KEY", "")
+    if not key:
         return {}
 
     from camel.agents import ChatAgent
     from camel.models import ModelFactory
     from camel.types import ModelPlatformType
 
-    model = ModelFactory.create(
-        model_platform=ModelPlatformType.OPENAI, model_type="gpt-4o-mini",
-        api_key=llm_key, url=LLM_URL,
-    )
+    model = ModelFactory.create(model_platform=ModelPlatformType.OPENAI, model_type="gpt-4o-mini",
+                                api_key=key, url="https://integrations.emergentagent.com/llm/v1")
 
-    # Summarize what happened in the simulation
-    summary_parts = [f"Goal: {sim.goal}", f"Rounds: {sim.num_rounds}", f"Personas: {len(sim.personas)}"]
-    summary_parts.append(f"Total posts: {len(sim.platform.posts)}, comments: {len(sim.platform.comments)}, follows: {len(sim.platform.follows)}")
+    result_text = str(prediction.result.get("task_result", ""))[:3000]
+    persona_summary = ", ".join(f"{p['name']} ({p['role']})" for p in prediction.persona_defs[:10])
 
-    for p in sim.personas:
-        summary_parts.append(f"- {p.name} ({p.role}): {len(p.actions)} actions. Last action: {p.actions[-1]['content'][:60] if p.actions else 'none'}")
+    prompt = f"""Analyze this simulation result and produce a deployment strategy.
 
-    # Top posts by engagement
-    top_posts = sorted(sim.platform.posts, key=lambda p: len(p.get("comments", [])) + len(p.get("reactions", [])), reverse=True)[:5]
-    for p in top_posts:
-        summary_parts.append(f"Top post by {p['author']}: \"{p['content'][:80]}\" ({len(p.get('comments',[]))} comments, {len(p.get('reactions',[]))} reactions)")
-
-    prompt = f"""Analyze this completed simulation and produce a deployment strategy.
-
-Simulation data:
-{chr(10).join(summary_parts)}
+Goal: {prediction.goal}
+Personas: {persona_summary}
+Result: {result_text}
 
 Return JSON:
-{{"summary": "strategy summary", "recommended_agents": [{{"role": "...", "genesis_prompt_focus": "...", "priority": "high/medium/low", "estimated_cost": 0.0}}], "total_seed_cost": 0.0, "estimated_break_even_hours": 0, "confidence_score": 0.0, "risks": ["..."], "key_actions": ["..."]}}
-Return ONLY valid JSON."""
+{{"summary":"...","recommended_agents":[{{"role":"...","genesis_prompt_focus":"...","priority":"high/medium/low","estimated_cost":0.0}}],"total_seed_cost":0.0,"estimated_break_even_hours":0,"confidence_score":0.0,"risks":["..."],"key_actions":["..."]}}
+ONLY valid JSON."""
 
-    agent = ChatAgent(system_message="Analyze simulation results. Return JSON.", model=model)
+    agent = ChatAgent(system_message="Analyze simulation results. Return JSON only.", model=model)
     response = agent.step(prompt)
     content = response.msgs[0].content if response.msgs else "{}"
-
     try:
         if "```" in content:
             content = content.split("```")[1]
@@ -233,4 +207,4 @@ Return ONLY valid JSON."""
                 content = content[4:]
         return json.loads(content.strip())
     except json.JSONDecodeError:
-        return {"summary": "Strategy analysis failed", "confidence_score": 0.0}
+        return {"summary": "Analysis failed", "confidence_score": 0.0}
