@@ -77,6 +77,7 @@ class Prediction:
         self.created_at = datetime.now(timezone.utc).isoformat()
         self.completed_at: Optional[str] = None
         self.progress = 0.0
+        self.knowledge_graph: Optional[Dict] = None
 
     def to_dict(self) -> dict:
         return {
@@ -86,6 +87,7 @@ class Prediction:
             "rounds_completed": len(self.rounds),
             "strategy": self.strategy, "cost_model": self.cost_model,
             "created_at": self.created_at, "completed_at": self.completed_at,
+            "knowledge_graph": self.knowledge_graph,
         }
 
 
@@ -103,10 +105,25 @@ class Predictor:
         pred = Prediction(pred_id, goal, mode)
         self._predictions[pred_id] = pred
 
-        # Step 1: Generate personas based on the goal
+        # Build knowledge graph based on mode
+        kg_context = ""
+        if mode in ("deep", "expert", "iterative"):
+            pred.status = "building_knowledge"
+            pred.progress = 0.05
+            from ultimus.knowledge import build_knowledge_graph, build_from_web_search
+            if mode == "deep" or mode == "iterative":
+                kg = await build_from_web_search(goal)
+            else:  # expert
+                kg = await build_knowledge_graph(seed_data, goal)
+            kg_context = kg.get_context_for_simulation()
+            pred.knowledge_graph = kg.to_dict()
+
+        combined_seed = (seed_data + "\n" + kg_context).strip() if kg_context else seed_data
+
+        # Step 1: Generate personas based on the goal + knowledge
         pred.status = "generating_personas"
         pred.progress = 0.1
-        pred.personas = await self._generate_personas(goal, mode, num_personas, seed_data)
+        pred.personas = await self._generate_personas(goal, mode, num_personas, combined_seed)
         pred.progress = 0.3
 
         # Step 2: Run simulation rounds

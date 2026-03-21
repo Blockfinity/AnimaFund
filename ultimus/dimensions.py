@@ -64,23 +64,32 @@ async def get_simulation_world(prediction_id: str):
         raise HTTPException(404, f"Prediction '{prediction_id}' not found")
 
     personas = pred.get("personas", [])
-    # Build relationship map from simulation events
+    kg = pred.get("knowledge_graph", {})
+
+    # Build relationships from knowledge graph if available, otherwise from persona pairs
     relationships = []
-    for persona in personas:
-        for other in personas:
-            if persona["name"] != other["name"]:
-                relationships.append({
-                    "from": persona["name"],
-                    "to": other["name"],
-                    "type": "collaborator" if persona.get("role") != other.get("role") else "peer",
-                })
+    if kg and kg.get("relationships"):
+        for r in kg["relationships"]:
+            relationships.append({"from": r["from"], "to": r["to"], "type": r.get("type", "related")})
+    else:
+        for persona in personas:
+            for other in personas:
+                if persona["name"] != other["name"]:
+                    relationships.append({
+                        "from": persona["name"], "to": other["name"],
+                        "type": "collaborator" if persona.get("role") != other.get("role") else "peer",
+                    })
+
+    # Include knowledge graph entities as additional graph nodes
+    kg_entities = kg.get("entities", []) if kg else []
 
     return {
         "prediction_id": prediction_id,
         "goal": pred.get("goal"),
         "status": pred.get("status"),
         "personas": personas,
-        "relationships": relationships[:20],
+        "relationships": relationships[:50],
+        "knowledge_graph": kg,
         "rounds": pred.get("rounds_completed", 0),
         "strategy": pred.get("strategy"),
     }
