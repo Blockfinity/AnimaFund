@@ -1,6 +1,6 @@
 """
 Ultimus Predictor — Uses Anima Machina's Workforce for real multi-agent simulation.
-NOT a custom simulation engine. Uses CAMEL's built-in orchestration.
+NOT a custom simulation engine. Uses Anima Machina's built-in orchestration.
 """
 import os
 import json
@@ -9,11 +9,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Callable
 
-from camel.societies.workforce import Workforce
-from camel.agents import ChatAgent
-from camel.models import ModelFactory
-from camel.types import ModelPlatformType
-from camel.toolkits import FunctionTool
+from anima_machina.societies.workforce import Workforce
+from anima_machina.agents import ChatAgent
+from anima_machina.models import ModelFactory
+from anima_machina.types import ModelPlatformType
+from anima_machina.toolkits import FunctionTool
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ This is NOT a debate. It's a simulation where each persona acts independently ba
 
         # Process the prediction task
         try:
-            from camel.tasks import Task
+            from anima_machina.tasks import Task
             task = Task(
                 content=task_description,
                 id=self.id,

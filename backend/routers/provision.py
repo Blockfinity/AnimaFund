@@ -114,7 +114,7 @@ async def deploy_agent(req: CreateSandboxRequest):
 
     # Step 2: Install runtime (SKIP if already installed to save credits)
     try:
-        check_cmd = "python3 -c 'from camel.agents import ChatAgent; print(\"RUNTIME_OK\")' 2>&1"
+        check_cmd = "python3 -c 'from anima_machina.agents import ChatAgent; print(\"RUNTIME_OK\")' 2>&1"
         check_result = await provider.exec_in_vm(sandbox_id, check_cmd, timeout=15)
         if "RUNTIME_OK" in check_result.get("output", ""):
             prov.setdefault("tools", {})["runtime"] = {"status": "installed"}
@@ -125,11 +125,11 @@ async def deploy_agent(req: CreateSandboxRequest):
         # Only install if not already present
         try:
             install_cmd = (
-                "pip3 install camel-ai openai httpx eth-account web3 markitdown 2>&1 | tail -3 && "
+                "pip3 install anima-machina openai httpx eth-account web3 markitdown 2>&1 | tail -3 && "
                 "ln -sf $(which python3) /usr/bin/python 2>/dev/null; "
                 "pip3 install playwright 2>&1 | tail -1 && "
                 "python3 -m playwright install --with-deps chromium 2>&1 | tail -1 && "
-                "python3 -c 'from camel.agents import ChatAgent; print(\"RUNTIME_OK\")' && "
+                "python3 -c 'from anima_machina.agents import ChatAgent; print(\"RUNTIME_OK\")' && "
                 "python --version 2>&1"
             )
             result = await provider.exec_in_vm(sandbox_id, install_cmd, timeout=180)
@@ -208,7 +208,7 @@ echo "CONFIG_WRITTEN"
 
         # Write custom toolkits
         for toolkit_name in ["wallet_toolkit.py", "state_reporting_toolkit.py", "spawn_toolkit.py"]:
-            toolkit_path = f"/app/anima-machina/camel/toolkits/{toolkit_name}"  # Package dir is still camel/ (upstream)
+            toolkit_path = f"/app/anima-machina/anima_machina/toolkits/{toolkit_name}"  # Anima Machina toolkits
             if os.path.exists(toolkit_path):
                 with open(toolkit_path) as f:
                     tk_code = f.read()

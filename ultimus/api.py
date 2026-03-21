@@ -168,7 +168,7 @@ async def _analyze_result(prediction: UltimusPrediction) -> Dict:
     if not prediction.result:
         return {}
     try:
-        from camel.agents import ChatAgent
+        from anima_machina.agents import ChatAgent
         model = prediction._UltimusPrediction__class__  # Avoid reimporting
     except Exception:
         pass
@@ -177,9 +177,9 @@ async def _analyze_result(prediction: UltimusPrediction) -> Dict:
     if not key:
         return {}
 
-    from camel.agents import ChatAgent
-    from camel.models import ModelFactory
-    from camel.types import ModelPlatformType
+    from anima_machina.agents import ChatAgent
+    from anima_machina.models import ModelFactory
+    from anima_machina.types import ModelPlatformType
 
     model = ModelFactory.create(model_platform=ModelPlatformType.OPENAI, model_type="gpt-4o-mini",
                                 api_key=key, url="https://integrations.emergentagent.com/llm/v1")

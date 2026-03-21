@@ -125,9 +125,9 @@ async def chat_with_entity(req: ChatRequest):
     if not llm_key:
         raise HTTPException(500, "LLM key not configured")
 
-    from camel.agents import ChatAgent
-    from camel.models import ModelFactory
-    from camel.types import ModelPlatformType
+    from anima_machina.agents import ChatAgent
+    from anima_machina.models import ModelFactory
+    from anima_machina.types import ModelPlatformType
 
     model = ModelFactory.create(
         model_platform=ModelPlatformType.OPENAI,

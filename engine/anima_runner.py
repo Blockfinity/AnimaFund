@@ -343,10 +343,10 @@ def main():
     os.environ["DEFAULT_MODEL_TYPE"] = LLM_MODEL
     os.environ["DEFAULT_MODEL_PLATFORM_TYPE"] = "openai"
 
-    from camel.agents import ChatAgent
-    from camel.models import ModelFactory
-    from camel.types import ModelPlatformType
-    from camel.toolkits import FunctionTool
+    from anima_machina.agents import ChatAgent
+    from anima_machina.models import ModelFactory
+    from anima_machina.types import ModelPlatformType
+    from anima_machina.toolkits import FunctionTool
 
     # Create model
     model_kwargs = {"model_platform": ModelPlatformType.OPENAI, "model_type": LLM_MODEL, "api_key": LLM_API_KEY}
@@ -369,7 +369,7 @@ def main():
 
     # Terminal (shell access)
     try:
-        from camel.toolkits import TerminalToolkit
+        from anima_machina.toolkits import TerminalToolkit
         tk = TerminalToolkit()
         all_tools.extend(tk.get_tools())
         logger.info(f"TerminalToolkit: {len(tk.get_tools())} tools")
@@ -378,7 +378,7 @@ def main():
 
     # Code execution
     try:
-        from camel.toolkits import CodeExecutionToolkit
+        from anima_machina.toolkits import CodeExecutionToolkit
         tk = CodeExecutionToolkit()
         all_tools.extend(tk.get_tools())
         logger.info(f"CodeExecutionToolkit: {len(tk.get_tools())} tools")
@@ -387,7 +387,7 @@ def main():
 
     # File operations
     try:
-        from camel.toolkits import FileToolkit
+        from anima_machina.toolkits import FileToolkit
         tk = FileToolkit()
         all_tools.extend(tk.get_tools())
         logger.info(f"FileToolkit: {len(tk.get_tools())} tools")
@@ -407,7 +407,7 @@ def main():
 
     # Register MemoryToolkit for conversation persistence
     try:
-        from camel.toolkits import MemoryToolkit
+        from anima_machina.toolkits import MemoryToolkit
         mem_tk = MemoryToolkit(agent=agent)
         # Add memory tools so agent can save/load its full conversation state
         for tool in mem_tk.get_tools():

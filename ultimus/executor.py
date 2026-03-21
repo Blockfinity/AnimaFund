@@ -20,9 +20,9 @@ class Executor:
 
     async def generate_genesis_prompts(self, strategy: Dict, goal: str) -> List[Dict]:
         """Generate a genesis prompt for each agent role in the strategy."""
-        from camel.agents import ChatAgent
-        from camel.models import ModelFactory
-        from camel.types import ModelPlatformType
+        from anima_machina.agents import ChatAgent
+        from anima_machina.models import ModelFactory
+        from anima_machina.types import ModelPlatformType
 
         model = ModelFactory.create(
             model_platform=ModelPlatformType.OPENAI,
