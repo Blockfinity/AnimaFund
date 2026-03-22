@@ -213,10 +213,33 @@ INSTRUCTIONS:
             return None
 
     def kill_agent(self, agent_id: str) -> bool:
-        """Kill a running agent process."""
+        """Kill a running agent process and clean up."""
         proc = self._processes.get(agent_id)
         if proc and proc.poll() is None:
             proc.terminate()
-            logger.info(f"Agent {agent_id} terminated")
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            logger.info(f"Agent {agent_id} terminated (PID {proc.pid})")
             return True
         return False
+
+    def get_agent_status(self, agent_id: str) -> Dict:
+        """Check if an agent process is alive."""
+        proc = self._processes.get(agent_id)
+        if not proc:
+            return {"agent_id": agent_id, "status": "not_found"}
+        returncode = proc.poll()
+        if returncode is None:
+            return {"agent_id": agent_id, "status": "running", "pid": proc.pid}
+        return {"agent_id": agent_id, "status": "exited", "exit_code": returncode, "pid": proc.pid}
+
+    def list_agents(self) -> List[Dict]:
+        """List all managed agent processes."""
+        return [self.get_agent_status(aid) for aid in self._processes]
+
+    def kill_all(self):
+        """Kill all running agents."""
+        for aid in list(self._processes.keys()):
+            self.kill_agent(aid)

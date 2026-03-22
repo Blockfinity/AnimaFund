@@ -16,14 +16,13 @@ from pydantic import BaseModel
 from database import get_db
 from ultimus.predictor import UltimusPrediction, generate_personas
 from ultimus.knowledge import build_knowledge_graph, build_from_web_search
-from ultimus.calculator import Calculator
+from ultimus.calculator import estimate_prediction
 from ultimus.executor import Executor
 
 router = APIRouter(prefix="/api/ultimus", tags=["ultimus"])
 logger = logging.getLogger(__name__)
 
 _predictions: Dict[str, UltimusPrediction] = {}
-_calculator = Calculator()
 _executor = Executor()
 
 
@@ -36,8 +35,19 @@ class PredictRequest(BaseModel):
     seed_data: str = ""
 
 
+class EstimateRequest(BaseModel):
+    goal: str
+    mode: str = "quick"
+
+
 class ExecuteRequest(BaseModel):
     prediction_id: str
+
+
+@router.post("/estimate")
+async def get_estimate(req: EstimateRequest):
+    """Pre-simulation: analyze goal and estimate parameters, costs, timeline."""
+    return await estimate_prediction(req.goal, req.mode)
 
 
 @router.post("/predict")
@@ -68,7 +78,10 @@ async def run_prediction(req: PredictRequest):
 
     # Generate strategy analysis from result
     strategy = await _analyze_result(prediction)
-    cost_model = _calculator.calculate(strategy, req.seed_capital) if strategy else None
+    cost_model = None
+    if strategy:
+        est = await estimate_prediction(req.goal, req.mode)
+        cost_model = est.get("simulation", {})
 
     # Save to MongoDB
     db = get_db()

@@ -57,7 +57,7 @@ def main():
     from anima_machina.toolkits import TerminalToolkit, CodeExecutionToolkit, SearchToolkit, FunctionTool
 
     # Create model — use whatever is configured
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if False:  # Anthropic credits exhausted, use Emergent key
         model = ModelFactory.create(
             model_platform=ModelPlatformType.ANTHROPIC,
             model_type="claude-sonnet-4-20250514",
@@ -92,18 +92,32 @@ def main():
 
     webhook({"type": "state", "status": "running", "message": "Agent deployed and starting", "engine_running": True})
 
+    empty_call_count = 0
+
     for turn in range(1, MAX_TURNS + 1):
         log.info(f"Turn {turn}/{MAX_TURNS}")
         try:
             if turn == 1:
                 r = agent.step("You are now live. Begin executing your mission. Use your tools.")
+            elif empty_call_count >= 3:
+                # Agent is stuck sending empty tool calls — redirect it
+                r = agent.step("Your last tool calls had missing arguments. Try a DIFFERENT approach. Use shell_exec to run a command, or search_duckduckgo to search the web. Do NOT use execute_code without providing code.")
+                empty_call_count = 0
             else:
                 r = agent.step("Continue your mission. Take your next action.")
 
             content = r.msgs[0].content if r.msgs else ""
             tc = r.info.get("tool_calls", []) if r.info else []
-            log.info(f"Turn {turn}: {len(tc)} tools, {content[:100]}")
 
+            # Check for empty/failed tool calls
+            failed = sum(1 for t in tc if not t.result or "missing" in str(t.result).lower() or "no arguments" in str(t.result).lower())
+            if failed > 0:
+                empty_call_count += failed
+                log.warning(f"Turn {turn}: {failed} empty/failed tool calls (total streak: {empty_call_count})")
+            else:
+                empty_call_count = 0
+
+            log.info(f"Turn {turn}: {len(tc)} tools ({failed} failed), {content[:100]}")
             webhook({"type": "state", "status": "running", "message": content[:100], "engine_running": True})
             time.sleep(2)
 
