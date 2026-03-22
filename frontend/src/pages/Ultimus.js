@@ -44,6 +44,7 @@ export default function Ultimus({ onSelectAgent }) {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+  const [liveFeed, setLiveFeed] = useState([]);
   const graphRef = useRef();
 
   const fetchData = useCallback(async () => {
@@ -52,10 +53,24 @@ export default function Ultimus({ onSelectAgent }) {
         fetch(`${API}/api/ultimus/predictions`), fetch(`${API}/api/dimensions/live`)
       ]);
       setPredictions((await pRes.json()).predictions || []);
-      setAgents((await aRes.json()).agents || []);
+      const liveData = await aRes.json();
+      setAgents(liveData.agents || []);
+      // Fetch recent actions from all live agents for the live feed
+      const newActions = [];
+      for (const a of (liveData.agents || []).slice(0, 10)) {
+        try {
+          const stateRes = await fetch(`${API}/api/webhook/agent/${a.agent_id}`);
+          const state = await stateRes.json();
+          (state.actions || []).slice(-3).forEach(act => {
+            newActions.push({ ...act, agent_id: a.agent_id, agent_name: a.name || a.agent_id });
+          });
+        } catch {}
+      }
+      newActions.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      setLiveFeed(newActions.slice(0, 20));
     } catch {}
   }, []);
-  useEffect(() => { fetchData(); const iv = setInterval(fetchData, 10000); return () => clearInterval(iv); }, [fetchData]);
+  useEffect(() => { fetchData(); const iv = setInterval(fetchData, 6000); return () => clearInterval(iv); }, [fetchData]);
 
   // Run prediction with SSE
   const runPrediction = async () => {
@@ -217,21 +232,61 @@ export default function Ultimus({ onSelectAgent }) {
             <div style={{ flex: 1, position: 'relative' }}>
               {graphData.nodes.length > 0 ? (
                 <ForceGraph2D ref={graphRef} graphData={graphData}
-                  nodeLabel={n => `${n.name} (${n.role})`}
-                  nodeColor={n => (selectedNode && selectedNode.name === n.name) ? '#111' : getNodeColor(n)}
-                  nodeVal={n => 3 + Math.min((n.actions || 0) * 0.3, 15)}
+                  nodeLabel={n => `${n.name} (${n.role})${n.isLive ? ' [LIVE]' : ''}`}
+                  nodeColor={n => {
+                    if (selectedNode && selectedNode.name === n.name) return '#111';
+                    if (n.isLive) {
+                      const s = (n.data?.status || '').toLowerCase();
+                      if (s === 'running' || s === 'executing') return '#22c55e';
+                      if (s === 'completed') return '#3b82f6';
+                      if (s === 'error') return '#ef4444';
+                      return '#10b981';
+                    }
+                    return getNodeColor(n);
+                  }}
+                  nodeVal={n => {
+                    if (n.isLive) return 8 + Math.min((n.actions || 0) * 0.5, 20);
+                    return 3 + Math.min((n.actions || 0) * 0.3, 15);
+                  }}
                   nodeCanvasObjectMode={() => 'after'}
                   nodeCanvasObject={(node, ctx, gs) => {
                     const fontSize = Math.max(9 / gs, 2.5);
                     const isSel = selectedNode && selectedNode.name === node.name;
+                    const nodeR = (node.val || 3) / gs;
+
+                    // Live agent: pulsing outer ring
+                    if (node.isLive) {
+                      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 500 + node.x);
+                      ctx.beginPath();
+                      ctx.arc(node.x, node.y, nodeR + 3 / gs, 0, Math.PI * 2);
+                      ctx.strokeStyle = `rgba(16, 185, 129, ${0.2 + pulse * 0.3})`;
+                      ctx.lineWidth = 2 / gs;
+                      ctx.stroke();
+                      // Status dot
+                      ctx.beginPath();
+                      ctx.arc(node.x + nodeR * 0.7, node.y - nodeR * 0.7, 2 / gs, 0, Math.PI * 2);
+                      const s = (node.data?.status || '').toLowerCase();
+                      ctx.fillStyle = s === 'running' ? '#22c55e' : s === 'error' ? '#ef4444' : '#6b7280';
+                      ctx.fill();
+                    }
+
+                    // Label
                     ctx.font = `${isSel ? 'bold ' : ''}${fontSize}px sans-serif`;
                     ctx.textAlign = 'center';
-                    ctx.fillStyle = isSel ? '#111' : '#6b7280';
+                    ctx.fillStyle = isSel ? '#111' : node.isLive ? '#111' : '#6b7280';
                     const label = (node.name || '').length > 20 ? node.name.slice(0, 18) + '..' : node.name;
-                    ctx.fillText(label, node.x, node.y + (node.val || 3) / gs + fontSize + 1);
+                    ctx.fillText(label, node.x, node.y + nodeR + fontSize + 1);
                   }}
-                  linkColor={() => '#e5e7eb'}
-                  linkWidth={0.5}
+                  linkColor={l => {
+                    const lbl = (l.label || '').toLowerCase();
+                    if (lbl.includes('agree')) return 'rgba(34, 197, 94, 0.4)';
+                    if (lbl.includes('disagree')) return 'rgba(239, 68, 68, 0.4)';
+                    return '#e5e7eb';
+                  }}
+                  linkWidth={l => {
+                    const lbl = (l.label || '').toLowerCase();
+                    return (lbl.includes('agree') || lbl.includes('disagree')) ? 1.5 : 0.5;
+                  }}
                   linkLabel={showEdgeLabels ? (l => l.label || '') : undefined}
                   linkDirectionalArrowLength={showEdgeLabels ? 3 : 0}
                   onNodeClick={(node) => { setSelectedNode(node.data); setChatMessages([]); if (node.data.agent_id && onSelectAgent) onSelectAgent(node.data.agent_id); }}
@@ -290,6 +345,33 @@ export default function Ultimus({ onSelectAgent }) {
                   </div>
                 </div>
               </>}
+
+              {/* Live Feed — streaming actions from deployed agents */}
+              {liveFeed.length > 0 && (
+                <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: '8px', width: '340px', maxHeight: '200px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#22c55e', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+                      Live Feed
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#9ca3af' }}>{agents.filter(a => a.engine_running).length} active</span>
+                  </div>
+                  <div style={{ overflowY: 'auto', maxHeight: '160px', padding: '4px 0' }}>
+                    {liveFeed.map((act, i) => (
+                      <div key={i} style={{ padding: '4px 12px', fontSize: '11px', borderBottom: '1px solid #fafafa' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontWeight: 600, color: '#111' }}>{act.agent_name}</span>
+                          <span style={{ color: '#d1d5db', fontSize: '9px' }}>{(act.timestamp || '').slice(11, 19)}</span>
+                        </div>
+                        <div style={{ color: '#6b7280', marginTop: '1px' }}>
+                          {act.tool_name && <span style={{ color: '#9ca3af', marginRight: '4px', fontFamily: 'monospace', fontSize: '10px' }}>{act.tool_name}</span>}
+                          {(act.action || '').slice(0, 80)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Node Details card overlay */}
               {selectedNode && (
@@ -430,7 +512,7 @@ export default function Ultimus({ onSelectAgent }) {
           </div>
         )}
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 1 } }`}</style>
     </div>
   );
 }
