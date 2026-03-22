@@ -45,6 +45,9 @@ export default function Ultimus({ onSelectAgent }) {
   const [chatLoading, setChatLoading] = useState(false);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const [liveFeed, setLiveFeed] = useState([]);
+  const [estimate, setEstimate] = useState(null);
+  const [showWallet, setShowWallet] = useState(false);
+  const [expandedPrediction, setExpandedPrediction] = useState(null);
   const graphRef = useRef();
 
   const fetchData = useCallback(async () => {
@@ -75,7 +78,7 @@ export default function Ultimus({ onSelectAgent }) {
   // Run prediction with SSE
   const runPrediction = async () => {
     if (!goal.trim()) return;
-    setLoading(true); setPrediction(null); setSelectedNode(null); setSimEvents([]); setSimRound(0); setTab('graph');
+    setLoading(true); setPrediction(null); setSelectedNode(null); setSimEvents([]); setSimRound(0); setTab('graph'); setEstimate(null);
     try {
       const response = await fetch(`${API}/api/ultimus/predict/stream`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -136,6 +139,21 @@ export default function Ultimus({ onSelectAgent }) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: d.response || 'No response' }]);
     } catch (e) { setChatMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + e.message }]); }
     setChatLoading(false);
+  };
+
+  const clearSimulation = () => {
+    setPrediction(null); setSelectedNode(null); setSimEvents([]); setSimRound(0);
+    setChatMessages([]); setEstimate(null); setShowWallet(false);
+  };
+
+  const getEstimate = async () => {
+    if (!goal.trim()) return;
+    try {
+      const r = await fetch(`${API}/api/ultimus/estimate`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal, mode: 'quick' }) });
+      const d = await r.json();
+      if (!d.detail) setEstimate(d);
+    } catch {}
   };
 
   // Build graph data
@@ -217,6 +235,16 @@ export default function Ultimus({ onSelectAgent }) {
           {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={14} />}
           {loading ? `Round ${simRound}...` : 'Predict'}
         </button>
+        {goal.trim() && !loading && !prediction && (
+          <button onClick={getEstimate} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '7px 12px', fontSize: '12px', color: '#6b7280', cursor: 'pointer' }}>
+            Estimate
+          </button>
+        )}
+        {prediction && (
+          <button onClick={clearSimulation} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '7px 12px', fontSize: '12px', color: '#ef4444', cursor: 'pointer' }}>
+            Clear
+          </button>
+        )}
         {prediction?.status === 'completed' && (
           <button onClick={executePrediction} disabled={executing} style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
             {executing ? 'Deploying...' : 'Execute'}
@@ -375,28 +403,47 @@ export default function Ultimus({ onSelectAgent }) {
 
               {/* Node Details card overlay */}
               {selectedNode && (
-                <div style={{ position: 'absolute', top: '12px', left: '12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px', width: '320px', maxHeight: '60vh', overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
+                <div style={{ position: 'absolute', top: '12px', left: '12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px', width: '340px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <span style={{ fontSize: '15px', fontWeight: 700 }}>Node Details</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ background: getNodeColor({ role: selectedNode.role || selectedNode.type }), color: '#fff', fontSize: '10px', fontWeight: 600, padding: '2px 10px', borderRadius: '12px' }}>{selectedNode.role || selectedNode.type || 'Agent'}</span>
+                      {selectedNode.agent_id && <button onClick={() => setShowWallet(!showWallet)} style={{ background: showWallet ? '#111' : '#f9fafb', color: showWallet ? '#fff' : '#6b7280', border: '1px solid #e5e7eb', borderRadius: '4px', padding: '2px 8px', fontSize: '10px', cursor: 'pointer' }}>Wallet</button>}
                       <button onClick={() => setSelectedNode(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '16px' }}>x</button>
                     </div>
                   </div>
-                  <div style={{ fontSize: '12px', color: '#374151', lineHeight: 1.8 }}>
-                    <div><span style={{ color: '#9ca3af' }}>Name:</span> {selectedNode.name || selectedNode.agent_id}</div>
-                    {selectedNode.agent_id && <div><span style={{ color: '#9ca3af' }}>ID:</span> <span style={{ fontFamily: 'monospace', fontSize: '10px' }}>{selectedNode.agent_id}</span></div>}
-                    {selectedNode.status && <div><span style={{ color: '#9ca3af' }}>Status:</span> {selectedNode.status}</div>}
-                    {selectedNode.personality && <div style={{ marginTop: '8px' }}><span style={{ color: '#9ca3af' }}>Personality:</span><div style={{ marginTop: '2px' }}>{selectedNode.personality}</div></div>}
-                    {selectedNode.strategy && <div style={{ marginTop: '6px' }}><span style={{ color: '#9ca3af' }}>Strategy:</span><div style={{ marginTop: '2px' }}>{selectedNode.strategy}</div></div>}
-                    {selectedNode.description && <div style={{ marginTop: '6px' }}><span style={{ color: '#9ca3af' }}>Summary:</span><div style={{ marginTop: '2px' }}>{selectedNode.description}</div></div>}
-                    {(selectedNode.actions_count > 0 || selectedNode.goal_progress > 0) && (
-                      <div style={{ marginTop: '6px' }}>
-                        <span style={{ color: '#9ca3af' }}>Actions:</span> {selectedNode.actions_count || 0}
-                        {selectedNode.goal_progress > 0 && <span style={{ marginLeft: '12px' }}><span style={{ color: '#9ca3af' }}>Progress:</span> {(selectedNode.goal_progress * 100).toFixed(0)}%</span>}
-                      </div>
-                    )}
-                  </div>
+
+                  {/* Wallet view */}
+                  {showWallet && selectedNode.agent_id && (
+                    <div style={{ background: '#f9fafb', borderRadius: '6px', padding: '12px', marginBottom: '10px', textAlign: 'center' }}>
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(selectedNode.wallet_address || selectedNode.agent_id)}`} alt="QR" style={{ width: '120px', height: '120px', borderRadius: '4px' }} />
+                      <div style={{ fontSize: '10px', fontFamily: 'monospace', marginTop: '6px', color: '#374151', wordBreak: 'break-all' }}>{selectedNode.wallet_address || 'No wallet assigned'}</div>
+                      {selectedNode.financials && (
+                        <div style={{ marginTop: '6px', fontSize: '12px' }}>
+                          <span style={{ color: '#22c55e', fontWeight: 700 }}>${(selectedNode.financials.usdc_balance || 0).toFixed(2)} USDC</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Agent details */}
+                  {!showWallet && (
+                    <div style={{ fontSize: '12px', color: '#374151', lineHeight: 1.8 }}>
+                      <div><span style={{ color: '#9ca3af' }}>Name:</span> {selectedNode.name || selectedNode.agent_id}</div>
+                      {selectedNode.agent_id && <div><span style={{ color: '#9ca3af' }}>ID:</span> <span style={{ fontFamily: 'monospace', fontSize: '10px' }}>{selectedNode.agent_id}</span></div>}
+                      {selectedNode.status && <div><span style={{ color: '#9ca3af' }}>Status:</span> <span style={{ color: selectedNode.status === 'running' ? '#22c55e' : '#6b7280', fontWeight: 600 }}>{selectedNode.status}</span></div>}
+                      {selectedNode.personality && <div style={{ marginTop: '8px' }}><span style={{ color: '#9ca3af' }}>Personality:</span><div style={{ marginTop: '2px' }}>{selectedNode.personality}</div></div>}
+                      {selectedNode.strategy && <div style={{ marginTop: '6px' }}><span style={{ color: '#9ca3af' }}>Strategy:</span><div style={{ marginTop: '2px' }}>{selectedNode.strategy}</div></div>}
+                      {selectedNode.description && <div style={{ marginTop: '6px' }}><span style={{ color: '#9ca3af' }}>Summary:</span><div style={{ marginTop: '2px' }}>{selectedNode.description}</div></div>}
+                      {(selectedNode.actions_count > 0 || selectedNode.goal_progress > 0) && (
+                        <div style={{ marginTop: '6px' }}>
+                          <span style={{ color: '#9ca3af' }}>Actions:</span> {selectedNode.actions_count || 0}
+                          {selectedNode.goal_progress > 0 && <span style={{ marginLeft: '12px' }}><span style={{ color: '#9ca3af' }}>Progress:</span> {(selectedNode.goal_progress * 100).toFixed(0)}%</span>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Inline chat */}
                   <div style={{ marginTop: '12px', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
                     <div style={{ maxHeight: '120px', overflowY: 'auto', marginBottom: '6px' }}>
@@ -415,6 +462,35 @@ export default function Ultimus({ onSelectAgent }) {
                       </button>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Estimate overlay */}
+              {estimate && !prediction && !loading && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '20px', width: '360px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 700 }}>Prediction Estimate</span>
+                    <button onClick={() => setEstimate(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>x</button>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#374151', lineHeight: 2 }}>
+                    <div><span style={{ color: '#9ca3af' }}>Complexity:</span> <span style={{ fontWeight: 600 }}>{estimate.complexity}</span></div>
+                    <div><span style={{ color: '#9ca3af' }}>Personas:</span> {estimate.recommended_personas}</div>
+                    <div><span style={{ color: '#9ca3af' }}>Rounds:</span> {estimate.recommended_rounds}</div>
+                    <div><span style={{ color: '#9ca3af' }}>LLM calls:</span> {estimate.simulation?.llm_calls}</div>
+                    <div><span style={{ color: '#9ca3af' }}>Est. cost:</span> ${estimate.simulation?.estimated_cost?.toFixed(4)}</div>
+                    <div><span style={{ color: '#9ca3af' }}>Est. time:</span> ~{Math.ceil(estimate.simulation?.estimated_minutes || 0)} min</div>
+                    {estimate.persona_types?.length > 0 && (
+                      <div style={{ marginTop: '6px' }}><span style={{ color: '#9ca3af' }}>Persona types:</span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                          {estimate.persona_types.map((t, i) => <span key={i} style={{ background: '#f3f4f6', borderRadius: '4px', padding: '2px 8px', fontSize: '10px' }}>{t}</span>)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: '12px', fontSize: '11px', color: '#6b7280' }}>{estimate.reasoning}</div>
+                  <button onClick={runPrediction} style={{ marginTop: '12px', width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+                    Run Simulation ({estimate.recommended_personas} personas, {estimate.recommended_rounds} rounds)
+                  </button>
                 </div>
               )}
             </div>
@@ -490,24 +566,136 @@ export default function Ultimus({ onSelectAgent }) {
 
         {/* Workbench tab */}
         {tab === 'workbench' && (
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', maxWidth: '800px' }}>
-            {predictions.map((p, i) => (
-              <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '20px', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 700 }}>{p.goal}</span>
-                  <span style={{ background: p.status === 'completed' ? '#dcfce7' : '#fef3c7', color: p.status === 'completed' ? '#166534' : '#92400e', fontSize: '10px', fontWeight: 600, padding: '2px 10px', borderRadius: '12px', textTransform: 'uppercase' }}>{p.status}</span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#6b7280' }}>{p.personas?.length || 0} personas · {p.num_rounds || 0} rounds · {p.mode || 'quick'}</div>
-                {p.strategy && <div style={{ marginTop: '8px', fontSize: '12px', color: '#374151' }}>{p.strategy.summary}</div>}
-                {p.cost_model && (
-                  <div style={{ marginTop: '8px', display: 'flex', gap: '16px', fontSize: '11px', color: '#6b7280' }}>
-                    <span>${p.cost_model.total_cost_per_hour}/h</span>
-                    <span>{p.cost_model.hours_funded}h funded</span>
-                    <span style={{ color: p.cost_model.self_sustaining ? '#22c55e' : '#ef4444' }}>{p.cost_model.self_sustaining ? 'Self-sustaining' : 'Burns out'}</span>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+            {predictions.map((p, i) => {
+              const isExpanded = expandedPrediction === p.id;
+              return (
+                <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
+                  {/* Header — always visible */}
+                  <div onClick={() => setExpandedPrediction(isExpanded ? null : p.id)}
+                    style={{ padding: '16px 20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isExpanded ? '#f9fafb' : '#fff' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>{p.goal}</div>
+                      <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                        {p.personas?.length || 0} personas · {p.num_rounds || 0} rounds · {p.mode || 'quick'}
+                        {p.strategy && <span> · {((p.strategy.confidence_score || 0) * 100).toFixed(0)}% confidence</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ background: p.status === 'completed' ? '#dcfce7' : p.status === 'executing' ? '#dbeafe' : '#fef3c7',
+                        color: p.status === 'completed' ? '#166534' : p.status === 'executing' ? '#1e40af' : '#92400e',
+                        fontSize: '10px', fontWeight: 600, padding: '2px 10px', borderRadius: '12px', textTransform: 'uppercase' }}>{p.status}</span>
+                      <ChevronDown size={14} style={{ color: '#9ca3af', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* Expanded details */}
+                  {isExpanded && (
+                    <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f3f4f6' }}>
+                      {/* Strategy */}
+                      {p.strategy && (
+                        <div style={{ padding: '12px 0', borderBottom: '1px solid #f3f4f6' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Strategy</div>
+                          <div style={{ fontSize: '13px', color: '#374151', lineHeight: 1.6 }}>{p.strategy.summary}</div>
+                          {p.strategy.key_actions && (
+                            <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {p.strategy.key_actions.map((a, j) => <span key={j} style={{ background: '#f3f4f6', borderRadius: '4px', padding: '2px 8px', fontSize: '10px', color: '#374151' }}>{typeof a === 'string' ? a : JSON.stringify(a)}</span>)}
+                            </div>
+                          )}
+                          {p.strategy.risks && <div style={{ marginTop: '6px', fontSize: '11px', color: '#ef4444' }}>Risks: {p.strategy.risks.join(' · ')}</div>}
+                          {p.strategy.coalitions_formed && <div style={{ marginTop: '4px', fontSize: '11px', color: '#3b82f6' }}>Coalitions: {p.strategy.coalitions_formed.join(' · ')}</div>}
+                        </div>
+                      )}
+
+                      {/* Cost model */}
+                      {p.cost_model && (
+                        <div style={{ padding: '12px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', gap: '20px', fontSize: '12px' }}>
+                          <span><span style={{ color: '#9ca3af' }}>Cost/h:</span> ${p.cost_model.total_cost_per_hour || p.cost_model.estimated_cost || 0}</span>
+                          <span><span style={{ color: '#9ca3af' }}>Funded:</span> {p.cost_model.hours_funded || '—'}h</span>
+                          <span style={{ color: p.cost_model.self_sustaining ? '#22c55e' : '#ef4444' }}>{p.cost_model.self_sustaining ? 'Self-sustaining' : 'Burns out'}</span>
+                        </div>
+                      )}
+
+                      {/* Personas */}
+                      <div style={{ padding: '12px 0', borderBottom: '1px solid #f3f4f6' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                          Personas ({(p.personas || []).length})
+                        </div>
+                        {(p.personas || []).map((ps, j) => (
+                          <div key={j} style={{ padding: '8px', borderRadius: '6px', marginBottom: '4px', background: '#fafafa' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 600, fontSize: '12px' }}>{ps.name}</span>
+                              <span style={{ fontSize: '10px', color: '#6b7280', background: '#e5e7eb', padding: '1px 8px', borderRadius: '8px' }}>{ps.role}</span>
+                            </div>
+                            {ps.personality && <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>{ps.personality}</div>}
+                            {ps.strategy && <div style={{ fontSize: '11px', color: '#374151', marginTop: '2px' }}><span style={{ color: '#9ca3af' }}>Strategy:</span> {ps.strategy}</div>}
+                            {ps.risk_tolerance && <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>Risk: {ps.risk_tolerance}</div>}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Round summaries */}
+                      {p.round_summaries && p.round_summaries.length > 0 && (
+                        <div style={{ padding: '12px 0', borderBottom: '1px solid #f3f4f6' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                            Simulation Rounds ({p.round_summaries.length})
+                          </div>
+                          {p.round_summaries.map((rs, j) => (
+                            <div key={j} style={{ marginBottom: '8px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600, color: '#111', marginBottom: '4px' }}>Round {rs.round} ({rs.events} actions)</div>
+                              {Object.entries(rs.positions || {}).map(([agent, pos], k) => (
+                                <div key={k} style={{ fontSize: '11px', color: '#6b7280', paddingLeft: '8px', marginBottom: '2px' }}>
+                                  <span style={{ fontWeight: 500, color: '#374151' }}>{agent}:</span> {pos.slice(0, 120)}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Relationships */}
+                      {p.relationships && p.relationships.length > 0 && (
+                        <div style={{ padding: '12px 0', borderBottom: '1px solid #f3f4f6' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                            Relationships ({p.relationships.length})
+                          </div>
+                          {p.relationships.map((r, j) => (
+                            <div key={j} style={{ fontSize: '11px', display: 'flex', gap: '4px', alignItems: 'center', marginBottom: '2px' }}>
+                              <span style={{ color: '#374151' }}>{r.from}</span>
+                              <span style={{ color: r.type.includes('agree') ? '#22c55e' : r.type.includes('disagree') ? '#ef4444' : '#9ca3af', fontSize: '10px', fontFamily: 'monospace' }}>{r.type}</span>
+                              <span style={{ color: '#374151' }}>{r.to}</span>
+                              <span style={{ color: '#d1d5db', fontSize: '9px' }}>R{r.round}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Execution results */}
+                      {p.execution && (
+                        <div style={{ padding: '12px 0' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                            Deployed Agents ({p.execution.agents_created})
+                          </div>
+                          {(p.execution.agents || []).map((a, j) => (
+                            <div key={j} style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #fafafa' }}>
+                              <span style={{ color: '#374151' }}>{a.name}</span>
+                              <span style={{ color: '#9ca3af', fontFamily: 'monospace', fontSize: '10px' }}>{a.agent_id}</span>
+                              <span style={{ color: a.status === 'running' ? '#22c55e' : '#6b7280', fontSize: '10px' }}>{a.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Actions — view on graph */}
+                      <button onClick={() => { setPrediction(p); setTab('graph'); }}
+                        style={{ marginTop: '8px', width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                        View on Graph
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {!predictions.length && <div style={{ color: '#d1d5db', textAlign: 'center', padding: '60px 0' }}>No predictions yet</div>}
           </div>
         )}
