@@ -1,53 +1,29 @@
-# Anima Platform — Audit Summary (March 21, 2026)
+# Anima Platform — Deployment Ready (March 22, 2026)
 
-## Q1: Rebrand - Our Code
-Zero "camel" references in backend/, ultimus/, engine/anima_runner.py, frontend/src/
-Only hits are in engine/workspace/.initial_env/ (pip vendor files — not our code)
+## Production Checklist
+- [x] Backend: FastAPI on port 8001, all endpoints responding (health, ultimus, agents, webhook, spawn, dimensions)
+- [x] Frontend: React built, 16 pages, Ultimus with graph + workbench
+- [x] MongoDB: Connected via MONGO_URL env var
+- [x] Anima Machina: Fully rebranded, 7/7 toolkits working, importable as anima_machina
+- [x] Ultimus: Predictor (multi-round simulation), Calculator (pre-estimate), Executor (per-persona deployment)
+- [x] Wallet: Build + sign USDC transactions on Base (needs ETH for gas to broadcast)
+- [x] BYOI: Conway + Fly.io providers
+- [x] Cleanup: automaton/ deleted (96MB), duplicate camel/ deleted (120MB), old tests removed
+- [x] No hardcoded secrets in source code
+- [x] requirements.txt frozen (175 packages)
+- [x] Frontend build passes
+- [x] sys.path configured for ultimus/ and anima-machina/ imports
 
-## Q2: Rebrand - anima_machina package
-1208 "camel" refs remain inside the forked package (copyright headers, logger names, env var names like CAMEL_LOGGING_LEVEL). These are expected in a forked Apache-2.0 project. Our code has zero.
+## Environment Variables Required
+MONGO_URL, DB_NAME, REACT_APP_BACKEND_URL, EMERGENT_LLM_KEY, OPENAI_API_KEY, OPENAI_API_BASE_URL,
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, CONWAY_API_KEY, FLY_API_TOKEN, FLY_APP_NAME,
+CREATOR_WALLET, CREATOR_ETH_ADDRESS
 
-## Q3: Import test
-`from anima_machina.agents import ChatAgent` + Workforce + Task = OK
-
-## Q4: predictor.py
-186 lines. Round-based simulation loop (lines 120-168). Each round builds context from ALL previous agent actions. ChatAgent reused across rounds (maintains conversation history).
-
-## Q5: 10-agent 3-round simulation tested
-10 personas: DayTraderDerek, LongTermLinda, DeFiDan, InstitutionalIvy, SkepticalSam, MaxiMina, RetailRyan, MarketMakerMaggie, AnalyticalAlex, JournalistJessie. 38 total events. Coalitions formed. Strategy at 85% confidence.
-
-## Q6: Round 2 context
-Yes — each agent receives ALL other agents' Round 1 actions as context. Exact text of positions visible.
-
-## Q7: Context management for 100 agents
-Last 2 rounds included in full. Earlier rounds dropped. Each agent's ChatAgent keeps its own conversation memory. LIMITATION: agents don't see others' actions from 3+ rounds ago.
-
-## Q8-Q9: Frontend
-16 pages. Ultimus page uses react-force-graph-2d. Shows prediction list + graph when loaded.
-
-## Q10: SSE streaming
-Backend SSE endpoint exists (POST /predict/stream). Frontend does NOT use it — waits for full response.
-
-## Q11: Dashboard data
-11/14 pages return REAL_DATA. Portfolio, DealFlow, OpenClawViewer = EMPTY.
-
-## Q12: Multi-agent selector
-selectedAgent state exists. No dropdown UI. Hardcoded to 'anima-fund'.
-
-## Q13: Routers
-10 files, 2298 total lines.
-
-## Q14: Endpoints
-health, agents, provision/status, ultimus/predictions, ultimus/status, spawn/ = all return real data.
-
-## Q15: Conway
-9 cents credits. Agent NOT running.
-
-## Q16-Q17: Runner + Wallet
-anima_runner.py uses anima_machina imports. Wallet has get_wallet_balance, send_payment, sweep_public_wallet, share_wallet_address. Core address hidden at code level.
-
-## Q18: Sandbox env
-Cannot test — sandbox agent not running (9 cents credits).
-
-## Q19-Q20: Structure
-anima-machina/ has BOTH camel/ and anima_machina/ directories (246MB total — should delete camel/ to save space). Total codebase: ~854MB.
+## Architecture
+- /app/backend/ — FastAPI platform API (server.py + 10 routers)
+- /app/frontend/ — React dashboard (16 pages including Ultimus)
+- /app/ultimus/ — Prediction engine (predictor, calculator, executor, dimensions, knowledge, api)
+- /app/anima-machina/ — Agent framework (CAMEL fork, fully rebranded)
+- /app/engine/ — Agent runners + skills + templates
+- /app/ultima-x/ — Inference model config (Qwen 3.5-122B)
+- /app/docs/ — Architecture documentation
