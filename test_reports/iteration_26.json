@@ -1,0 +1,74 @@
+{
+  "summary": "Iteration 26: BYOI Provider Key Management Bug Fix Verified. All 16 backend tests passed (100%). Frontend UI verified - Genesis screen shows provider selector with Conway Cloud and Fly.io options, Fly.io Account panel displays Connected status with key prefix when key exists.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_26_provider_keys.py",
+    "/app/test_reports/pytest/pytest_iteration26.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "provision.py: _get_fly_config() correctly reads Fly API key from agent's MongoDB document, falls back to env var",
+    "provision.py: provider-key-status endpoint returns configured=true, key_prefix, and app_name for Fly provider",
+    "provision.py: set-provider-key endpoint correctly strips 'FlyV1 ' prefix from pasted keys",
+    "provision.py: set-provider-key validates empty keys and returns 400 error",
+    "provision.py: Per-agent key isolation working - each agent stores its own fly_api_key in MongoDB",
+    "App.js: Provider selector UI shows Conway Cloud and Fly.io options",
+    "App.js: Fly.io Account panel shows Connected status when key exists, with app_name and key_prefix"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_26_provider_keys.py"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 tests passed)",
+    "frontend": "100% (Genesis screen, provider selector, Fly.io panel all working)"
+  },
+  "test_credentials": {
+    "TELEGRAM_BOT_TOKEN": "8474833303:AAHAhnRoHSIZTEruDu4ic-tPvdzrnTadnrw",
+    "TELEGRAM_CHAT_ID": "8613975358",
+    "App_URL": "https://anima-runtime.preview.emergentagent.com"
+  },
+  "seed_data_creation": "Multiple test agents created and deleted during tests (TEST_fly_prefix_test_*, TEST_conway_key_test_*, TEST_agent_a_*, TEST_agent_b_*, TEST_Fly_Workflow_*)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 26 verified the BYOI (Bring Your Own Infrastructure) bug fix for Fly.io. The 5 missing endpoints have been added to provision.py and are working: provider-key-status, set-provider-key, health-check, reset-sandbox, delete-sandbox. Per-agent key isolation is working - each agent stores its own fly_api_key in MongoDB. Frontend shows provider selector with Conway Cloud and Fly.io options. Fly.io Account panel shows Connected status when key exists.",
+  "tested_api_endpoints": [
+    "GET /api/provision/provider-key-status?provider=fly - returns configured=true, app_name, key_prefix",
+    "GET /api/provision/provider-key-status?provider=conway - returns configured=true, key_prefix",
+    "GET /api/provision/provider-key-status?provider=unknown - returns configured=false",
+    "POST /api/provision/set-provider-key (fly, empty key) - returns 400 'API key cannot be empty'",
+    "POST /api/provision/set-provider-key (fly, whitespace key) - returns 400",
+    "POST /api/provision/set-provider-key (fly, FlyV1 prefix) - strips prefix and stores key",
+    "POST /api/provision/set-provider-key (conway) - stores Conway key for agent",
+    "POST /api/provision/set-provider-key (unknown provider) - returns 400",
+    "POST /api/provision/health-check - returns success=false when no sandbox",
+    "POST /api/provision/reset-sandbox - returns error when no sandbox",
+    "POST /api/provision/delete-sandbox - returns error when no sandbox",
+    "POST /api/agents/create - requires telegram credentials",
+    "POST /api/agents/{id}/select - 200 for valid agent, 404 for nonexistent",
+    "DELETE /api/agents/anima-fund - returns 400 (cannot delete default)"
+  ],
+  "tested_ui_features": [
+    "Genesis screen loads with agent switcher bar",
+    "Infrastructure Provider selector shows Conway Cloud and Fly.io options",
+    "Clicking Fly.io shows Fly.io Account panel",
+    "Fly.io Account panel shows Connected status when key exists",
+    "Fly.io Account panel shows app_name (animafund) and key_prefix (fm2_lJPECAAA...)",
+    "Conway Account panel shows Connected status with balance and key_prefix",
+    "Select VM section shows all 5 tiers",
+    "Provision Agent stepper with Run All button"
+  ],
+  "bug_fix_verification": {
+    "original_bug": "It fails when adding a new fly api key for a new agent",
+    "root_cause": "5 missing backend endpoints that frontend was calling",
+    "fix_applied": "Added provider-key-status, set-provider-key, health-check, reset-sandbox, delete-sandbox endpoints to provision.py",
+    "verification_status": "VERIFIED - All endpoints working, per-agent key isolation confirmed, frontend UI working"
+  }
+}

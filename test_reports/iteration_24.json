@@ -35,7 +35,7 @@
     "CONWAY_API_KEY": "cnwy_k_HUFTefVvBakA_QMFbzeb9ps8rKXYIaGe ($0 balance)",
     "TELEGRAM_BOT_TOKEN": "8474833303:AAHAhnRoHSIZTEruDu4ic-tPvdzrnTadnrw",
     "TELEGRAM_CHAT_ID": "8613975358",
-    "App_URL": "https://autonomous-agents-19.preview.emergentagent.com",
+    "App_URL": "https://anima-runtime.preview.emergentagent.com",
     "MongoDB": "mongodb://localhost:27017, DB: anima_fund"
   },
   "seed_data_creation": "Test agent created and deleted during test_create_agent_stores_in_mongodb test",

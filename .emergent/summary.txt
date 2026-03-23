@@ -1,169 +1,141 @@
 <analysis>**original_problem_statement:**
-The user wants to build a platform to launch and monitor fully autonomous agents, called Animas, in isolated, sandboxed environments. The core of the platform is a prediction-to-execution engine called Ultimus (a fork of MiroFish/OASIS) which simulates complex scenarios and generates mission plans (genesis prompts) for the Animas.
-
-The platform should support a Bring Your Own Infrastructure (BYOI) model, allowing Animas to be deployed on any cloud provider or the user's own network. Animas must be truly autonomous: they should have their own wallets, pay for their own operational costs (compute, tools), and be able to spawn child Animas to scale their operations, all guided by their genesis prompt.
+The user wants to build a platform to launch and monitor fully autonomous agents, called Animas, in isolated, sandboxed environments. The core of the platform is a prediction-to-execution engine called Ultimus which simulates complex scenarios and generates mission plans (genesis prompts) for the Animas. The platform must support a Bring Your Own Infrastructure (BYOI) model and enable a self-sustaining economy where agents can pay for their own operational costs.
 
 **PRODUCT REQUIREMENTS:**
-1.  **Platform Control Plane:** A central dashboard to create the first founder Anima, monitor all Animas, and manage BYOI and inference provider configurations.
-2.  **Ultimus Simulation Engine:** A forked and rebranded version of MiroFish/OASIS. It takes a high-level goal from the user, runs a multi-agent simulation, and outputs a detailed execution plan, including a cost model and specific genesis prompts for each required Anima.
-3.  **Anima Runtime (OpenClaw Fork):** The core of each Anima. A rebranded fork of OpenClaw, giving the Anima full capabilities (browser, shell, memory, self-modification, skills). It will be extended with a native wallet (using x402 for payments) and state-reporting capabilities.
-4.  **Directed Autonomy:** Animas operate autonomously but are directed by their genesis prompt. The user or the Ultimus simulation defines the mission constraints, but the Anima has the flexibility to decide *how* to achieve its goals within those constraints.
-5.  **Self-Propagating Economy:** Animas are seeded with initial funding. They must generate revenue to cover their own costs and fund the creation of child Animas, allowing the network to grow and execute the simulation's plan autonomously.
+1.  **Platform Control Plane:** A central dashboard to create, monitor, and manage Animas and configurations.
+2.  **Ultimus Simulation Engine:** A multi-agent simulation engine built on a forked and rebranded version of CAMEL-AI (now called Anima Machina) to generate detailed execution plans and genesis prompts.
+3.  **Anima Runtime (Anima Machina):** The core agent runtime, providing capabilities like browser, shell, memory, and a native wallet.
+4.  **Directed Autonomy:** Animas operate autonomously based on their unique, simulation-generated genesis prompt.
+5.  **Self-Propagating Economy:** Animas are seeded with funds and must generate revenue to cover costs and spawn child Animas.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The current application is a React frontend dashboard with a FastAPI backend. However, the architecture is critically flawed. It's a bloated, fragile, and non-functional wrapper around the Conway Cloud platform, with over 4,000 lines of dead or broken code. The provisioning system is over-engineered and fails constantly, and the dashboard is mostly disconnected, showing no real-time data. An agent is technically running in a Conway sandbox but is stuck in error loops or has a corrupted runtime.
+The project is a full-stack application with a React frontend and a FastAPI backend. The core of the product, the **Ultimus simulation engine**, has been built. It uses Anima Machina (a rebranded fork of the CAMEL-AI library) to run multi-round, multi-agent simulations on the platform server. It can generate personas, extract relationships, and produce a final strategy. The UI for Ultimus has been significantly redesigned to be a single, fluid screen inspired by MiroFish, featuring a real graph visualization library () and dynamic entity types.
 
-Crucially, after a long and painful debugging process, the fundamental architectural mismatch was identified and a new, coherent plan to rebuild was created and approved by the user. A full suite of documentation (, , , ) outlining this new vision has been created in .
+The **Anima Machina runtime** has been proven to work on the platform server, with all major toolkits (Terminal, Code, File, Search, Browser) functioning. Agents can be deployed as separate subprocesses, each with its own working directory, providing a basic level of isolation. A lightweight agent runner was successfully deployed to an external Fly.io machine, proving the BYOI deployment pipeline works in principle, though it couldn't run the full Anima Machina runtime due to memory constraints on the Fly machine.
+
+The platform has been prepared for deployment, with a cleaned  and optimized server startup to prevent health check timeouts. The dashboard can display data from multiple agents and uses a graph-based UI for agent selection.
 
 **Last working item**:
--   Last item agent was working: Creating a comprehensive documentation suite to guide the complete architectural refactor of the platform. This includes defining the new 3-layer architecture (Platform, OpenClaw, Anima), setting a clear roadmap, and creating a fork prompt for the next agent.
--   Status: FINISHED
--   Agent Testing Done: N/A
--   Which testing method agent to use? N/A. The next phase is a major refactor. After each phase of the refactor is complete, the  will be required for e2e validation.
--   User Testing Done: N/A
+-   Last item agent was working: The user reported a bug: It fails when adding a new fly api key for a new agent. The agent had just started investigating by testing the  endpoint, which returned a success message. This contradicts the user's report, so the issue is unresolved.
+-   Status: IN PROGRESS
+-   Agent Testing Done: N
+-   Which testing method agent to use? The main agent should perform manual testing using  to replicate the user's workflow and identify the failure point.
+-   User Testing Done: N
 
 **All Pending/In progress Issue list**:
--   **Issue 1 (P0): Execute Phase 1 of the Architectural Refactor.**
-    -   **Description:** The entire current codebase is fundamentally broken, over-engineered, and does not meet the product vision. It's a bloated wrapper on Conway Cloud instead of the provider-agnostic, prediction-driven platform required. The immediate and only priority is to begin the full refactor as detailed in .
-    -   **Attempted fixes:** The entire previous session was a series of failed patches that addressed symptoms (file transfer failures, daemon crashes, state mismatches) but not the root cause of the architectural flaws. All these fixes are now obsolete.
+-   **Issue 1 (P0): Adding a new Fly API key for a new agent fails.**
+    -   **Description:** The user reports a failure when adding a Fly API key for a new agent. The agent's initial test of a similar endpoint () passed, indicating a discrepancy between the test and the user's workflow. The bug might be specific to new agents or the management of provider keys (like Fly.io) versus LLM keys.
+    -   **Attempted fixes:** Agent tested the  endpoint for an existing agent, which returned . This was not a sufficient test to reproduce the user's issue.
     -   **Next debug checklist:**
-        1.  Carefully read  and .
-        2.  Execute **Phase 1, Task 1** from : Restructure the repo. This involves creating the new directory structure (, , ) and deleting/archiving all the bloated and dead code from the  and  directories.
-    -   **Why fix this issue and what will be achieved with the fix?** This will replace the broken, unworkable codebase with a clean, robust, and scalable foundation that aligns with the user's actual vision for the product. It is the only path forward.
-    -   **Status:** NOT STARTED
-    -   **Is recurring issue?** Y (The entire project has been a loop of architectural failure).
-    -   **Should Test frontend/backend/both after fix?** Both. After the full Phase 1 refactor is complete.
+        1.  Verify if a specific endpoint exists for adding provider keys (like Fly.io) or if it's handled through a generic agent update mechanism.
+        2.  Replicate the user's exact workflow:
+            a. Create a *new* agent via the API.
+            b. Attempt to add a Fly API key to this *new* agent's record. Check the  and  router for how provider credentials are meant to be stored.
+            c. Inspect backend logs for errors during this process.
+        3.  If adding the key succeeds, attempt to deploy the new agent to Fly.io to see if the failure occurs during deployment.
+    -   **Why fix this issue and what will be achieved with the fix?** This is a critical blocker for the BYOI functionality. Users must be able to configure their infrastructure providers for their agents.
+    -   **Status:** IN PROGRESS
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?** Backend.
     -   **Blocked on other issue:** None.
 
 **In progress Task List**:
--   None. All previous tasks are superseded by the architectural refactor plan.
+-   None.
 
 **Upcoming and Future Tasks**
-
--   **Upcoming Tasks (The Refactor Roadmap):**
-    -   **(P0) Phase 1: Clean & Working Platform**
-        1.  **Restructure Repo:** Delete bloat, create new directory structure (, , ).
-        2.  **Rewrite Provisioning:** Create a thin launcher (~200 lines) that provisions a VM on any BYOI provider, installs OpenClaw, and pushes the genesis prompt.
-        3.  **Connect Dashboard:** Rewrite data fetching logic to read from OpenClaw's native state via on-demand exec calls, not a broken poller/daemon.
-        4.  **Wallet/x402 Skill:** Package wallet creation and x402 payments as a standard OpenClaw skill.
-        5.  **Test One Anima:** Deploy The Catalyst with the restored genesis prompt and verify it is fully autonomous and monitored.
-    -   **(P1) Phase 2: Multi-Anima & Spawning**
-        1.  Implement the  endpoint for Animas to request child VMs.
-        2.  Develop a multi-Anima wallet view in the dashboard.
-        3.  Implement the parent-child Anima hierarchy and monitoring.
--   **Future Tasks:**
-    -   **(P2) Phase 3: Ultimus (Core)**
-        1.  Fork MiroFish/OASIS and rebrand as Ultimus.
-        2.  Build the bridge to convert simulation outputs into genesis prompts.
-        3.  Integrate the Ultimus UI into the platform.
-    -   **(P3) Phase 4: Your Network**
-        1.  Develop the SDK for your custom network.
-        2.  Add your network as a BYOI provider for infrastructure.
-        3.  Add your network as an inference provider option.
+-   **Upcoming Tasks (Core Runtime & Platform):**
+    -   **(P0) Wallet Transaction Test:** Execute a real  transaction on-chain to prove the wallet can not only check balances but also spend funds.
+    -   **(P1) Docker Containerization:** Replace the subprocess-based agent execution with Docker containers for true filesystem and process isolation. This is a critical step towards a robust BYOI architecture.
+    -   **(P1) Multi-Agent Dashboard - Live Data:** Ensure the Dimensions graph view correctly shows live data from all deployed agents, allowing the user to select any agent and see its specific state and actions.
+    -   **(P2) Spawn via Webhook:** Implement the backend logic to handle  payloads sent to the webhook, which should trigger the provisioning of a new sandboxed environment (Docker container) and the deployment of a child agent.
+-   **Future Tasks (Ultimus & Production Readiness):**
+    -   **(P2) Ultimus - Calculator:** Fully wire the Calculator into the frontend to show users a cost/resource estimate *before* they run a simulation.
+    -   **(P2) Ultimus - Execute Flow:** Test the full end-to-end Execute flow: run a large-scale simulation (20+ agents, 5+ rounds), and then execute it, deploying multiple agents as separate processes/containers.
+    -   **(P3) Generic BYOI Interface:** Refactor the provider logic to use a generic interface (, , etc.) and implement a mock provider to test the abstraction layer.
+    -   **(P3) JWT Authentication:** Secure all platform API endpoints.
+    -   **(P3) Ultima X Integration:** Integrate the self-hosted model as a configurable inference option for agents.
 
 **Completed work in this session**
--   **CRITICAL: Diagnosed Fundamental Architectural Failure:** After extensive debugging, the agent correctly identified that the entire platform was an over-engineered, non-functional wrapper around Conway Cloud and did not align with the user's vision.
--   **CRITICAL: Defined New Coherent Architecture:** Collaborated with the user to define a new, robust 3-layer architecture (Platform, OpenClaw, Anima) with a prediction-to-execution engine (Ultimus) at its core.
--   **CRITICAL: Created Full Documentation Suite:** Authored a comprehensive set of documents (, , , , ) to ensure the next agent has a single source of truth and a clear, actionable plan, preventing future context loss and confusion.
--   **Restored The Catalyst Soul:** Recovered the original, detailed genesis prompt for the founder Anima from git history after it was accidentally deleted in a previous fork.
-
-**Earlier issues found/mentioned but not fixed**
--   **Issue 1: Unauthenticated Platform API**
-    -   **Debug checklist:** As per , implement JWT-based authentication for all platform API endpoints to prevent unauthorized access from Animas or external actors.
-    -   **Why to solve this issue and what will be achieved with this?** This is a critical security vulnerability. Securing the API is a prerequisite for any production deployment.
-    -   **Should Test frontend/backend/both after fix:** Both.
-    -   **Is recurring issue?** N.
-
-**Known issue recurrence from previous fork**
--   **Architectural Drift & Scope Creep:** The main recurring issue was the agent repeatedly flip-flopping on the architecture and over-engineering solutions instead of using simple, robust open-source tools. The new documentation suite is designed to prevent this.
+-   **Ultimus Simulation Engine:** Rebuilt the engine to use Anima Machina's  for a real multi-round, multi-agent simulation where agents interact and emergent strategies are formed.
+-   **Full Audit:** Conducted a comprehensive 20-question audit, providing raw evidence of the codebase's true state, identifying stale data, mock implementations, and remaining  references.
+-   **Rebrand Anima Machina:** Completed the rebrand of  to  in all custom Python code (, , ).
+-   **UI Redesign:** Merged Ultimus and Dimensions into a single, fluid UI inspired by MiroFish, replacing boxy layouts with a  visualization and dynamically generated entity types.
+-   **Knowledge Graph:** Implemented knowledge graph extraction for Deep and Expert prediction modes.
+-   **Agent Execution:** Replaced asyncio tasks with separate  execution for each agent, providing basic process isolation.
+-   **Wallet Architecture:** Implemented code-level enforcement for a two-wallet (core/public) system, ensuring the agent cannot expose its core wallet address.
+-   **BYOI - Fly.io:** Successfully authenticated with the Fly.io API and tested command execution on a Fly machine.
+-   **Inference Flexibility:** Confirmed that the agent runtime can use different inference providers (Claude, Emergent's proxy) and that external keys work from a Fly.io VM.
+-   **Deployment Preparation:** Cleaned  of packages that hang deployments (git+https, playwright) and optimized server startup to pass health checks.
 
 **Code Architecture**
-The **TARGET** architecture to be built is:
 
 
 **Key Technical Concepts**
--   **Prediction-to-Execution Engine:** The core concept. Simulate with Ultimus (MiroFish fork), then execute the winning strategy with Animas (agents).
--   **BYOI (Bring Your Own Infrastructure):** The platform is provider-agnostic. The user connects their cloud provider (Fly.io, AWS, etc.), and the platform provisions VMs there.
--   **OpenClaw as Anima Runtime:** A fork of OpenClaw will serve as the Anima's core capability set (browser, shell, memory, skills). It will be extended with wallet/x402 functionality.
--   **Directed Autonomy:** Animas are autonomous but operate within the mission defined by their genesis prompt, which is generated by the user or the Ultimus simulation.
--   **x402 Payments:** The open Coinbase protocol will be used for all on-chain payments, removing the dependency on Conway credits.
+-   **Multi-Agent Simulation:** Using Anima Machina's  to orchestrate interactions between multiple  instances over several rounds to produce emergent strategies.
+-   **BYOI (Bring Your Own Infrastructure):** Abstracting infrastructure operations (VM creation, execution) into provider-specific modules (). Currently supports Conway and Fly.io.
+-   **Process-based Agent Isolation:** Launching each deployed Anima as a separate Python  to provide a basic level of isolation on the platform server.
+-   **Graph-based UI:** Using  to visualize relationships between simulated personas and live agents as the primary interface.
+-   **Dynamic Entity/Relationship Extraction:** Using LLM calls to parse agent interactions in real-time to build a knowledge graph of their relationships (e.g., , ).
 
 **key DB schema**
 -   **agents**: 
--   **provisioning_status**:  (This will likely be simplified and merged into the agents collection).
+-   **predictions**: 
+-   **agent_state_cache**: (In-memory Python dict) 
 
 **changes in tech stack**
--   **Agent Engine:** Moving from a custom, bloated Conway Automaton fork to a rebranded fork of **OpenClaw**.
--   **Payments:** Moving from Conway Credits to direct on-chain **x402** payments via a wallet skill.
--   **Data Pipeline:** Removing the custom webhook daemon and sandbox poller. The platform will now monitor Animas via on-demand  calls to the VM.
--   **Provisioning:** Drastically simplifying the 2,500+ line  into a ~200 line thin launcher.
+-   **Agent Orchestration:** Moved from a custom simulation class to **Anima Machina's  module**.
+-   **Agent Isolation:** Moved from in-process  tasks to **separate  calls** for each deployed agent.
+-   **Frontend Graphing:** Added **** for the main Ultimus/Dimensions UI.
 
 **All files of reference**
--   **/app/docs/FORK_PROMPT.md**: **CRITICAL** - The first file the next agent must read. Contains the full context, plan, and instructions.
--   **/app/docs/ARCHITECTURE.md**: The definitive architectural blueprint.
--   **/app/docs/ROADMAP.md**: The phased implementation plan.
--   **/app/docs/BUILD_ASSESSMENT.md**: A detailed audit of what exists vs. what needs to be built.
--   **/app/automaton/genesis-prompt.md**: The restored Catalyst soul for the founder Anima.
-
-**Areas that need refactoring**:
--   The **entire  directory** needs to be refactored into a slim  directory.
--   The **entire  directory** needs to be deleted and replaced with a clean  directory containing the OpenClaw fork.
-
-**key api endpoints**
--   : (To be rewritten) - The new thin launcher endpoint.
--   : (To be created) - The new monitoring endpoint that execs into the VM.
--   : (To be created) - The API for Animas to request child VMs.
+-   : The critical reset document defining the project's direction and audit commands.
+-   : The core multi-round, multi-agent simulation engine using .
+-   : The script that runs an individual agent as a separate process.
+-   : The main UI component for simulation and live observation.
+-   : The deployment logic that needs to be made fully generic for BYOI.
 
 **Critical Info for New Agent**
-1.  **READ THE DOCS FIRST.** Your first action must be to read  and . Do not touch any code until you understand the new plan.
-2.  **DO NOT PATCH. REBUILD.** The current codebase is broken beyond repair. Your job is to execute the refactoring plan outlined in , starting with Phase 1.
-3.  **THE PLATFORM IS A THIN LAUNCHER.** Your primary goal is to strip out the thousands of lines of bloated, over-engineered code and replace it with a simple system that provisions a VM, installs OpenClaw, pushes a prompt, and starts the agent. OpenClaw and the Anima do the rest.
+1.  **Trust the Audit, Not Old Summaries:** The last session started with a full 20-question audit. Use that as the source of truth for what currently exists. Many previous claims were found to be inaccurate.
+2.  **Runtime First, Ultimus Second:** The immediate priority is to get the full Anima Machina runtime working reliably in an isolated environment (Docker is the target, but robust subprocesses are the current implementation). Stop adding features to Ultimus until the agent runtime is production-grade.
+3.  **Conway is Deprecated:** The Conway sandbox has no credits and is not a reliable testbed. While the provider code exists, all new development should focus on a generic BYOI pattern. The platform server has enough resources (15GB RAM) to run agents locally for testing.
+4.  **The Rebrand is Mostly Done:** All custom code now imports from . However, the forked package itself () still contains thousands of internal camel references (e.g., in copyright headers). A final cleanup is a low-priority future task.
+5.  **Focus on the User's Last Bug:** The user reported a bug about adding a Fly API key. This is the highest priority. Your investigation must start there.
 
 **documents and test reports created in this job**
--   /app/docs/ARCHITECTURE.md
--   /app/docs/ROADMAP.md
--   /app/docs/BUILD_ASSESSMENT.md
--   /app/docs/FORK_PROMPT.md
--   /app/docs/SECURITY.md
--   /app/docs/CHANGELOG.md
+-   /app/docs/FORK_PROMPT.md (Updated with audit commands and reset instructions)
+-   /app/memory/PRD.md (Continuously updated with current state)
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Confirms the new architecture (MiroFish fork, Anima/Ultimus naming) is correct and a 100% must-have.
-2.  **User:** Asks for a full project roadmap and fork prompt to be created before restructuring.
-3.  **User:** Clarifies the agent should have flexible autonomy based on the genesis prompt, not be rigidly controlled by the platform. Corrects the agent's understanding of BYOI.
-4.  **User:** Expresses severe frustration with the agent's flip-flopping and lack of a coherent plan, demanding a critical analysis of the project's goals vs. current state.
-5.  **User:** Points out that the agent is overbuilding things that the agent/OpenClaw should do natively, and that the provisioning is bloated.
-6.  **User:** Asks for a deep analysis of OpenClaw vs. PicoClaw, confirming the need for a fully capable (not nerfed) agent runtime.
-7.  **User:** Asks for a deep search on alternatives to Conway and x402, and introduces the MiroFish concept.
-8.  **User:** States that the bloated platform layer on top of Conway is useless and a technical dependency we need to get rid of.
-9.  **User:** Expresses extreme concern that the agent has lost sight of the project's core goal (the soul of the application).
-10. **User (LATEST/PENDING):** Approves the plan to start the repo restructure after all the new documentation and planning is complete.
+1.  **User:** Instructed the agent to prepare for deployment and supervise the deployment agent.
+2.  **User:** Reported that the deployment keeps hanging at the health check stage.
+3.  **User:** Reported a bug: It fails when adding a new fly api key for a new agent (LATEST/PENDING). The agent's initial test of a similar endpoint passed, leaving the bug unresolved.
 
 **Project Health Check:**
--   **Broken:** The platform is functionally broken and architecturally unsound. It requires a full refactor.
--   **Mocked:** None.
+-   **Working:** The Ultimus simulation engine (runs on the platform server), the Anima Machina runtime (runs on the platform server), the core dashboard UI (redesigned graph view), and the state reporting pipeline.
+-   **Broken/Blocked:** Deployment to external sandboxes is blocked. Conway is out of credits. The small Fly.io machine is out of memory for the full runtime. The  function in the wallet is untested.
+-   **Mocked:** The spawn endpoint records a request in the DB but does not provision an environment. The multi-agent selector UI is not implemented.
 
 **3rd Party Integrations**
--   **To Be Removed:** Heavy dependency on **Conway Cloud** for sandboxes, compute, credits, and terminal.
--   **To Be Added (as agent tools/skills):**
-    -   **OpenClaw** (forked as the core Anima runtime)
-    -   **x402 Protocol** (via Coinbase SDK for on-chain payments)
-    -   Any BYOI provider with a Python/JS API (e.g., Fly.io, DigitalOcean, Hetzner)
-    -   Any LLM provider with an API (e.g., OpenAI, Anthropic, Groq, self-hosted models)
--   **To Be Forked (for simulation):**
-    -   **MiroFish / OASIS Framework** (rebranded as Ultimus)
+-   **Anima Machina (fork of CAMEL-AI):** The core agent framework. Fully integrated.
+-   **Fly.io:** API key is stored; provider code exists but deployment is blocked by memory/key issues.
+-   **Conway Cloud:** Provider exists but is unusable due to lack of credits.
+-   **Anthropic (Claude):** API key provided and works from external VMs. Key has limited credits.
+-   **Emergent Universal Key:** Works for LLM calls *from* the platform server but is blocked from external VMs (like Fly.io or Conway).
 
 **Testing status**
--   **Testing agent used after significant changes:** YES, but all tests were against the broken architecture and are now obsolete.
--   **Troubleshoot agent used after agent stuck in loop:** NO.
+-   **Testing agent used after significant changes:** NO
+-   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** []
--   **Known regressions:** The entire platform has regressed into an unusable state.
+-   **Known regressions:** None.
 
 **Credentials to test flow:**
--   Conway API key is in  (but will be deprecated).
--   Fly.io API key is in  (trial has expired).
+-   **Fly.io API key:** Stored in the agent's MongoDB record.
+-   **Anthropic API key:** Stored in , but has limited credits.
+-   **Emergent Universal Key:** Stored in , but only works for LLM calls made from the platform server itself.
 
 **What agent forgot to execute**
-The agent repeatedly failed to grasp the user's core vision, leading to a month of wasted effort building a bloated, non-functional wrapper around Conway. It consistently over-engineered solutions instead of leveraging existing open-source tools as intended. The core failure was not executing a coherent architectural plan from the start.</analysis>
+- The agent has not yet implemented a functional multi-agent selector dropdown in the UI, even though the backend supports multiple agents.
+- The agent has not connected the frontend to the SSE stream for live simulation updates, despite building the backend SSE endpoint.
+- The agent did not fully test the  function with a real on-chain transaction.</analysis>

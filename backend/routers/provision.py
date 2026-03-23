@@ -21,6 +21,30 @@ logger = logging.getLogger(__name__)
 
 # ─── BYOI Provider Resolution ───
 
+async def _get_fly_config(agent_id: str = None) -> dict:
+    """Get Fly.io config for the active agent from MongoDB, falling back to env vars."""
+    if not agent_id:
+        agent_id = get_active_agent_id()
+    try:
+        db = get_db()
+        agent = await db.agents.find_one(
+            {"agent_id": agent_id},
+            {"_id": 0, "fly_api_key": 1, "fly_app_name": 1}
+        )
+        if agent and agent.get("fly_api_key"):
+            return {
+                "api_key": agent["fly_api_key"],
+                "app_name": agent.get("fly_app_name", "animafund"),
+            }
+    except Exception:
+        pass
+    # Fallback to env vars
+    return {
+        "api_key": os.environ.get("FLY_API_TOKEN", ""),
+        "app_name": os.environ.get("FLY_APP_NAME", "animafund"),
+    }
+
+
 async def _get_provider(provider_name: str):
     """Resolve a BYOI provider by name."""
     if provider_name == "conway":
@@ -32,10 +56,11 @@ async def _get_provider(provider_name: str):
         return ConwayProvider(api_key)
     elif provider_name == "fly":
         from providers.fly import FlyProvider
-        api_key = os.environ.get("FLY_API_TOKEN", "")
-        app_name = os.environ.get("FLY_APP_NAME", "animafund")
+        fly_cfg = await _get_fly_config()
+        api_key = fly_cfg["api_key"]
+        app_name = fly_cfg["app_name"]
         if not api_key:
-            raise HTTPException(400, "No Fly.io API token configured.")
+            raise HTTPException(400, "No Fly.io API token configured. Add one in the provider settings.")
         return FlyProvider(api_key, app_name)
     else:
         raise HTTPException(400, f"Provider '{provider_name}' not configured. Available: conway, fly")
@@ -50,6 +75,162 @@ class CreateSandboxRequest(BaseModel):
 
 class NudgeRequest(BaseModel):
     message: str
+
+class SetProviderKeyRequest(BaseModel):
+    provider: str
+    api_key: str
+    app_name: str = ""
+
+
+# ─── Provider Key Management ───
+
+@router.get("/provider-key-status")
+async def provider_key_status(provider: str = "fly"):
+    """Check if a provider key is configured for the active agent."""
+    agent_id = get_active_agent_id()
+    if provider == "fly":
+        fly_cfg = await _get_fly_config(agent_id)
+        api_key = fly_cfg["api_key"]
+        app_name = fly_cfg["app_name"]
+        return {
+            "configured": bool(api_key),
+            "provider": "fly",
+            "app_name": app_name,
+            "key_prefix": api_key[:12] + "..." if api_key and len(api_key) > 12 else "",
+        }
+    elif provider == "conway":
+        from agent_state import get_conway_api_key
+        key = await get_conway_api_key(agent_id)
+        return {
+            "configured": bool(key),
+            "provider": "conway",
+            "key_prefix": key[:12] + "..." if key and len(key) > 12 else "",
+        }
+    return {"configured": False, "provider": provider}
+
+
+@router.post("/set-provider-key")
+async def set_provider_key(req: SetProviderKeyRequest):
+    """Store a provider API key for the active agent in MongoDB."""
+    agent_id = get_active_agent_id()
+    db = get_db()
+
+    if req.provider == "fly":
+        api_key = req.api_key.strip()
+        # Remove "FlyV1 " prefix if user pasted the full header value
+        if api_key.startswith("FlyV1 "):
+            api_key = api_key[6:]
+        if not api_key:
+            raise HTTPException(400, "API key cannot be empty")
+
+        app_name = req.app_name.strip() or os.environ.get("FLY_APP_NAME", "animafund")
+
+        await db.agents.update_one(
+            {"agent_id": agent_id},
+            {"$set": {
+                "fly_api_key": api_key,
+                "fly_app_name": app_name,
+                "fly_key_updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        return {
+            "success": True,
+            "message": f"Fly.io token saved for {agent_id} (app: {app_name})",
+            "app_name": app_name,
+        }
+
+    elif req.provider == "conway":
+        from agent_state import set_conway_api_key
+        await set_conway_api_key(req.api_key.strip(), agent_id)
+        return {"success": True, "message": f"Conway key saved for {agent_id}"}
+
+    raise HTTPException(400, f"Unknown provider: {req.provider}")
+
+
+# ─── Sandbox Management ───
+
+@router.post("/health-check")
+async def health_check():
+    """Probe sandbox and return current state."""
+    prov = await load_provisioning()
+    sid = prov.get("sandbox", {}).get("id")
+    if not sid or prov.get("sandbox", {}).get("status") != "active":
+        return {"success": False, "error": "No active sandbox"}
+
+    provider_name = prov.get("sandbox", {}).get("provider", "conway")
+    try:
+        provider = await _get_provider(provider_name)
+        result = await provider.exec_in_vm(sid, "echo HEALTH_OK && ps aux | grep -c runner.py", timeout=10)
+        output = result.get("output", "")
+        engine_running = "runner.py" in output or int(output.strip().split("\n")[-1]) > 1 if output else False
+
+        # Determine next step
+        tools = prov.get("tools", {})
+        next_step = None
+        if not tools.get("runtime", {}).get("status") == "installed":
+            next_step = "Install Runtime"
+        elif not tools.get("agent", {}).get("status") == "running":
+            next_step = "Deploy Agent"
+
+        return {
+            "success": "HEALTH_OK" in output,
+            "engine_running": engine_running,
+            "next_step": next_step,
+            "output": output[:200],
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/reset-sandbox")
+async def reset_sandbox():
+    """Reset agent data but keep the sandbox VM alive."""
+    prov = await load_provisioning()
+    sid = prov.get("sandbox", {}).get("id")
+    if not sid:
+        return {"success": False, "error": "No active sandbox"}
+
+    provider_name = prov.get("sandbox", {}).get("provider", "conway")
+    try:
+        provider = await _get_provider(provider_name)
+        # Kill the running agent and clear its data
+        await provider.exec_in_vm(sid, "pkill -f runner.py 2>/dev/null; rm -rf /app/anima 2>/dev/null; echo RESET_OK", timeout=15)
+    except Exception as e:
+        logger.warning(f"Reset exec warning: {e}")
+
+    # Keep sandbox info, clear tools/agent state
+    new_prov = {
+        "sandbox": prov.get("sandbox", {}),
+        "tools": {},
+        "ports": prov.get("ports", []),
+        "domains": prov.get("domains", []),
+        "compute_verified": False,
+        "skills_loaded": False,
+        "nudges": [],
+        "wallet_address": "",
+    }
+    await save_provisioning(new_prov)
+    return {"success": True, "message": "Agent reset — sandbox preserved"}
+
+
+@router.post("/delete-sandbox")
+async def delete_sandbox():
+    """Destroy the sandbox machine entirely."""
+    prov = await load_provisioning()
+    sid = prov.get("sandbox", {}).get("id")
+    if not sid:
+        return {"success": False, "error": "No active sandbox to delete"}
+
+    provider_name = prov.get("sandbox", {}).get("provider", "conway")
+    try:
+        provider = await _get_provider(provider_name)
+        await provider.destroy_vm(sid)
+    except Exception as e:
+        logger.warning(f"Destroy VM warning: {e}")
+
+    from agent_state import default_provisioning
+    await save_provisioning(default_provisioning())
+    return {"success": True, "message": "Sandbox machine destroyed"}
 
 
 # ─── Status ───
